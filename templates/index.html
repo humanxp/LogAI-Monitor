@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - LogAI Monitor{% endblock %}
+{% block header_title %}Dashboard{% endblock %}
+
+{% block content %}
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon primary">
+            <i class="fas fa-file-alt"></i>
+        </div>
+        <div class="stat-value" id="totalLogs">0</div>
+        <div class="stat-label">Total Logs</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon success">
+            <i class="fas fa-clock"></i>
+        </div>
+        <div class="stat-value" id="logsLastHour">0</div>
+        <div class="stat-label">Logs (Last Hour)</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon warning">
+            <i class="fas fa-bell"></i>
+        </div>
+        <div class="stat-value" id="totalAlerts">0</div>
+        <div class="stat-label">Active Alerts</div>
+    </div>
+    
+    <div class="stat-card">
+        <div class="stat-icon danger">
+            <i class="fas fa-filter"></i>
+        </div>
+        <div class="stat-value" id="totalFilters">0</div>
+        <div class="stat-label">Active Filters</div>
+    </div>
+</div>
+
+<!-- Service Status -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-server"></i> Service Status</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div class="status-indicator" id="redisStatus">
+                <span class="status-dot"></span> Redis: Checking...
+            </div>
+            <div class="status-indicator" id="ollamaStatus">
+                <span class="status-dot"></span> AI: Checking...
+            </div>
+            <div class="status-indicator" id="telegramStatus">
+                <span class="status-dot offline"></span> Telegram: Checking...
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Logs -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-stream"></i> Recent Logs</h3>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
+                <span style="font-size: 0.9rem;">Hide repeated</span>
+            </label>
+            <a href="/logs" class="btn btn-outline btn-sm">View All</a>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="logsContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-file-alt"></i>
+                <h4>Loading logs...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Alerts -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-exclamation-triangle"></i> Recent Alerts</h3>
+        <a href="/alerts" class="btn btn-outline btn-sm">View All</a>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="alertsContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-bell"></i>
+                <h4>Loading alerts...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Detail Modal -->
+<div class="modal-overlay" id="logDetailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Log Details</h3>
+            <button class="modal-close" onclick="closeModal('logDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="logDetailContent">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
+                <i class="fas fa-brain"></i> Analyze with AI
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

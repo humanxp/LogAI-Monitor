@@ -1,0 +1,85 @@
+services:
+  logaimonitor:
+    # Custom image: official base + patched AI provider (OpenAI-compatible support)
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-ftsiadimos/logradaraiq:latest}
+    image: logradarai:local
+    # Production server: gunicorn (gthread worker, socket.io keeps threading mode).
+    # workers=1 so receivers/scheduler init exactly once; threads=40 handles
+    # socket.io long-polling + slow AI requests; timeout 360 > max AI call (180s).
+    command:
+      - gunicorn
+      - --worker-class
+      - gthread
+      - --workers
+      - "1"
+      - --threads
+      - "40"
+      - --timeout
+      - "360"
+      - --graceful-timeout
+      - "30"
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+      - --bind
+      - 0.0.0.0:5059
+      - app:app
+    container_name: logaimonitor
+    restart: unless-stopped
+    ports:
+      - "5059:5059"      # Web UI
+      - "514:514/udp"    # Syslog UDP (standard port)
+      - "515:515/tcp"    # Syslog TCP (SYSLOG_PORT+1)
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - DEBUG=${DEBUG:-false}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_BASE_URL=${AI_BASE_URL}
+      - AI_API_KEY=${AI_API_KEY}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - LOG_RETENTION_HOURS=${LOG_RETENTION_HOURS:-12}
+      - ANALYSIS_INTERVAL_MINUTES=${ANALYSIS_INTERVAL_MINUTES:-5}
+      - MAX_LOGS_PER_ANALYSIS=${MAX_LOGS_PER_ANALYSIS:-300}
+      - BATCH_SAMPLE_LIMIT=${BATCH_SAMPLE_LIMIT:-200}
+      - SYSLOG_PORT=${SYSLOG_PORT:-514}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - logaimonitor-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7-alpine
+    container_name: logaimonitor-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - logaimonitor-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+
+networks:
+  logaimonitor-net:
+    driver: bridge

@@ -1,0 +1,11 @@
+# secrets & local config
+.env
+docker-compose.yml
+*.tar.gz
+*.log
+# python
+__pycache__/
+*.pyc
+.venv/
+# os / editors
+.DS_Store

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Filters - LogAI Monitor{% endblock %}
+{% block header_title %}Filters{% endblock %}
+
+{% block content %}
+<!-- Actions Bar -->
+<div style="margin-bottom: 1rem;">
+    <button class="btn btn-primary" onclick="showNewFilterModal()">
+        <i class="fas fa-plus"></i> Create Filter
+    </button>
+</div>
+
+<!-- Filters List -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-filter"></i> Log Filters</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="filtersContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-filter"></i>
+                <h4>Loading filters...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Info Card -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-info-circle"></i> About Filters</h3>
+    </div>
+    <div class="card-body">
+        <p>Filters allow you to monitor specific log patterns and receive alerts when they match. You can:</p>
+        <ul>
+            <li><strong>Filter by Severity:</strong> Match logs with specific severity levels (error, warning, etc.)</li>
+            <li><strong>Filter by Source:</strong> Match logs from specific sources or containers</li>
+            <li><strong>Filter by Message:</strong> Match logs containing specific text or regex patterns</li>
+            <li><strong>Telegram Notifications:</strong> Receive alerts via Telegram when filters match</li>
+        </ul>
+        <p>When a filter matches an incoming log, an alert is created and optionally sent to Telegram with AI-generated analysis.</p>
+    </div>
+</div>
+
+<!-- Filter Modal -->
+<div class="modal-overlay" id="filterModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="filterModalTitle">Create Filter</h3>
+            <button class="modal-close" onclick="closeModal('filterModal')">&times;</button>
+        </div>
+        <form id="filterForm" onsubmit="submitFilterForm(event)">
+            <div class="modal-body">
+                <input type="hidden" id="filterId">
+                
+                <div class="form-group">
+                    <label class="form-label" for="filterName">Filter Name *</label>
+                    <input type="text" class="form-control" id="filterName" required 
+                           placeholder="e.g., Critical Errors">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="filterSeverity">Severity</label>
+                    <select class="form-control form-select" id="filterSeverity">
+                        <option value="">Any Severity</option>
+                        <option value="emergency">Emergency</option>
+                        <option value="alert">Alert</option>
+                        <option value="critical">Critical</option>
+                        <option value="error">Error</option>
+                        <option value="warning">Warning</option>
+                        <option value="notice">Notice</option>
+                        <option value="info">Info</option>
+                        <option value="debug">Debug</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="filterSourceContains">Source Contains</label>
+                    <input type="text" class="form-control" id="filterSourceContains" 
+                           placeholder="e.g., nginx, docker:myapp">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="filterMessageContains">Message Contains</label>
+                    <input type="text" class="form-control" id="filterMessageContains" 
+                           placeholder="e.g., failed, error, exception">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="filterMessageRegex">Message Regex</label>
+                    <input type="text" class="form-control" id="filterMessageRegex" 
+                           placeholder="e.g., (error|fail|exception)">
+                    <small style="color: #666;">Advanced: Use regex pattern for complex matching</small>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-check">
+                        <input type="checkbox" class="form-check-input" id="filterNotifyTelegram">
+                        <span>Send Telegram notification when matched</span>
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-check">
+                        <input type="checkbox" class="form-check-input" id="filterEnabled" checked>
+                        <span>Filter enabled</span>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModal('filterModal')">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> Save Filter
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetchFilters();
+});
+</script>
+{% endblock %}

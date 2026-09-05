@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}AI Analysis - LogAI Monitor{% endblock %}
+{% block header_title %}AI Analysis{% endblock %}
+
+{% block content %}
+<div class="analysis-page-container">
+    <!-- Left Column: Analysis & Logs -->
+    <div class="analysis-left-column">
+        <!-- Batch Analysis -->
+        <div class="card analysis-card">
+            <div class="card-header">
+                <h3><i class="fas fa-brain"></i> Log Analysis</h3>
+                <button class="btn btn-primary" id="analyzeAllBtn" onclick="analyzeAllLogs()">
+                    <i class="fas fa-brain"></i> Analyze Recent Logs
+                </button>
+            </div>
+            <div class="card-body analysis-result-body">
+                <div id="analysisResult">
+                    <div class="empty-state">
+                        <i class="fas fa-chart-line"></i>
+                        <h4>No analysis yet</h4>
+                        <p>Click "Analyze Recent Logs" to run AI analysis on recent log entries</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Recent Logs for Context -->
+        <div class="card recent-logs-card">
+            <div class="card-header recent-logs-header">
+                <h3 style="margin:0;"><i class="fas fa-file-alt"></i> Recent Logs</h3>
+                <label class="form-check" style="margin-left: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
+                    <span style="font-size: 0.9rem;">Hide repeated</span>
+                </label>
+                <button id="toggleAnalysisInfoBtn" class="btn btn-outline btn-sm" style="margin-left: 0.5rem;">Info</button>
+                <div id="recentLogsInfo" style="margin-left:auto; font-size:0.9rem; color:#666;">Showing 0</div>
+            </div>
+            <div class="card-body recent-logs-body">
+                <div id="logsContainer" class="logs-list">
+                    <div class="empty-state">
+                        <i class="fas fa-file-alt"></i>
+                        <h4>Loading logs...</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Right Column: Chat (Sticky) -->
+    <div class="analysis-right-column">
+        <div class="card chat-card">
+            <div class="card-header">
+                <h3><i class="fas fa-comments"></i> AI Chat Assistant</h3>
+            </div>
+            <div class="card-body chat-card-body">
+                <div class="chat-container-fixed">
+                    <div class="chat-messages-area" id="chatMessages">
+                        <div class="chat-message assistant">
+                            <div class="message-content">
+                                Hello! I'm your LogAI assistant. I can help you analyze logs, identify patterns, 
+                                and troubleshoot issues. Ask me anything about your server logs!
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-container">
+                        <input type="text" class="form-control" id="chatInput" 
+                               placeholder="Ask about your logs..." onkeypress="if(event.key==='Enter')sendChatMessage()">
+                        <button class="btn btn-primary" onclick="sendChatMessage()">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Info Card (Hidden by default) -->
+<div id="analysisInfoCard" class="card analysis-info" style="display: none; margin-top: 1.5rem;">
+    <div class="card-header" style="display:flex; align-items:center; gap:0.5rem;">
+        <h3 style="margin:0;"><i class="fas fa-info-circle"></i> AI-Powered Analysis</h3>
+        <div style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
+            <span id="analysisInfoStatus" style="color:#666; font-size:0.9rem;">Info</span>
+            <button id="closeAnalysisInfoBtn" class="btn btn-outline">Hide</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <p>LogAI Monitor uses Ollama (local AI) to provide intelligent log analysis:</p>
+        <ul>
+            <li><strong>Batch Analysis:</strong> Analyze multiple logs at once to identify patterns and issues</li>
+            <li><strong>Individual Log Analysis:</strong> Get detailed AI analysis of specific log entries</li>
+            <li><strong>Chat Assistant:</strong> Ask questions about your logs in natural language</li>
+            <li><strong>Alert Messages:</strong> AI generates human-readable alert messages for Telegram</li>
+            <li><strong>Automatic Analysis:</strong> Enable auto-analysis to continuously monitor logs</li>
+        </ul>
+        <p><strong>Privacy:</strong> All analysis is done locally using Ollama - no data is sent to external services.</p>
+    </div>
+</div>
+
+<!-- Log Detail Modal -->
+<div class="modal-overlay" id="logDetailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Log Details</h3>
+            <button class="modal-close" onclick="closeModal('logDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="logDetailContent">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
+                <i class="fas fa-brain"></i> Analyze with AI
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Mark current page for renderLogs function
+    if (typeof state !== 'undefined') {
+        state.currentPage = 'analysis';
+    }
+    
+    // Fetch more logs for better context
+    fetchLogs({ limit: 50 });
+    fetchAlerts(); // Fetch alerts so AI chat has access to them
+    
+    // Setup info toggle button
+    const toggleBtn = document.getElementById('toggleAnalysisInfoBtn');
+    const closeBtn = document.getElementById('closeAnalysisInfoBtn');
+    const infoCard = document.getElementById('analysisInfoCard');
+    
+    if (toggleBtn && infoCard) {
+        toggleBtn.addEventListener('click', () => {
+            infoCard.style.display = infoCard.style.display === 'none' ? 'block' : 'none';
+        });
+    }
+    
+    if (closeBtn && infoCard) {
+        closeBtn.addEventListener('click', () => {
+            infoCard.style.display = 'none';
+        });
+    }
+    
+    // Auto-scroll chat to bottom when new messages arrive
+    const chatMessages = document.getElementById('chatMessages');
+    if (chatMessages) {
+        const observer = new MutationObserver(() => {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        });
+        observer.observe(chatMessages, { childList: true, subtree: true });
+    }
+    
+    // Keyboard shortcut: Press "/" to focus chat input
+    document.addEventListener('keydown', (e) => {
+        const chatInput = document.getElementById('chatInput');
+        // Don't trigger if already typing in an input/textarea
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+            return;
+        }
+        // "/" key focuses the chat input
+        if (e.key === '/') {
+            e.preventDefault();
+            if (chatInput) {
+                chatInput.focus();
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

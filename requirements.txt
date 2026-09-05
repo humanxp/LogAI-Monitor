@@ -1,0 +1,14 @@
+flask==3.0.0
+flask-socketio==5.3.6
+flask-login==0.6.3
+redis==5.0.1
+python-socketio==5.10.0
+requests==2.31.0
+python-telegram-bot==20.7
+gunicorn==21.2.0
+python-dateutil==2.8.2
+python-dotenv==1.0.0
+docker==7.0.0
+ollama==0.1.6
+apscheduler==3.10.4
+rq-dashboard

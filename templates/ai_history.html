@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+
+{% block title %}AI History - LogAI Monitor{% endblock %}
+{% block header_title %}AI Analysis History{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-icon" style="background-color: #e3f2fd;">
+            <i class="fas fa-history" style="color: #1976d2;"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="totalAnalyses">0</h3>
+            <p>Total Analyses</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background-color: #e8f5e9;">
+            <i class="fas fa-check-circle" style="color: #388e3c;"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="healthyCount">0</h3>
+            <p>Healthy Status</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background-color: #fff3e0;">
+            <i class="fas fa-exclamation-triangle" style="color: #f57c00;"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="warningCount">0</h3>
+            <p>Warning Status</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background-color: #ffebee;">
+            <i class="fas fa-times-circle" style="color: #d32f2f;"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="criticalCount">0</h3>
+            <p>Critical Status</p>
+        </div>
+    </div>
+</div>
+
+<!-- History List -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-history"></i> Analysis History</h3>
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.25rem;">
+                <button type="button" class="btn btn-sm btn-outline" id="historyPrevBtn" onclick="historyPagePrev()" disabled title="Previous page">
+                    <i class="fas fa-chevron-left"></i> Prev
+                </button>
+                <span id="historyPageInfo" style="white-space: nowrap; font-size: 0.9rem;">Page 1 / 1</span>
+                <button type="button" class="btn btn-sm btn-outline" id="historyNextBtn" onclick="historyPageNext()" disabled title="Next page">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+            <button class="btn btn-danger btn-sm" id="clearAllHistoryBtn" onclick="clearAllHistory()">
+                <i class="fas fa-trash-alt"></i> Clear All History
+            </button>
+            <button class="btn btn-secondary btn-sm" id="refreshAIHistoryBtn" onclick="refreshAIHistory()">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="historyContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-spinner fa-spin"></i>
+                <h4>Loading history...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Detail Modal -->
+<div class="modal-overlay" id="historyDetailModal">
+    <div class="modal" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3>Analysis Details</h3>
+            <button class="modal-close" onclick="closeModal('historyDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="historyDetailContent">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="reanalyzeBtn" onclick="reanalyzeHistory()">
+                <i class="fas fa-sync"></i> Re-analyze
+            </button>
+            <button class="btn btn-danger" id="deleteHistoryBtn" onclick="deleteCurrentHistory()">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('historyDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let historyData = [];
+let historyTotal = 0;
+let currentHistoryId = null;
+// Pagination: 100 records per page; status cards come from a server-side
+// aggregate (all pages), so the numbers stay correct while browsing.
+const HISTORY_PAGE_SIZE = 100;
+let historyPage = 1;
+
+function isFailedAnalysis(a) {
+    if (!a) return true;
+    const hay = [a.summary || '']
+        .concat(a.issues_found || [])
+        .concat(a.recommendations || [])
+        .join(' ');
+    return hay.indexOf('Unable to parse') !== -1 || hay.indexOf('did not respond') !== -1;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchAIHistory(1);
+});
+
+async function fetchAIHistory(page) {
+    historyPage = page || 1;
+    try {
+        const offset = (historyPage - 1) * HISTORY_PAGE_SIZE;
+        const response = await fetch(`/api/ai-history?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`);
+        const data = await response.json();
+        // Response shape: {history: [...], total: N, offset, limit}
+        historyData = Array.isArray(data) ? data : (data.history || []);
+        historyTotal = Array.isArray(data) ? historyData.length : (data.total ?? historyData.length);
+        renderHistory();
+        updateHistoryPager();
+        fetchHistoryStats();
+    } catch (error) {
+        console.error('Error fetching AI history:', error);
+        document.getElementById('historyContainer').innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-exclamation-triangle"></i>
+                <h4>Error loading history</h4>
+            </div>
+        `;
+        throw error;
+    }
+}
+
+function updateHistoryPager() {
+    const maxPage = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
+    const infoEl = document.getElementById('historyPageInfo');
+    const prevBtn = document.getElementById('historyPrevBtn');
+    const nextBtn = document.getElementById('historyNextBtn');
+    if (infoEl) infoEl.textContent = `Page ${historyPage} / ${maxPage}`;
+    if (prevBtn) prevBtn.disabled = historyPage <= 1;
+    if (nextBtn) nextBtn.disabled = historyPage >= maxPage;
+}
+
+function historyPagePrev() {
+    if (historyPage > 1) fetchAIHistory(historyPage - 1);
+}
+
+function historyPageNext() {
+    fetchAIHistory(historyPage + 1);
+}
+
+// Aggregate status counts over ALL history records (server cached ~60s)
+async function fetchHistoryStats() {
+    try {
+        const response = await fetch('/api/ai-history/stats');
+        const s = await response.json();
+        document.getElementById('totalAnalyses').textContent = s.total ?? historyTotal;
+        document.getElementById('healthyCount').textContent = s.healthy || 0;
+        document.getElementById('warningCount').textContent = s.warning || 0;
+        document.getElementById('criticalCount').textContent = s.critical || 0;
+    } catch (error) {
+        console.error('Error fetching history stats:', error);
+    }
+}
+
+// Refresh with visible feedback (spinner + result counts). Without this the
+// button silently re-fetches and looks unresponsive when nothing changed.
+async function refreshAIHistory() {
+    const btn = document.getElementById('refreshAIHistoryBtn');
+    const icon = btn?.querySelector('i');
+    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    try {
+        await fetchAIHistory(historyPage);
+        showToast('Refresh', `History refreshed - ${historyData.length} shown (${historyTotal} total)`, 'info');
+    } catch (error) {
+        console.error('Error refreshing AI history:', error);
+        showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+    }
+}
+
+function renderHistory() {
+    const container = document.getElementById('historyContainer');
+    
+    if (historyData.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-history"></i>
+                <h4>No analysis history</h4>
+                <p>AI analyses will appear here after you analyze logs</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Logs Analyzed</th>
+                    <th>Status</th>
+                    <th>Summary</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${historyData.map(h => renderHistoryRow(h)).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function renderHistoryRow(entry) {
+    const timestamp = new Date(entry.timestamp).toLocaleString();
+    // 'auto' (periodic/batch trigger) and 'batch' records are batch analyses;
+    // only 'single' is a single-log analysis.
+    const type = entry.type === 'single' ? '📝 Single' : '📊 Batch';
+    const logsCount = entry.logs_analyzed || 1;
+    
+    const analysis = entry.analysis || {};
+    const status = getEntryStatus(analysis, entry.type);
+    const statusClass = getStatusClass(status);
+    const statusIcon = getStatusIcon(status);
+    
+    const summary = analysis.summary || 
+                   (analysis.issues_found?.length ? analysis.issues_found[0] : 'No issues found');
+    
+    return `
+        <tr>
+            <td>${timestamp}</td>
+            <td>${type}</td>
+            <td>${logsCount}</td>
+            <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(status)}</span></td>
+            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                ${escapeHtml(summary.substring(0, 100))}
+            </td>
+            <td>
+                <button class="btn btn-sm btn-primary" onclick="showHistoryDetail('${entry.id}')">
+                    <i class="fas fa-eye"></i> View
+                </button>
+                <button class="btn btn-sm btn-danger" onclick="deleteHistory('${entry.id}')">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `;
+}
+
+// Map an analysis to a display status. Single-log analyses use
+// is_critical/category instead of overall_status, so never show the
+// meaningless hardcoded "unknown" default for them.
+function getEntryStatus(analysis, type) {
+    if (!analysis) return 'unknown';
+    if (type === 'single') {
+        if (analysis.is_critical === true) return 'critical';
+        if (analysis.category) return analysis.category;
+        return 'unknown';
+    }
+    return analysis.overall_status || analysis.category || 'unknown';
+}
+
+function getStatusClass(status) {
+    switch(status) {
+        case 'healthy': return 'info';
+        case 'warning': return 'warning';
+        case 'critical': return 'critical';
+        case 'error': return 'error';
+        default: return 'info';
+    }
+}
+
+function getStatusIcon(status) {
+    switch(status) {
+        case 'healthy': return '✅';
+        case 'warning': return '⚠️';
+        case 'critical': return '🔴';
+        case 'error': return '❌';
+        default: return '📋';
+    }
+}
+
+function showHistoryDetail(historyId) {
+    const entry = historyData.find(h => h.id === historyId);
+    if (!entry) return;
+    
+    currentHistoryId = historyId;
+    const analysis = entry.analysis || {};
+    
+    // Only show the Re-analyze button when this record is a failed/unparseable one.
+    const reanalyzeBtn = document.getElementById('reanalyzeBtn');
+    if (reanalyzeBtn) {
+        reanalyzeBtn.style.display = isFailedAnalysis(analysis) ? '' : 'none';
+    }
+    
+    let issuesHtml = '';
+    if (analysis.issues_found && analysis.issues_found.length > 0) {
+        issuesHtml = `
+            <div class="form-group">
+                <label class="form-label">Issues Found</label>
+                <ul style="margin: 0; padding-left: 1.5rem;">
+                    ${analysis.issues_found.map(i => `<li>${escapeHtml(i)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    let recommendationsHtml = '';
+    if (analysis.recommendations && analysis.recommendations.length > 0) {
+        recommendationsHtml = `
+            <div class="form-group">
+                <label class="form-label">Recommendations</label>
+                <ul style="margin: 0; padding-left: 1.5rem;">
+                    ${analysis.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    }
+    
+    const status = getEntryStatus(analysis, entry.type);
+    
+    document.getElementById('historyDetailContent').innerHTML = `
+        <div class="form-group">
+            <label class="form-label">Timestamp</label>
+            <p>${new Date(entry.timestamp).toLocaleString()}</p>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Analysis Type</label>
+            <p>${entry.type === 'single' ? 'Single Log Analysis' : 'Batch Analysis'}</p>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Logs Analyzed</label>
+            <p>${entry.logs_analyzed || 1}</p>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Overall Status</label>
+            <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(status)}</span></p>
+        </div>
+        ${analysis.summary ? `
+        <div class="form-group">
+            <label class="form-label">Summary</label>
+            <p>${escapeHtml(analysis.summary)}</p>
+        </div>
+        ` : ''}
+        ${issuesHtml}
+        ${recommendationsHtml}
+        ${analysis.critical_count !== undefined ? `
+        <div class="form-group">
+            <label class="form-label">Critical Issues Count</label>
+            <p>${analysis.critical_count}</p>
+        </div>
+        ` : ''}
+        ${entry.log_source ? `
+        <div class="form-group">
+            <label class="form-label">Log Source</label>
+            <p>${escapeHtml(entry.log_source)}</p>
+        </div>
+        ` : ''}
+    `;
+    
+    openModal('historyDetailModal');
+}
+
+
+async function reanalyzeHistory() {
+    if (!currentHistoryId) return;
+    const entry = historyData.find(h => h.id === currentHistoryId);
+    if (!entry) return;
+    if (!confirm('Re-run AI analysis on the logs from this session? (\nOnly logs that still exist will be sent.)')) return;
+
+    const btn = document.getElementById('reanalyzeBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Re-analyzing...'; }
+    try {
+        const response = await fetch('/api/analysis/reanalyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history_id: currentHistoryId })
+        });
+        const data = await response.json();
+        if (data.reanalyzed && data.updated) {
+            showToast('Success', 'Re-analysis complete (' + (data.available||0) + ' logs)', 'success');
+            fetchAIHistory(historyPage);
+            closeModal('historyDetailModal');
+        } else if (data.reanalyzed && !data.updated) {
+            showToast('Info', 'Re-analysis still failed; the original record is unchanged.', 'info');
+        } else {
+            showToast('Info', data.msg || data.error || 'Could not re-analyze this entry', 'info');
+        }
+    } catch (error) {
+        console.error('Error re-analyzing:', error);
+        showToast('Error', 'Re-analysis failed', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i> Re-analyze'; }
+    }
+}
+
+async function deleteHistory(historyId) {
+    if (!confirm('Are you sure you want to delete this analysis record?')) return;
+    
+    try {
+        const response = await fetch(`/api/ai-history/${historyId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            showToast('Success', 'History entry deleted', 'success');
+            fetchAIHistory(historyPage);
+        } else {
+            showToast('Error', 'Failed to delete history entry', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting history:', error);
+        showToast('Error', 'Failed to delete history entry', 'error');
+    }
+}
+
+function deleteCurrentHistory() {
+    if (currentHistoryId) {
+        closeModal('historyDetailModal');
+        deleteHistory(currentHistoryId);
+    }
+}
+
+async function clearAllHistory() {
+    if (!confirm('确定删除全部 AI 分析历史吗？此操作不可撤销。\n\n(注意：自动分析每 2 分钟运行一次，运行后会产生新的历史记录；如需保持为空，请先在设置里关闭自动分析。)')) return;
+    const btn = document.getElementById('clearAllHistoryBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Clearing...'; }
+    try {
+        const response = await fetch('/api/ai-history', {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            showToast('Success', `已删除 ${data.deleted} 条历史记录`, 'success');
+            await fetchAIHistory(historyPage);
+        } else {
+            showToast('Error', 'Failed to clear history', 'error');
+        }
+    } catch (error) {
+        console.error('Error clearing history:', error);
+        showToast('Error', 'Failed to clear history', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt"></i> Clear All History'; }
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

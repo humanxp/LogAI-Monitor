@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - LogRadarAI{% endblock %}
+{% block header_title %}User Management{% endblock %}
+
+{% block content %}
+<!-- Actions Bar -->
+<div style="margin-bottom: 1rem; display: flex; gap: 1rem;">
+    <button class="btn btn-primary" onclick="showAddUserModal()">
+        <i class="fas fa-user-plus"></i> Add User
+    </button>
+    <button class="btn btn-outline" id="refreshUsersBtn" onclick="refreshUsers()">
+        <i class="fas fa-sync"></i> Refresh
+    </button>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-users"></i> Users</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="usersContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <h4>Loading users...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit User Modal -->
+<div class="modal-overlay" id="userModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="userModalTitle">Add User</h3>
+            <button class="modal-close" onclick="closeModal('userModal')">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form id="userForm">
+                <input type="hidden" id="userId" value="">
+                
+                <div class="form-group">
+                    <label for="userUsername">Username</label>
+                    <input type="text" class="form-control" id="userUsername" placeholder="Enter username" required>
+                </div>
+                
+                <div class="form-group">
+                    <label for="userEmail">Email</label>
+                    <input type="email" class="form-control" id="userEmail" placeholder="Enter email (optional)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="userPassword">Password <span id="passwordHint" style="color: #999; font-weight: normal;"></span></label>
+                    <input type="password" class="form-control" id="userPassword" placeholder="Enter password (min 6 characters)">
+                </div>
+                
+                <div class="form-group">
+                    <label for="userRole">Role</label>
+                    <select class="form-control form-select" id="userRole">
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" onclick="saveUser()">
+                <i class="fas fa-save"></i> Save
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Info Card -->
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3><i class="fas fa-info-circle"></i> User Roles</h3>
+    </div>
+    <div class="card-body">
+        <ul>
+            <li><strong>Admin:</strong> Full access to all features including user management</li>
+            <li><strong>User:</strong> Access to monitoring features (logs, alerts, analysis) but cannot manage users or critical settings</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let users = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchUsers();
+});
+
+async function fetchUsers() {
+    try {
+        const response = await fetch('/api/users');
+        if (response.status === 403) {
+            window.location.href = '/';
+            return;
+        }
+        users = await response.json();
+        renderUsers();
+    } catch (error) {
+        console.error('Error fetching users:', error);
+        throw error;
+    }
+}
+
+// Refresh with visible feedback (spinner + result count)
+async function refreshUsers() {
+    const btn = document.getElementById('refreshUsersBtn');
+    const icon = btn?.querySelector('i');
+    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    try {
+        await fetchUsers();
+        showToast('Refresh', `Users refreshed - ${users.length} user(s)`, 'info');
+    } catch (error) {
+        console.error('Error refreshing users:', error);
+        showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+    }
+}
+
+function renderUsers() {
+    const container = document.getElementById('usersContainer');
+    if (!container) return;
+    
+    if (users.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <i class="fas fa-users"></i>
+                <h4>No users found</h4>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <table>
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${users.map(user => `
+                    <tr>
+                        <td>
+                            <i class="fas fa-user" style="margin-right: 0.5rem; color: ${user.role === 'admin' ? '#e74c3c' : '#3498db'};"></i>
+                            ${escapeHtml(user.username)}
+                        </td>
+                        <td>${escapeHtml(user.email || '-')}</td>
+                        <td>
+                            <span class="badge" style="background: ${user.role === 'admin' ? '#e74c3c' : '#3498db'}; color: white; padding: 0.25rem 0.5rem; border-radius: 4px;">
+                                ${user.role || 'user'}
+                            </span>
+                        </td>
+                        <td>${user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline" onclick="editUser('${user.id}')">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteUser('${user.id}', '${escapeHtml(user.username)}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+}
+
+function showAddUserModal() {
+    document.getElementById('userModalTitle').textContent = 'Add User';
+    document.getElementById('userId').value = '';
+    document.getElementById('userUsername').value = '';
+    document.getElementById('userUsername').disabled = false;
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userPassword').required = true;
+    document.getElementById('passwordHint').textContent = '(required)';
+    document.getElementById('userRole').value = 'user';
+    
+    openModal('userModal');
+}
+
+function editUser(userId) {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    
+    document.getElementById('userModalTitle').textContent = 'Edit User';
+    document.getElementById('userId').value = userId;
+    document.getElementById('userUsername').value = user.username;
+    document.getElementById('userUsername').disabled = true;
+    document.getElementById('userEmail').value = user.email || '';
+    document.getElementById('userPassword').value = '';
+    document.getElementById('userPassword').required = false;
+    document.getElementById('passwordHint').textContent = '(leave blank to keep current)';
+    document.getElementById('userRole').value = user.role || 'user';
+    
+    openModal('userModal');
+}
+
+async function saveUser() {
+    const userId = document.getElementById('userId').value;
+    const isEdit = !!userId;
+    
+    const data = {
+        username: document.getElementById('userUsername').value.trim(),
+        email: document.getElementById('userEmail').value.trim(),
+        role: document.getElementById('userRole').value
+    };
+    
+    const password = document.getElementById('userPassword').value;
+    if (password) {
+        data.password = password;
+    }
+    
+    if (!data.username) {
+        showToast('Error', 'Username is required', 'error');
+        return;
+    }
+    
+    if (!isEdit && !password) {
+        showToast('Error', 'Password is required for new users', 'error');
+        return;
+    }
+    
+    if (password && password.length < 6) {
+        showToast('Error', 'Password must be at least 6 characters', 'error');
+        return;
+    }
+    
+    try {
+        const url = isEdit ? `/api/users/${userId}` : '/api/users';
+        const method = isEdit ? 'PUT' : 'POST';
+        
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            closeModal('userModal');
+            showToast('Success', isEdit ? 'User updated' : 'User created', 'success');
+            fetchUsers();
+        } else {
+            showToast('Error', result.error || 'Failed to save user', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving user:', error);
+        showToast('Error', 'Failed to save user', 'error');
+    }
+}
+
+async function deleteUser(userId, username) {
+    if (!confirm(`Are you sure you want to delete user "${username}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/users/${userId}`, {
+            method: 'DELETE'
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showToast('Success', 'User deleted', 'success');
+            fetchUsers();
+        } else {
+            showToast('Error', result.error || 'Failed to delete user', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        showToast('Error', 'Failed to delete user', 'error');
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

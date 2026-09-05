@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+
+{% block title %}About - LogRadarAI{% endblock %}
+{% block header_title %}About{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-shield-alt"></i> LogRadarAI</h3>
+    </div>
+    <div class="card-body">
+        <div style="text-align: center; margin-bottom: 2rem;">
+            <i class="fas fa-shield-alt" style="font-size: 4rem; color: #2196F3; margin-bottom: 1rem;"></i>
+            <h2 style="margin: 0; color: #333;">LogRadarAI</h2>
+            <p style="color: #999; margin-top: 0.25rem; font-weight: 600;">Version {{ version or VERSION }}</p>
+            <p style="color: #666; margin-top: 0.5rem;">AI-Powered Log Monitoring & Analysis</p>
+        </div>
+        
+        <p style="font-size: 1.1rem; line-height: 1.6;">
+            LogRadarAI is an intelligent log monitoring and analysis platform that combines traditional 
+            syslog collection with cutting-edge AI capabilities. It provides real-time log aggregation, 
+            smart filtering, and AI-powered analysis to help system administrators identify and resolve 
+            issues faster.
+        </p>
+    </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-star"></i> Key Features</h3>
+        </div>
+        <div class="card-body">
+            <ul style="line-height: 1.9;">
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Real-time syslog over UDP/TCP (RFC3164 / RFC5424) with UTF-8 → GB18030 Chinese decoding</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Docker container log streaming with exclusion rules</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> AI batch analysis: every 2 min or 500 pending, oldest-first, severity-ranked sampling</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> OpenAI-compatible endpoints (vLLM / SGLang) & native Ollama</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Analysis history with one-click re-analysis of failed runs</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Custom filters → UI alerts + graded / cooldown-aware Telegram alerts</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Critical-only Telegram summaries with AI fix suggestions</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Realtime dashboard via Socket.IO (logs / alerts / analysis / stats pushed)</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> AI Chat assistant grounded in live logs</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Duplicate log grouping & hostname/FQDN tracking</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Retention-based auto cleanup (TTL + hourly purge), 240h default</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-cogs"></i> Technology Stack</h3>
+        </div>
+        <div class="card-body">
+            <ul style="line-height: 1.9;">
+                <li><i class="fab fa-python" style="color: #3776AB; margin-right: 0.5rem;"></i> Python 3.11 / Flask (Flask-SocketIO · Flask-Login)</li>
+                <li><i class="fas fa-database" style="color: #DC382D; margin-right: 0.5rem;"></i> Redis 7 (hashes + zset/set indexes, pipelined writes, unanalyzed-log index)</li>
+                <li><i class="fas fa-brain" style="color: #FF6F00; margin-right: 0.5rem;"></i> OpenAI-compatible REST (requests) → vLLM / SGLang / Ollama</li>
+                <li><i class="fas fa-clock" style="color: #1565C0; margin-right: 0.5rem;"></i> APScheduler: 2-min analysis · hourly cleanup · 30s Redis health check</li>
+                <li><i class="fas fa-server" style="color: #6D4C41; margin-right: 0.5rem;"></i> Gunicorn (gthread × 40 threads) in Docker Compose</li>
+                <li><i class="fab fa-docker" style="color: #2496ED; margin-right: 0.5rem;"></i> Docker SDK (ro socket) for container log collection</li>
+                <li><i class="fas fa-plug" style="color: #009688; margin-right: 0.5rem;"></i> python-socketio / Socket.IO realtime (threading mode, auth-gated)</li>
+                <li><i class="fab fa-telegram" style="color: #0088CC; margin-right: 0.5rem;"></i> python-telegram-bot (async loop thread)</li>
+                <li><i class="fas fa-network-wired" style="color: #7B1FA2; margin-right: 0.5rem;"></i> Native socket syslog receiver (dedicated UDP/TCP threads)</li>
+                <li><i class="fas fa-shield-alt" style="color: #c62828; margin-right: 0.5rem;"></i> Hardened ops: log rotation · Redis maxmemory cap · bounded worker pool</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3><i class="fas fa-users"></i> Developers</h3>
+    </div>
+    <div class="card-body" style="display: flex; flex-direction: column; gap: 1.5rem;">
+        <div style="display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;">
+            <div style="text-align: center;">
+                <i class="fas fa-user-circle" style="font-size: 4rem; color: #2196F3;"></i>
+            </div>
+            <div>
+                <h3 style="margin: 0 0 0.25rem 0;">Fotios Tsiadimos</h3>
+                <p style="color: #666; margin: 0 0 0.75rem 0;">Original Developer · Software Developer &amp; System Administrator</p>
+                <a href="https://github.com/ftsiadimos/LogRadarAI" target="_blank" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
+                    <i class="fab fa-github"></i> View on GitHub
+                </a>
+            </div>
+        </div>
+        <div style="display: flex; align-items: flex-start; gap: 2rem; border-top: 1px solid #e0e0e0; padding-top: 1.5rem; flex-wrap: wrap;">
+            <div style="text-align: center;">
+                <i class="fas fa-user-cog" style="font-size: 4rem; color: #e65100;"></i>
+            </div>
+            <div style="flex: 1; min-width: 280px;">
+                <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
+                <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
+                <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2E7D32;">🧭 健康巡检与 Telegram 告警（2026-09-05）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>内置健康看门狗（默认每 5 分钟自动巡检）：未分析积压超过阈值（默认 2000）、AI 后端不可达、自动分析疑似卡死（超过 2.5 个周期未运行）时自动推 Telegram 告警；故障恢复时推送 ✅ 恢复通知；同类告警带 30 分钟冷却，AI 宕机不会刷屏</li>
+                    <li>每日巡检日报（默认开启）：汇总日志总量 / 未分析积压 / AI 后端与模型 / Redis 内存 / 最近自动分析，时间戳持久化到 Redis——容器重启不会重复发送</li>
+                    <li>新增 GET /api/health 机器可读健康接口（ok/backlog/total_logs/ai_available/ai_model/最近分析间隔），供外部脚本或监控系统轮询</li>
+                    <li>参数可在 Settings → General Settings → "Health Monitor &amp; Alerts" 网页直接修改并即时生效（无需重建/重启）：巡检间隔（保存后调度器实时重排）、积压告警阈值、告警冷却分钟、每日日报开关；环境变量 HEALTH_WATCH_MINUTES / HEALTH_BACKLOG_WARN / HEALTH_ALERT_COOLDOWN_MIN / HEALTH_DAILY_SUMMARY 仅作首次默认值，保存后以网页设置优先</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #1565C0;">📄 日志/AI 历史分页与参数网页化（2026-09-04）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>Log Entries 分页：每页 100 条 + Prev/Next 翻页，可回溯查看超出最新窗口的历史日志（此前只能看到最新 100 条）；浏览旧页时实时新日志不混入当前页；选择主机/来源/级别后按筛选结果统计页数并翻页（此前筛选后分页仍按全库日志计算）</li>
+                    <li>AI Analysis History 分页：每页 100 条 + 翻页；汇总统计卡改由服务端全量聚合（60s 缓存），翻页时总数/健康/警告/严重计数保持全局准确；过期记录自动清扫，总数精确</li>
+                    <li>历史保存时间同步：AI 分析历史 TTL 与 General Settings 的 Log Retention (hours) 一致（当前 240h），不再固定 30 天</li>
+                    <li>General Settings 网页可直接修改并立即生效（无需改 .env / 重启）：Log Retention (hours)、Auto Analysis Interval (minutes)（保存后调度实时重排）、Logs per Analysis Run（MAX_LOGS_PER_ANALYSIS，积压触发阈值与每批取数）、AI Sample Limit per Batch（BATCH_SAMPLE_LIMIT，每批发给模型的条数上限）；数值均做范围钳制</li>
+                    <li>接口分页提速：/api/logs 与 /api/ai-history 支持 offset 分页，只取当前页数据，读取更快</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00695C;">🤖 AI 输出解析加固（2026-09-04）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>重写 AI 响应 JSON 提取：字符串感知的平衡括号扫描（忽略字符串值内的括号与转义）、枚举全部 ``` 代码块、按分析 schema 键评分择优（容忍前后散文、输出截断、日志内容含裸 } 等场景）</li>
+                    <li>解析结果必须命中分析 schema 键才算成功：纯散文 / JSON 数组 / 无关对象一律判失败，不再产出空结果</li>
+                    <li>提示词输入消毒：日志内容中的双引号 / 反斜杠 / 换行 / 制表符在送入模型前替换或移除，杜绝模型把原始日志行回抄进 JSON 字符串导致整段不可解析（如 disk "sda1" is full）</li>
+                    <li>设置里修改模型/主机即时生效（每次分析自动同步，无需重启）；AI Endpoint 修改对 OpenAI 兼容后端同样即时生效：base_url（实际发起 /chat/completions 与 /models 的地址）跟随 Settings，并自动补全 /v1 后缀（此前地址改动只更新 host 字段，请求仍打到旧地址导致 404）</li>
+                    <li>输出预算提升：单条分析 1024→2048、批量 4096→8192 tokens；识别 finish_reason=length 截断时自动加大预算重试一次（最高 16k），不再静默产出残缺 JSON</li>
+                    <li>解析失败由"假成功"改为真失败：批次日志留待下一轮自动重试（约 2 分钟自愈），错误信息携带模型名与响应头部便于诊断 —— 此前解析失败会把批次标记为已分析，界面残留 "Unable to parse AI response" 需手动重试</li>
+                    <li>残留失败历史自动清理：批次成功后（或每小时清理）删除"日志已被成功分析但仍残留"的失败记录，AI History 只保留真正仍失败的批次；解析失败率约 1.4% 的主要结构性根因已消除</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #c62828;">🔒 安全与实时性优化（2026-09-03）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>前端 XSS 加固：escapeHtml 全面转义（含引号，覆盖属性与内联 JS 上下文）；severity 类名白名单；日志行/详情、告警、过滤器、Docker 日志、主机下拉、AI 状态等所有动态字段输出前均转义</li>
+                    <li>Socket.IO 实时连接鉴权：仅已登录会话可连接收流，匿名（含跨站）连接被拒绝 —— 此前匿名可收到全量日志广播</li>
+                    <li>/api/logs/ingest 加固：可选共享令牌（X-Ingest-Token，LOG_INGEST_TOKEN）；severity 白名单强制归一；所有字段类型强制 + 长度上限；message 必填</li>
+                    <li>实时统计推送：服务端 2 秒节流广播 stats 事件，替代每标签页在日志流期间约 1 次/秒的 /api/stats HTTP 轮询（保留 30 秒兜底）；Connected Clients 页诊断轮询 5s → 10s</li>
+                    <li>Redis 内存上限提至 3GB（volatile-lru），与 240h 保留期容量估算匹配，持续超速时仍优雅淘汰最旧日志</li>
+                    <li>修复 Esc 无法关闭模态框（openModal 用 .active 而 Esc 只清理 .show/.visible）；告警列表上限 200 条并按 id 去重，不再无限增长/全表重建/出现重复行</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #7B1FA2;">⚡ 近期性能与稳定性优化（2026-09-03）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>写入路径管道化：单条日志存储由 ~8 次 Redis 往返降为 1 次管道；客户端追踪由 ~7 次降为 1 次（高日志量下接收线程不再被 Redis 阻塞）</li>
+                    <li>新增"未分析日志"索引（logs:unanalyzed）：批量分析取数由全量时间线逐条扫描 O(n) 改为有界读取，启动时自动迁移存量</li>
+                    <li>批量标记已分析：每批 500 条由 2×N 次往返合并为 1 次管道</li>
+                    <li>Settings / 过滤器读取加 5 秒进程内缓存（原先每条日志、每行 Docker 日志都实时读 Redis）</li>
+                    <li>/api/stats 统计加 2 秒缓存；来源/级别列表改用 SCAN，未确认告警计数改用管道单字段读取（替代 KEYS 与逐条 hgetall）</li>
+                    <li>保留期统一：日志 TTL 按 Settings 配置的保留期（240h）生效，与 UI / 清理任务一致（此前按环境变量 12h，日志 12 小时后即不可见）</li>
+                    <li>逐包调试日志改为仅 DEBUG 模式输出（原先每条 syslog 打 4-5 行，高负载下刷屏并拖慢接收）</li>
+                    <li>日志回调拆分：接收线程只做"存储 + 实时推送"，过滤器 / 告警 / AI 摘要 / Telegram 等慢操作移入有界工作线程池（队列满丢弃最旧、保最新）</li>
+                    <li>Telegram 消息 HTML 转义：日志与 AI 内容中的 &lt; &gt; &amp; 等统一转义，修复 "Can't parse entities" 导致告警整条被拒</li>
+                    <li>Redis 增加 2GB 内存上限 + volatile-lru 淘汰策略（优先淘汰带 TTL 的日志，保护 settings / 用户 / 索引键，超量优雅降级而非 OOM）</li>
+                    <li>容器 stdout 日志轮转（应用 20MB×3、Redis 10MB×3），长时间运行不再撑满磁盘</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #e65100;">🤖 AI 分析</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>新增 OpenAI 兼容端点支持（原生 Ollama 仍可用）</li>
+                    <li>批量触发机制：每 2 分钟 或 积压满 500 条即触发（原仅有定时）</li>
+                    <li>最旧日志优先分析，高日志量下不再被饿死</li>
+                    <li>失败分析写入历史，可一键重新分析并原地更新（不产生重复记录）</li>
+                    <li>修复 AI 输出截断导致的 JSON 解析失败（严格输出约束 + 提高 token 上限）</li>
+                    <li>每批按严重级别排序采样 100 条发给模型（原 200 条）</li>
+                    <li>AI 可用性探测超时 20s → 8s，点击不再长时间假死</li>
+                    <li>模型输出结构容错：小模型（如 Qwen3-0.6B）返回对象而非字符串时不再崩溃</li>
+                    <li>设置里修改模型/主机即时生效（每次分析自动同步，无需重启）</li>
+                    <li>AI 服务器不可达时快速失败：连接/读取超时分离（8s/180s），不再占用分析锁导致后续批次跳过；自动分析直接发请求、去掉多余可用性探测</li>
+                    <li>Settings → AI Analysis Settings 可手动选择 AI 协议：OpenAI-compatible（vLLM/SGLang/Ollama /v1，填 http://host:8000/v1，自动补全 /v1）或 Ollama 原生（填 http://host:11434，模型来自 /api/tags）；切换即时生效、模型列表按所选协议格式加载（此前写死 openai，改地址不生效导致 404）；Settings 保存改为合并写，局部保存不再清空其他配置</li>
+                    <li>AI 模型调用读超时可配置（AI_READ_TIMEOUT，默认 180s，慢速 CPU 端点建议 600s）：模型"慢但正常"不再被误判为失败而反复重试（压测实测 3B CPU 模型单批可达 2-5 分钟）</li>
+                    <li>部署侧备忘：AI 引擎可平滑迁移并由 systemd 托管自启（如 llama.cpp llama-server 以 OpenAI 兼容 /v1 提供 GGUF 模型，Restart=on-failure + 开机自启，避免服务失联）；注意其上下文需容纳 提示词+输出（400 exceed_context_size_error 时加大 -c，本例 4096→16384），应用侧 4xx 错误现会透出服务端原始原因</li>
+                    <li>防重复循环调优（压测发现 3B 模型在强制 JSON 下偶发输出失控至数千 token 不结束）：分析请求 temperature 0.3→0.1 并启用 frequency_penalty=0.3；输出预算收紧（批量 2048 / 单条 1024，截断加倍封顶 4096）——失控时快速失败或短重试，不再烧光预算；.23 vLLM 实测典型批次 4-5s，容量远超 500 logs/min</li>
+                </ul>
+                <div style="margin: 0.75rem 0 0.5rem 0; font-weight: 600; color: #0088CC;">🔔 Telegram 通知</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>批量摘要仅 AI 判定 critical 才发送</li>
+                    <li>过滤器告警按 alert_on_critical / alert_on_error 开关限级（原为无效设置）</li>
+                    <li>摘要附带 AI 给出的解决方法</li>
+                    <li>调度器提醒仅任务真正出错时发送（错过/跳过不再打扰）</li>
+                </ul>
+                <div style="margin: 0.75rem 0 0.5rem 0; font-weight: 600; color: #6D4C41;">🛠 性能与稳定性</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>生产部署迁移 Gunicorn（gthread，40 线程），替代 Flask 开发服务器</li>
+                    <li>清空日志库/清理改为批量删除（2 万条约 0.1 秒），清库时同步清空 Connected Clients 记录</li>
+                    <li>排除自监控：logaimonitor 容器不再回采自己的输出</li>
+                    <li>AI 历史接口返回真实总条数</li>
+                    <li>日志列表接口优化：有界窗口 + Redis 管道（2.5 万条时单页加载 2.3s → ~40ms）</li>
+                    <li>主机/级别/来源筛选改为走索引集合查询，修复"选择某台主机查不到日志"（不再受最新窗口限制）</li>
+                    <li>清理任务增强：自动清除日志过期后残留的死 ID（时间线与主机索引不再虚增，主机下拉框不再出现空主机）</li>
+                    <li>前端实时渲染批量化（约 150ms 合批）并按页面限制 DOM 数量（首页 30 / 日志页 200），实时滚动流畅</li>
+                    <li>镜像构建修复：改用官方公共基础镜像构建（层数 497 → 30），解决反复重建导致的镜像层数爆炸（overlay 上限报错）</li>
+                </ul>
+                <div style="margin: 0.75rem 0 0.5rem 0; font-weight: 600; color: #4CAF50;">🇨🇳 中文支持</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>syslog 智能解码：UTF-8 → GB18030/GBK → latin-1，中文日志不再乱码</li>
+                </ul>
+                <div style="margin: 0.75rem 0 0.5rem 0; font-weight: 600; color: #2196F3;">🖥 界面</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>AI 历史：批量记录正确显示为 Batch；单条记录显示分类/是否关键（不再显示 unknown）</li>
+                    <li>AI 历史列表上限 100 → 500 条</li>
+                    <li>各页面 Refresh 按钮（日志 / AI 历史 / 用户 / Docker / 告警 / 设置-AI 模型列表）及日志页 Clear 均带加载状态与结果提示</li>
+                    <li>"Connected Clients" 从设置页抽为独立页面（Main 菜单下），实时客户端列表每 5 秒自动刷新</li>
+                    <li>Connected Clients 客户端记录持久化到 Redis（重启不丢、永不自动删除），表格带序号列</li>
+                    <li>Connected Clients 每行一个删除键：一键删除该主机记录及其发来的全部日志（管理员，红色确认）</li>
+                    <li>About 页：真实技术栈与开发者署名</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3><i class="fas fa-gavel"></i> License</h3>
+    </div>
+    <div class="card-body">
+        <p>
+            LogRadarAI is open source software. Feel free to use, modify, and distribute it according to the license terms.
+        </p>
+        <p style="margin-top: 1rem;">
+            <strong>Repository:</strong> 
+            <a href="https://github.com/ftsiadimos/LogRadarAI" target="_blank" style="color: #2196F3;">
+                https://github.com/ftsiadimos/LogRadarAI
+            </a>
+        </p>
+    </div>
+</div>
+{% endblock %}

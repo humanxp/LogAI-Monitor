@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts - LogAI Monitor{% endblock %}
+{% block header_title %}Alerts{% endblock %}
+
+{% block content %}
+<!-- Actions Bar -->
+<div style="margin-bottom: 1rem; display: flex; gap: 1rem;">
+    <button class="btn btn-outline" id="refreshAlertsBtn" onclick="refreshAlerts()">
+        <i class="fas fa-sync"></i> Refresh
+    </button>
+    <button class="btn btn-success" onclick="acknowledgeAllAlerts()">
+        <i class="fas fa-check-double"></i> Ack All
+    </button>
+    <button class="btn btn-danger" onclick="clearAcknowledgedAlerts()">
+        <i class="fas fa-trash"></i> Clear Acknowledged
+    </button>
+</div>
+
+<!-- Alerts List -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-bell"></i> Alert History</h3>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="alertsContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fas fa-bell"></i>
+                <h4>Loading alerts...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Info Card -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-info-circle"></i> About Alerts</h3>
+    </div>
+    <div class="card-body">
+        <p>Alerts are generated when incoming logs match your configured filters. Each alert shows:</p>
+        <ul>
+            <li><strong>Time:</strong> When the alert was triggered</li>
+            <li><strong>Severity:</strong> The log severity level</li>
+            <li><strong>Filter:</strong> Which filter was matched</li>
+            <li><strong>Source:</strong> The log source (server, container, etc.)</li>
+            <li><strong>Message:</strong> The log message that triggered the alert</li>
+        </ul>
+        <p>Acknowledge alerts to mark them as reviewed. If Telegram notifications are enabled, alerts will be sent to your configured chat.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetchAlerts();
+});
+</script>
+{% endblock %}

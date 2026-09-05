@@ -1,0 +1,318 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - LogAI Monitor{% endblock %}
+{% block header_title %}Settings{% endblock %}
+
+{% block content %}
+<form id="settingsForm" onsubmit="event.preventDefault(); saveSettings();">
+    <!-- Telegram Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fab fa-telegram"></i> Telegram Notifications</h3>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="telegramEnabled">
+                    <span>Enable Telegram notifications</span>
+                </label>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="telegramBotToken">Bot Token</label>
+                <input type="password" class="form-control" id="telegramBotToken" 
+                       placeholder="Enter your Telegram bot token">
+                <small style="color: #666;">Get a token from @BotFather on Telegram</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="telegramChatId">Chat ID</label>
+                <input type="text" class="form-control" id="telegramChatId" 
+                       placeholder="Enter your Telegram chat ID">
+                <small style="color: #666;">Your personal chat ID or group ID where alerts will be sent</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="telegramCooldown">Notification Cooldown (minutes)</label>
+                <input type="number" class="form-control" id="telegramCooldown" value="60" min="0">
+                <small style="color: #666;">How long to wait before sending another Telegram alert for the same issue from the same host. Set to 0 to disable cooldown (send every time).</small>
+            </div>
+            
+            <button type="button" class="btn btn-outline" id="testTelegramBtn" onclick="testTelegram()">
+                <i class="fab fa-telegram"></i> Test Connection
+            </button>
+        </div>
+    </div>
+    
+    <!-- Ollama Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-brain"></i> AI Analysis Settings</h3>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="ollamaEnabled" checked>
+                    <span>Enable AI analysis</span>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="aiProvider">AI Protocol / Provider</label>
+                <select class="form-control form-select" id="aiProvider" onchange="onAiProviderChange()">
+                    <option value="openai">OpenAI-compatible (vLLM / SGLang / Ollama /v1 ...)</option>
+                    <option value="ollama">Ollama (native API)</option>
+                </select>
+                <small id="aiProviderHint" style="color: #666;">
+                    OpenAI-compatible：填 <code>http://host:8000/v1</code>（可省略 <code>/v1</code>，自动补全）；
+                    模型列表来自 <code>/v1/models</code>，调用 <code>/v1/chat/completions</code>。
+                </small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="ollamaHost">AI Endpoint (OpenAI-compatible, e.g. http://host:8000/v1)</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input type="text" class="form-control" id="ollamaHost" 
+                           value="http://localhost:11434" placeholder="http://localhost:11434"
+                           style="flex: 1;">
+                    <button type="button" class="btn btn-outline" id="ollamaRefreshBtn" onclick="refreshOllamaModels()">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                </div>
+                <div id="ollamaConnectionStatus" class="status-indicator" style="margin-top: 0.5rem;">
+                    <span class="status-dot warning"></span> Checking connection...
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label" for="ollamaModel">Model</label>
+                <select class="form-control form-select" id="ollamaModel">
+                    <option value="">Loading models...</option>
+                </select>
+                <small style="color: #666;">Available models are loaded from your OpenAI-compatible endpoint (host + /v1/models)</small>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="autoAnalyze" checked>
+                    <span>Automatically analyze logs periodically</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    
+    <!-- UI Theme Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-palette"></i> UI Theme</h3>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label class="form-label" for="uiTheme">Select Theme</label>
+                <select class="form-control form-select" id="uiTheme" onchange="previewTheme(this.value)">
+                    <option value="default">Default (Light)</option>
+                    <option value="terminal">Terminal (Dark/Green)</option>
+                </select>
+                <small style="color: #666;">Changes the appearance of the content area. The sidebar menu stays the same.</small>
+            </div>
+            <div id="themePreview" class="theme-preview" style="margin-top: 1rem; padding: 1rem; border-radius: 8px; display: none;">
+                <strong>Preview:</strong> Theme will be applied after saving.
+            </div>
+            
+            <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee;">
+                <label class="form-label">Keyboard Shortcuts</label>
+                <button type="button" class="btn btn-outline" onclick="showShortcutsHelp()">
+                    <i class="fas fa-keyboard"></i> View Keyboard Shortcuts
+                </button>
+                <small style="color: #666; display: block; margin-top: 0.5rem;">Press <kbd style="background: #f4f5f7; padding: 2px 6px; border-radius: 3px; border: 1px solid #ddd;">?</kbd> anywhere to view shortcuts</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- General Settings -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-cog"></i> General Settings</h3>
+        </div>
+        <div class="card-body">
+            <div class="form-group">
+                <label class="form-label" for="logRetention">Log Retention (hours)</label>
+                <input type="number" class="form-control" id="logRetention" value="240" min="1">
+                <small style="color: #666;">How long to keep logs <b>and AI analysis history</b> (they share the same retention). Logs older than this are cleaned up automatically.</small>
+            </div>
+
+            <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee;">
+                <label class="form-label" for="analysisInterval">Auto Analysis Interval (minutes)</label>
+                <input type="number" class="form-control" id="analysisInterval" value="2" min="1" max="1440">
+                <small style="color: #666;">How often the scheduled batch analysis runs (e.g. 2). Applied immediately - no restart needed.</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="maxLogsPerAnalysis">Logs per Analysis Run</label>
+                <input type="number" class="form-control" id="maxLogsPerAnalysis" value="500" min="10" max="5000">
+                <small style="color: #666;">Batch size: analysis triggers when this many unanalyzed logs accumulate (MAX_LOGS_PER_ANALYSIS). Applied immediately.</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="batchSampleLimit">AI Sample Limit per Batch</label>
+                <input type="number" class="form-control" id="batchSampleLimit" value="100" min="1" max="5000">
+                <small style="color: #666;">How many log lines are sent to the model per batch, severity-ranked (BATCH_SAMPLE_LIMIT). Applied immediately.</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="hideDuplicatesDefault">
+                    <span>Hide duplicate messages by default</span>
+                </label>
+                <small style="color: #666;">Automatically hide repeated log messages from the same host on Dashboard and Logs pages</small>
+            </div>
+
+            <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee;">
+                <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem;"><i class="fas fa-heartbeat"></i> Health Monitor &amp; Alerts</h4>
+                <label class="form-label" for="healthWatchMinutes">Health Check Interval (minutes)</label>
+                <input type="number" class="form-control" id="healthWatchMinutes" value="5" min="1" max="1440">
+                <small style="color: #666;">How often the built-in watchdog runs (HEALTH_WATCH_MINUTES). Applied immediately.</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="healthBacklogWarn">Backlog Alert Threshold (logs)</label>
+                <input type="number" class="form-control" id="healthBacklogWarn" value="2000" min="0" max="1000000">
+                <small style="color: #666;">Alert via Telegram when unanalyzed logs exceed this (HEALTH_BACKLOG_WARN).</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="healthAlertCooldown">Alert Cooldown (minutes)</label>
+                <input type="number" class="form-control" id="healthAlertCooldown" value="30" min="1" max="1440">
+                <small style="color: #666;">Minimum gap between repeated alerts of the same kind (HEALTH_ALERT_COOLDOWN_MIN).</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="healthDailySummary">
+                    <span>Send daily health summary to Telegram</span>
+                </label>
+                <small style="color: #666;">One summary per 24h with totals / backlog / AI status (HEALTH_DAILY_SUMMARY).</small>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Log Database -->
+    <div class="card">
+        <div class="card-header">
+            <h3><i class="fas fa-database"></i> Log Database</h3>
+        </div>
+        <div class="card-body">
+            <button type="button" class="btn btn-danger" id="clearAllLogsBtn" onclick="clearAllLogs()">
+                <i class="fas fa-trash-alt"></i> Clear All Logs
+            </button>
+            {% if current_user.is_admin %}
+            <button type="button" class="btn btn-outline" id="runCleanupBtn" onclick="runCleanupNow()" style="margin-left:0.5rem;">
+                <i class="fas fa-broom"></i> Run Cleanup Now
+            </button>
+            <small style="color: #666; display: block; margin-top: 0.5rem;">Run cleanup to remove logs older than the configured retention period.</small>
+            {% endif %}
+            <small style="color: #a00; display: block; margin-top: 0.5rem;">Warning: This will permanently delete all logs from the database.</small>
+            <small style="color: #666; display: block; margin-top: 0.25rem;">Note: It may take a few moments for the dashboard and counts to reflect the change.</small>
+        </div>
+    </div>
+
+    <!-- Save Button -->
+    <div style="margin-top: 1rem;">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save"></i> Save Settings
+        </button>
+    </div>
+</form>
+
+<!-- Configuration Guide -->
+<div class="card" style="margin-top: 1.5rem;">
+    <div class="card-header">
+        <h3><i class="fas fa-book"></i> Configuration Guide</h3>
+    </div>
+    <div class="card-body">
+        <h4>Setting up Telegram Notifications</h4>
+        <ol>
+            <li>Open Telegram and search for <code>@BotFather</code></li>
+            <li>Send <code>/newbot</code> and follow the instructions to create a bot</li>
+            <li>Copy the bot token and paste it above</li>
+            <li>To get your Chat ID:
+                <ul>
+                    <li>Send a message to your bot</li>
+                    <li>Visit <code>https://api.telegram.org/bot&lt;YOUR_TOKEN&gt;/getUpdates</code></li>
+                    <li>Find the <code>chat.id</code> in the response</li>
+                </ul>
+            </li>
+            <li>Click "Test Connection" to verify</li>
+        </ol>
+        
+        <h4 style="margin-top: 1.5rem;">Setting up Ollama</h4>
+        <ol>
+            <li>Set an OpenAI-compatible endpoint (AI_BASE_URL, e.g. http://your-ai-host:8000/v1)</li>
+            <li>Provide its API key (AI_API_KEY) and a served model (OLLAMA_MODEL)</li>
+            <li>AI_PROVIDER=openai uses the remote OpenAI-compatible server</li>
+            <li>Verify it's running at <code>http://localhost:11434</code></li>
+        </ol>
+        
+        <h4 style="margin-top: 1.5rem;">Rsyslog Configuration</h4>
+        <p>Add this to your rsyslog configuration to send logs to LogAI Monitor:</p>
+        <pre>
+# /etc/rsyslog.d/99-logaimonitor.conf
+*.* @logaimonitor-host:5514  # UDP
+# OR
+*.* @@logaimonitor-host:5515 # TCP
+        </pre>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Settings page loaded via SPA router which calls loadSettings() -->
+<script>
+async function clearAllLogs() {
+    if (!confirm('确定删除数据库中的全部日志吗？此操作不可撤销！\n\n同时会清空 Connected Clients 的主机记录（主机下次发日志会自动回来）。')) return;
+    const btn = document.getElementById('clearAllLogsBtn');
+    try {
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deleting all logs...'; }
+        const response = await fetch('/api/logs/clear', {
+            method: 'POST'
+        });
+        if (response.ok) {
+            const data = await response.json();
+            showToast('Success', `Deleted ${data.deleted} logs`, 'success');
+            try { fetchStats(); } catch(e) {}
+        } else {
+            showToast('Error', 'Failed to clear logs', 'error');
+        }
+    } catch (error) {
+        console.error('Error clearing logs:', error);
+        showToast('Error', 'Failed to clear logs', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt"></i> Clear All Logs'; }
+    }
+}
+
+async function runCleanupNow() {
+    if (!confirm('Run cleanup now? This will remove logs older than the configured retention period.')) return;
+    const btn = document.getElementById('runCleanupBtn');
+    try {
+        if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...'; }
+        const response = await fetch('/api/logs/cleanup', { method: 'POST' });
+        if (response.ok) {
+            const data = await response.json();
+            showToast('Success', `Removed ${data.deleted} old logs`, 'success');
+            try { fetchStats(); } catch(e) {}
+        } else if (response.status === 403) {
+            showToast('Access denied', 'You must be an admin to run cleanup', 'error');
+        } else {
+            const body = await response.json().catch(()=>({}));
+            showToast('Error', body.message || 'Cleanup failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error running cleanup:', error);
+        showToast('Error', 'Cleanup failed', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-broom"></i> Run Cleanup Now'; }
+    }
+}
+</script>
+{% endblock %}

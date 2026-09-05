@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- favicon uses logo.png from static; a startup hook copies it from mis/ if available -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+    <title>{% block title %}LogAI Monitor{% endblock %}</title>
+    <script>
+        // Apply theme IMMEDIATELY before any CSS loads to prevent flash
+        (function() {
+            var theme = localStorage.getItem('ui_theme');
+            if (theme === 'terminal') {
+                document.documentElement.classList.add('terminal-theme-active');
+            }
+        })();
+    </script>
+    <style>
+        /* Critical: Instant theme application - must use !important to override stylesheet */
+        html.terminal-theme-active,
+        html.terminal-theme-active body {
+            background-color: #0a0a0a !important;
+        }
+        html.terminal-theme-active .app-container {
+            background-color: #0a0a0a !important;
+        }
+        html.terminal-theme-active .sidebar {
+            background-color: #0a0a0a !important;
+            border-right: 1px solid #00aa00 !important;
+        }
+        html.terminal-theme-active .main-content {
+            background-color: #0a0a0a !important;
+        }
+        html.terminal-theme-active .main-header {
+            background-color: #0d0d0d !important;
+            border-bottom: 1px solid #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .page-content {
+            background-color: #0a0a0a !important;
+        }
+        html.terminal-theme-active .card {
+            background-color: #0d0d0d !important;
+            border-color: #00aa00 !important;
+        }
+        html.terminal-theme-active .card-header {
+            background-color: #111 !important;
+            border-bottom-color: #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .card-body {
+            background-color: #0d0d0d !important;
+            color: #33ff33 !important;
+        }
+        html.terminal-theme-active .sidebar-header h1,
+        html.terminal-theme-active .nav-item,
+        html.terminal-theme-active .nav-section-title {
+            color: #00cc00 !important;
+        }
+        html.terminal-theme-active .header-title {
+            color: #00ff00 !important;
+        }
+        /* Chat styles */
+        html.terminal-theme-active .chat-container {
+            background-color: #0a0a0a !important;
+        }
+        html.terminal-theme-active .chat-messages {
+            background-color: #0a0a0a !important;
+            border-color: #00aa00 !important;
+        }
+        html.terminal-theme-active .chat-message.assistant .message-content {
+            background-color: #0d0d0d !important;
+            color: #33ff33 !important;
+            border-color: #006600 !important;
+        }
+        html.terminal-theme-active .chat-message.user .message-content {
+            background-color: #003300 !important;
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .chat-input-container input {
+            background-color: #0a0a0a !important;
+            border-color: #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        /* Stats cards */
+        html.terminal-theme-active .stat-card {
+            background: linear-gradient(145deg, #0d0d0d, #111) !important;
+            border-color: #00aa00 !important;
+        }
+        html.terminal-theme-active .stat-card h3 {
+            color: #888 !important;
+        }
+        html.terminal-theme-active .stat-card .stat-value {
+            color: #00ff00 !important;
+        }
+        /* Form elements */
+        html.terminal-theme-active .form-control,
+        html.terminal-theme-active .form-select {
+            background-color: #0a0a0a !important;
+            border-color: #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        /* Tables */
+        html.terminal-theme-active table {
+            border-color: #00aa00 !important;
+        }
+        html.terminal-theme-active th {
+            background-color: #111 !important;
+            color: #00ff00 !important;
+            border-bottom-color: #00aa00 !important;
+        }
+        html.terminal-theme-active td {
+            border-bottom-color: #003300 !important;
+            color: #33ff33 !important;
+        }
+        /* Log entries */
+        html.terminal-theme-active .log-entry {
+            background-color: #0d0d0d !important;
+            border-color: #004400 !important;
+        }
+        html.terminal-theme-active .log-message {
+            color: #33ff33 !important;
+        }
+        html.terminal-theme-active .log-meta {
+            color: #008800 !important;
+        }
+        /* Buttons */
+        html.terminal-theme-active .btn-primary {
+            background-color: #004400 !important;
+            border-color: #00ff00 !important;
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .btn-outline {
+            border-color: #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        /* Filter bar */
+        html.terminal-theme-active .filter-bar {
+            background-color: #0d0d0d !important;
+            border-color: #00aa00 !important;
+        }
+        /* Header elements */
+        html.terminal-theme-active .header-status,
+        html.terminal-theme-active .status-indicator {
+            color: #00cc00 !important;
+        }
+        html.terminal-theme-active .user-menu span {
+            color: #00aa00 !important;
+        }
+        /* Icons - all Font Awesome icons */
+        html.terminal-theme-active i.fas,
+        html.terminal-theme-active i.far,
+        html.terminal-theme-active i.fab,
+        html.terminal-theme-active i.fa,
+        html.terminal-theme-active .fa,
+        html.terminal-theme-active [class*="fa-"] {
+            color: #00aa00 !important;
+        }
+        html.terminal-theme-active .sidebar i,
+        html.terminal-theme-active .nav-item i {
+            color: #00aa00 !important;
+        }
+        html.terminal-theme-active .card-header i {
+            color: #00ff00 !important;
+        }
+        /* Spinner/Loading */
+        html.terminal-theme-active .spinner,
+        html.terminal-theme-active .loading {
+            border-color: #003300 !important;
+            border-top-color: #00ff00 !important;
+        }
+        /* Empty state */
+        html.terminal-theme-active .empty-state {
+            color: #006600 !important;
+        }
+        html.terminal-theme-active .empty-state i {
+            color: #004400 !important;
+        }
+        /* Status dots */
+        html.terminal-theme-active .status-dot {
+            background-color: #00ff00 !important;
+            box-shadow: 0 0 5px #00ff00 !important;
+        }
+        /* Severity badges */
+        html.terminal-theme-active .severity-info,
+        html.terminal-theme-active .severity-notice {
+            background-color: #003344 !important;
+            color: #44ccff !important;
+        }
+        html.terminal-theme-active .severity-warning {
+            background-color: #443300 !important;
+            color: #ffcc00 !important;
+        }
+        html.terminal-theme-active .severity-error,
+        html.terminal-theme-active .severity-critical {
+            background-color: #440000 !important;
+            color: #ff4444 !important;
+        }
+        /* Logo */
+        html.terminal-theme-active .logo {
+            background: linear-gradient(135deg, #004400, #00aa00) !important;
+            border: 1px solid #00ff00 !important;
+        }
+        html.terminal-theme-active .logo i {
+            color: #00ff00 !important;
+        }
+        /* Sidebar toggle */
+        html.terminal-theme-active .sidebar-toggle {
+            border-color: #00aa00 !important;
+            color: #00cc00 !important;
+        }
+        /* Shortcuts modal */
+        html.terminal-theme-active .shortcuts-content {
+            background: #0d0d0d !important;
+            border: 1px solid #00aa00 !important;
+        }
+        html.terminal-theme-active .shortcuts-header h3 {
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .shortcut-row kbd {
+            background: #001a00 !important;
+            border-color: #00aa00 !important;
+            color: #00ff00 !important;
+        }
+        html.terminal-theme-active .shortcut-row span {
+            color: #00cc00 !important;
+        }
+    </style>
+    <!-- fontawesome is bundled locally to avoid CDN delays when offline -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation (oVirt/Foreman style) -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <h1>LogAI Monitor</h1>
+            </div>
+            
+            <div class="sidebar-nav">
+                <!-- Main Section -->
+                <div class="nav-section">
+                    <div class="nav-section-title">Main</div>
+                </div>
+                <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a href="/logs" class="nav-item {% if request.path == '/logs' %}active{% endif %}">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Logs</span>
+                </a>
+                <a href="/clients" class="nav-item {% if request.path == '/clients' %}active{% endif %}">
+                    <i class="fas fa-ethernet"></i>
+                    <span>Connected Clients</span>
+                </a>
+                
+                <!-- Infrastructure Section -->
+                <div class="nav-section">
+                    <div class="nav-section-title">Infrastructure</div>
+                </div>
+                <a href="/docker" class="nav-item {% if request.path == '/docker' %}active{% endif %}">
+                    <i class="fab fa-docker"></i>
+                    <span>Docker Containers</span>
+                </a>
+                
+                <!-- Monitoring Section -->
+                <div class="nav-section">
+                    <div class="nav-section-title">Monitoring</div>
+                </div>
+                <a href="/filters" class="nav-item {% if request.path == '/filters' %}active{% endif %}">
+                    <i class="fas fa-filter"></i>
+                    <span>Filters</span>
+                </a>
+                <a href="/alerts" class="nav-item {% if request.path == '/alerts' %}active{% endif %}">
+                    <i class="fas fa-bell"></i>
+                    <span>Alerts</span>
+                    <span class="badge" id="alertBadge" style="display: none;">0</span>
+                </a>
+                
+                <!-- AI Section -->
+                <div class="nav-section">
+                    <div class="nav-section-title">AI Analysis</div>
+                </div>
+                <a href="/analysis" class="nav-item {% if request.path == '/analysis' %}active{% endif %}">
+                    <i class="fas fa-brain"></i>
+                    <span>AI Analysis</span>
+                </a>
+                <a href="/ai-history" class="nav-item {% if request.path == '/ai-history' %}active{% endif %}">
+                    <i class="fas fa-history"></i>
+                    <span>AI History</span>
+                </a>
+                
+                <!-- Administration Section -->
+                <div class="nav-section">
+                    <div class="nav-section-title">Administration</div>
+                </div>
+                <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </a>
+                {% if current_user.is_admin %}
+                <a href="/users" class="nav-item {% if request.path == '/users' %}active{% endif %}">
+                    <i class="fas fa-users"></i>
+                    <span>Users</span>
+                </a>
+                {% endif %}
+                <a href="/about" class="nav-item {% if request.path == '/about' %}active{% endif %}">
+                    <i class="fas fa-info-circle"></i>
+                    <span>About</span>
+                </a>
+            </div>
+            
+            <!-- User Section at Bottom -->
+            <div class="sidebar-footer" style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto;">
+                <div class="sidebar-user-row" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
+                    <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar (Ctrl+B)">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <div class="sidebar-user-info" style="display: flex; align-items: center; gap: 0.75rem; color: rgba(255,255,255,0.8); flex: 1;">
+                        <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
+                        <div>
+                            <div style="font-weight: 500;">{{ current_user.username }}</div>
+                            <div style="font-size: 0.75rem; opacity: 0.7;">{{ current_user.role }}</div>
+                        </div>
+                    </div>
+                </div>
+                <a href="/logout" class="btn btn-outline" style="width: 100%; text-align: center; color: white; border-color: rgba(255,255,255,0.3);">
+                    <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+                </a>
+            </div>
+        </nav>
+        
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <h2 class="header-title">{% block header_title %}Dashboard{% endblock %}</h2>
+                <div class="header-actions">
+                    <div class="header-status">
+                        <div class="status-indicator" id="connectionStatus">
+                            <span class="status-dot"></span> Connected
+                        </div>
+                    </div>
+                    <div class="user-menu" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem;">
+                        <button id="themeToggleBtn" onclick="toggleTheme()" title="Toggle theme" style="background: none; border: 1px solid rgba(0,0,0,0.15); border-radius: 6px; padding: 0.35rem 0.6rem; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; color: #555; transition: all 0.2s;">
+                            <i id="themeToggleIcon" class="fas fa-moon"></i>
+                            <span id="themeToggleLabel">Theme</span>
+                        </button>
+                        <span style="color: #666;">
+                            <i class="fas fa-user"></i> {{ current_user.username }}
+                        </span>
+                    </div>
+                </div>
+            </header>
+            
+            <!-- Page Content -->
+            <div class="page-content">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+    
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+    
+    <!-- Scripts -->
+    <!-- socket.io client is served locally to remove external dependency -->
+    <script src="{{ url_for('static', filename='vendor/socket.io/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

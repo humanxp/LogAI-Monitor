@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - LogAI Monitor{% endblock %}
+{% block header_title %}Logs{% endblock %}
+
+{% block content %}
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <select class="form-control form-select" id="filterHost" onchange="applyLogFilters()">
+        <option value="">All Hosts</option>
+    </select>
+    
+    <select class="form-control form-select" id="filterSeveritySelect" onchange="applyLogFilters()">
+        <option value="">All Severities</option>
+        <option value="emergency">Emergency</option>
+        <option value="alert">Alert</option>
+        <option value="critical">Critical</option>
+        <option value="error">Error</option>
+        <option value="warning">Warning</option>
+        <option value="notice">Notice</option>
+        <option value="info">Info</option>
+        <option value="debug">Debug</option>
+    </select>
+    
+    <input type="text" class="form-control" id="filterSearch" placeholder="Search logs..." 
+           onkeyup="if(event.key === 'Enter') applyLogFilters()">
+    
+    <button class="btn btn-primary" onclick="applyLogFilters()">
+        <i class="fas fa-search"></i> Search
+    </button>
+    
+    <button class="btn btn-outline" id="refreshLogsBtn" onclick="refreshLogs()">
+        <i class="fas fa-sync"></i> Refresh
+    </button>
+    
+    <button class="btn btn-outline" id="clearFiltersBtn" onclick="clearFilters()">
+        <i class="fas fa-times"></i> Clear
+    </button>
+</div>
+
+<!-- Logs Table -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-file-alt"></i> Log Entries</h3>
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
+                <span style="font-size: 0.9rem;">Hide repeated</span>
+            </label>
+            <span><span id="logCount">0</span> logs shown</span>
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
+                <button type="button" class="btn btn-sm btn-outline" id="prevLogPageBtn" onclick="logPagePrev()" disabled title="Previous page">
+                    <i class="fas fa-chevron-left"></i> Prev
+                </button>
+                <span id="logPageInfo" style="white-space: nowrap; font-size: 0.9rem;">Page 1 / 1</span>
+                <button type="button" class="btn btn-sm btn-outline" id="nextLogPageBtn" onclick="logPageNext()" disabled title="Next page">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="hideRepeatsHint" style="display: none; padding: 0.25rem 0.75rem; background: #fff8e1; color: #8d6e63; font-size: 0.75rem; border-bottom: 1px solid #f0e6c8;">
+            <i class="fas fa-info-circle"></i> “Hide repeated” 开启中，重复消息已合并；如需每页查看原始 100 条，请取消勾选。
+        </div>
+        <div id="logsContainer" style="max-height: 70vh; overflow-y: auto;">
+            <div class="empty-state">
+                <i class="fas fa-file-alt"></i>
+                <h4>Loading logs...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Detail Modal -->
+<div class="modal-overlay" id="logDetailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Log Details</h3>
+            <button class="modal-close" onclick="closeModal('logDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="logDetailContent">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
+                <i class="fas fa-brain"></i> Analyze with AI
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetchLogs();
+    loadSources();
+});
+</script>
+{% endblock %}

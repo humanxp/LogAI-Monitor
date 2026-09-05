@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Connected Clients - LogAI Monitor{% endblock %}
+{% block header_title %}Connected Clients{% endblock %}
+
+{% block content %}
+<!-- Syslog Receiver Status -->
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fas fa-stethoscope"></i> Syslog Receiver Status</h3>
+        <div>
+            <button type="button" class="btn btn-outline btn-sm" id="syslogTestBtn" onclick="sendTestSyslog()" title="Send a test syslog message">
+                <i class="fas fa-paper-plane"></i> Send Test
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" id="syslogRefreshBtn" onclick="refreshSyslogClients()" title="Refresh diagnostics">
+                <i class="fas fa-sync"></i> Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="syslogDiagnosticsLoading" style="text-align: center; padding: 2rem;">
+            <i class="fas fa-spinner fa-spin"></i> Loading diagnostics...
+        </div>
+        <div id="syslogDiagnosticsContent" style="display: none;">
+            <!-- Port Conflict Warning -->
+            <div id="portConflictWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;">
+                <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
+                <strong>Port Conflict Detected!</strong>
+                <span id="portConflictMessage"></span>
+                <br><small>If running Flask with debug mode, try: <code>flask run --no-reload</code></small>
+            </div>
+            
+            <!-- Receiver Status -->
+            <div class="diagnostics-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Receiver Status</span>
+                    <span class="stat-value" id="receiverStatus" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Uptime</span>
+                    <span class="stat-value" id="receiverUptime" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">UDP Port</span>
+                    <span class="stat-value" id="udpPort" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">TCP Port</span>
+                    <span class="stat-value" id="tcpPort" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Total Clients</span>
+                    <span class="stat-value" id="totalClients" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Active Now</span>
+                    <span class="stat-value" id="activeClients" style="font-weight: 600;">--</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">With Issues</span>
+                    <span class="stat-value" id="clientsWithIssues" style="font-weight: 600; color: #dc3545;">--</span>
+                </div>
+            </div>
+            
+            <!-- Client List -->
+            <h4 style="margin-bottom: 1rem;"><i class="fas fa-server"></i> Connected Clients</h4>
+            <div id="noClientsMessage" style="display: none; text-align: center; padding: 2rem; color: #666;">
+                <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+                <p>No syslog clients have connected yet.</p>
+                <small>Configure your servers to send syslogs to this instance.</small>
+            </div>
+            <div id="clientsTable" style="display: none; overflow-x: auto;">
+                <table class="data-table" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 44px;">#</th>
+                            <th>Status</th>
+                            <th>Hostname / IP</th>
+                            <th>Protocol</th>
+                            <th>Messages</th>
+                            <th>Rate</th>
+                            <th>Last Activity</th>
+                            <th>Issues</th>
+                            <th style="width: 70px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="syslogDiagnosticsError" style="display: none; text-align: center; padding: 2rem; color: #dc3545;">
+            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+            <p id="syslogDiagnosticsErrorMsg">Failed to load diagnostics</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Refresh with visible feedback (spinner + result toast)
+async function refreshSyslogClients() {
+    const btn = document.getElementById('syslogRefreshBtn');
+    const icon = btn?.querySelector('i');
+    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    try {
+        await loadSyslogDiagnostics();
+        const n = document.getElementById('totalClients')?.textContent || '0';
+        showToast('Refresh', `Clients refreshed - ${n} total`, 'info');
+    } catch (error) {
+        console.error('Error refreshing clients:', error);
+        showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
+    } finally {
+        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSyslogDiagnostics();
+    // Auto refresh the live client list (this page is only polled while open,
+    // so a moderate cadence is fine; realtime log rows already come via socket)
+    setInterval(() => {
+        if (document.getElementById('syslogDiagnosticsContent')) {
+            loadSyslogDiagnostics();
+        }
+    }, 10000);
+});
+</script>
+{% endblock %}
