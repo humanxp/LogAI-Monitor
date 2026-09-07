@@ -114,6 +114,7 @@
 - **健康巡检与告警**：内置看门狗（积压 / AI 不可达 / 调度卡死 → Telegram 告警 + 恢复通知 + 每日日报），参数可在 General Settings 网页调整；`GET /api/health` 供外部轮询
 - **实时性修复**：API 全量 `Cache-Control: no-store` + 前端 cache-buster + Socket 断开 15s 兜底轮询 + 45s 心跳刷新，解决 Chromium 激进缓存导致的"页面不更新"
 - **存储优化（2026-09-07）**：移除冗余 `raw_message` 字段（零读取、重复存储）；每条日志分析结果改为紧凑 JSON（完整结果在 AI 历史），长期内存占用降 ~30-40%
+- **AI 分析防卡死（2026-09-07）**：同一批次解析连续失败 3 次自动"死信放行"（标记已分析并移出待分析队列），调度器继续处理新批次——此前会无限重试同一最老批次，模型无法解析的"毒批次"会永久阻塞队列（Analysis History 停更、未分析积压无限增长）；失败次数随历史记录累计（fail_count），第 3 次失败打印 `Dead-lettered` 日志后放行
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构

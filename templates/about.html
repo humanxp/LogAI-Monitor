@@ -93,6 +93,12 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #AD1457;">🧠 AI 批量分析防卡死（2026-09-07）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>批次解析连续失败自动放行：同一批日志连续 3 次解析失败后标记为已分析并移出待分析队列（"死信"），调度器继续处理新批次——此前会无限重试同一最老批次，模型无法解析的"毒批次"会永久阻塞队列（Analysis History 停更、未分析积压无限增长）</li>
+                    <li>失败次数随历史记录累计（fail_count 字段，每次失败原地刷新供一键重新分析），第 3 次失败打印 <code>Dead-lettered</code> 日志后放行；恢复成功的批次自动清扫残留失败记录</li>
+                    <li>实战案例：某主机每 2 分钟刷 IPMI 报错（/dev/ipmi0 open failed）导致 500 条混合批次无法解析并卡死队列 2 小时；加装本机制后队列 2.5 分钟内从 1,000+ 排空，History 恢复逐条更新</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2E7D32;">🧭 健康巡检与 Telegram 告警（2026-09-05）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>内置健康看门狗（默认每 5 分钟自动巡检）：未分析积压超过阈值（默认 2000）、AI 后端不可达、自动分析疑似卡死（超过 2.5 个周期未运行）时自动推 Telegram 告警；故障恢复时推送 ✅ 恢复通知；同类告警带 30 分钟冷却，AI 宕机不会刷屏</li>

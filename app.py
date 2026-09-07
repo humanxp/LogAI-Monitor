@@ -542,6 +542,30 @@ def _sync_analyzer_settings():
         print(f"[App] _sync_analyzer_settings failed: {e}")
 
 
+_MAX_FAILED_BATCH_RETRIES = 3
+
+
+def _dead_letter_stuck_batch(logs):
+    """Retire a batch that keeps failing to parse.
+
+    Called right after _record_auto_failure() (which guarantees the newest
+    failed history record covers THIS batch). Counts consecutive failures on
+    that record; once the batch has failed _MAX_FAILED_BATCH_RETRIES times it
+    is marked analyzed so it leaves logs:unanalyzed and the queue can move on.
+    """
+    newest = redis_client.get_latest_auto_history()
+    if not newest or not _is_failed_analysis(newest.get('analysis')):
+        return
+    tries = int(newest.get('fail_count') or 0) + 1
+    redis_client.update_analysis_history(newest['id'], {'fail_count': str(tries)})
+    if tries < _MAX_FAILED_BATCH_RETRIES:
+        return
+    reason = newest.get('analysis') or 'analysis call failed'
+    redis_client.mark_logs_analyzed(logs, json.dumps(reason, ensure_ascii=False))
+    print(f"[Scheduler] Dead-lettered {len(logs)} logs after {tries} consecutive "
+          "failures; moving on to newer batches")
+
+
 def periodic_analysis():
     """Periodic log analysis task (also invoked by the batch-size trigger)."""
     global _pending_logs
@@ -616,6 +640,14 @@ def periodic_analysis():
         reason = result.get('error') or 'analysis call failed'
         print(f"[Scheduler] Analysis failed: {reason}")
         _record_auto_failure(logs, reason)
+        # Dead-letter guard: a batch that the model cannot parse must not wedge
+        # the queue forever (failed logs are deliberately retried). After
+        # _MAX_FAILED_BATCH_RETRIES consecutive failures the batch is retired
+        # ("dead-lettered") so the scheduler moves on to newer logs.
+        try:
+            _dead_letter_stuck_batch(logs)
+        except Exception as _e:
+            print(f"[Scheduler] dead-letter guard error: {_e}")
 
 def cleanup_task():
     """Periodic cleanup of old logs (improved diagnostics). Uses the configured
