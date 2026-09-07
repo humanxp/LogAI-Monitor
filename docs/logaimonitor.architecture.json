@@ -1,0 +1,282 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "LogAI Monitor",
+    "output": "logaimonitor-architecture.html",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "animation": "trace",
+    "views": [
+      {
+        "id": "ingest",
+        "label": "采集 → 存储",
+        "focus": [
+          "rsyslog",
+          "docker",
+          "receiver",
+          "redis"
+        ],
+        "note": "rsyslog / Docker 日志进入接收器并写入 Redis。"
+      },
+      {
+        "id": "analyze",
+        "label": "AI 批量分析",
+        "focus": [
+          "redis",
+          "scheduler",
+          "ai",
+          "history"
+        ],
+        "note": "每 2 分钟或积压 500 条触发，采样 100 条交给 AI。"
+      },
+      {
+        "id": "alert",
+        "label": "告警与展示",
+        "focus": [
+          "ai",
+          "history",
+          "web",
+          "telegram"
+        ],
+        "note": "critical 推 Telegram，网页实时展示与历史。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "rsyslog",
+      "type": "external",
+      "label": "网络设备 / 主机",
+      "sublabel": "rsyslog · 多台",
+      "pos": [
+        30,
+        110
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "docker",
+      "type": "external",
+      "label": "Docker 容器",
+      "sublabel": "本机容器日志",
+      "pos": [
+        30,
+        330
+      ],
+      "size": [
+        140,
+        64
+      ]
+    },
+    {
+      "id": "receiver",
+      "type": "backend",
+      "label": "采集接收器",
+      "sublabel": "UDP 514 · TCP 515",
+      "pos": [
+        240,
+        210
+      ],
+      "size": [
+        150,
+        70
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis",
+      "sublabel": "哈希+索引 · 240h · 3GB",
+      "pos": [
+        450,
+        210
+      ],
+      "size": [
+        140,
+        70
+      ]
+    },
+    {
+      "id": "scheduler",
+      "type": "backend",
+      "label": "调度器",
+      "sublabel": "每 2 分钟 / 积压 500 条",
+      "pos": [
+        645,
+        80
+      ],
+      "size": [
+        140,
+        70
+      ]
+    },
+    {
+      "id": "ai",
+      "type": "cloud",
+      "label": "AI 分析",
+      "sublabel": "OpenAI 兼容 · 采样 100 条",
+      "pos": [
+        630,
+        340
+      ],
+      "size": [
+        170,
+        70
+      ]
+    },
+    {
+      "id": "history",
+      "type": "database",
+      "label": "AI 历史",
+      "sublabel": "失败可重试 · 紧凑分析",
+      "pos": [
+        870,
+        340
+      ],
+      "size": [
+        130,
+        70
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Web 控制台",
+      "sublabel": "Flask · Socket.IO · 分页",
+      "pos": [
+        870,
+        80
+      ],
+      "size": [
+        130,
+        70
+      ]
+    },
+    {
+      "id": "telegram",
+      "type": "external",
+      "label": "Telegram",
+      "sublabel": "critical 告警 · 日报",
+      "pos": [
+        650,
+        520
+      ],
+      "size": [
+        130,
+        64
+      ]
+    },
+    {
+      "id": "watchdog",
+      "type": "security",
+      "label": "健康巡检",
+      "sublabel": "积压 / AI / 调度 · 5 分钟",
+      "pos": [
+        450,
+        520
+      ],
+      "size": [
+        140,
+        64
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "rsyslog-receiver",
+      "from": "rsyslog",
+      "to": "receiver",
+      "label": "UDP/TCP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "docker-receiver",
+      "from": "docker",
+      "to": "receiver",
+      "label": "容器日志",
+      "variant": "dashed"
+    },
+    {
+      "id": "receiver-redis",
+      "from": "receiver",
+      "to": "redis",
+      "label": "管道写入"
+    },
+    {
+      "id": "redis-scheduler",
+      "from": "redis",
+      "to": "scheduler",
+      "label": "取未分析日志"
+    },
+    {
+      "id": "scheduler-ai",
+      "from": "scheduler",
+      "to": "ai",
+      "label": "批量请求",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "ai-history",
+      "from": "ai",
+      "to": "history",
+      "label": "结果入历史"
+    },
+    {
+      "id": "history-web",
+      "from": "history",
+      "to": "web",
+      "label": "历史查询",
+      "variant": "dashed"
+    },
+    {
+      "id": "ai-telegram",
+      "from": "ai",
+      "to": "telegram",
+      "label": "critical 推送",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "watchdog-telegram",
+      "from": "watchdog",
+      "to": "telegram",
+      "label": "告警 / 日报",
+      "variant": "security",
+      "labelDy": -24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "采集与存储",
+      "items": [
+        "rsyslog UDP 514 / TCP 515 + Docker SDK 采集",
+        "Redis 管道写入 · 未分析索引 · 240h 保留",
+        "紧凑存储：去冗余字段、分析压缩"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "AI 分析",
+      "items": [
+        "每 2 分钟或积压 500 条触发，采样 100 条",
+        "OpenAI 兼容端点 / Ollama · Llama-3.2-3B",
+        "失败自动重试自愈 · JSON 解析加固"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "通知与运维",
+      "items": [
+        "critical 才推 Telegram 摘要",
+        "健康巡检：积压 / AI / 调度 + 每日日报",
+        "Web 实时推送 + 分页 + 45s 心跳兜底"
+      ]
+    }
+  ]
+}
