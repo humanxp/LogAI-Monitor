@@ -25,6 +25,12 @@
     </div>
 </div>
 
+<div style="text-align: center; margin-top: 1.5rem;">
+    <a href="/static/logaimonitor-architecture.html" target="_blank" style="display: inline-block; padding: 0.6rem 1.6rem; background: #7B1FA2; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 600;">
+        <i class="fas fa-project-diagram"></i> 架构动图演示（Archify，交互式）
+    </a>
+</div>
+
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
     <div class="card">
         <div class="card-header">
@@ -93,6 +99,18 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #7B1FA2;">📊 架构动图演示（2026-09-07）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>用 GitHub 上的 Archify 工具生成了交互式架构动图：图中包含架构总览 + 三个场景（日志收集→ AI 批量分析→ 告警与 Telegram 推送），流动线条代表数据流向，提示卡展示各服务的关键指标</li>
+                    <li>打开演示：页面顶部右侧“架构动图”链接，或直接访问 /static/logaimonitor-architecture.html（单 HTML 自包含，无需联网）；打开后自动播放轨迹动画，可切换三个场景</li>
+                    <li>导出动图：查看器工具栏 Export 可一键导出 PNG 截图 / WebM 视频（可转 GIF）或分享卡片</li>
+                </ul>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00838F;">🗜️ 存储与内存优化（2026-09-07）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>移除冗余字段 raw_message：全代码零读取、与解析后 message 大量重复，长期节省 ~30-40% 内存</li>
+                    <li>每条日志的分析结果改为紧凑 JSON（仅存状态 / 严重计数 / 前几条问题与建议，~0.5KB），完整结果仍在 AI 历史；顺带 str()→json.dumps 修复前端显示（此前是无法解析的 Python repr 文本）</li>
+                    <li>清理 docker_collector 注释死代码；15 万条存量随 240h TTL 过期后，同等数据量内存约 430MB → ~260MB</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #AD1457;">🧠 AI 批量分析防卡死（2026-09-07）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>批次解析连续失败自动放行：同一批日志连续 3 次解析失败后标记为已分析并移出待分析队列（"死信"），调度器继续处理新批次——此前会无限重试同一最老批次，模型无法解析的"毒批次"会永久阻塞队列（Analysis History 停更、未分析积压无限增长）</li>
@@ -132,6 +150,7 @@
                     <li>实时统计推送：服务端 2 秒节流广播 stats 事件，替代每标签页在日志流期间约 1 次/秒的 /api/stats HTTP 轮询（保留 30 秒兜底）；Connected Clients 页诊断轮询 5s → 10s</li>
                     <li>Redis 内存上限提至 3GB（volatile-lru），与 240h 保留期容量估算匹配，持续超速时仍优雅淘汰最旧日志</li>
                     <li>修复 Esc 无法关闭模态框（openModal 用 .active 而 Esc 只清理 .show/.visible）；告警列表上限 200 条并按 id 去重，不再无限增长/全表重建/出现重复行</li>
+                    <li>前端实时数据缓存修复（2026-09-06）：服务端全部 JSON API 增加 Cache-Control: no-store；/api/stats、/api/hosts、/api/logs 请求带时间戳 cache-buster 参数；Socket.IO 断开时 15s 兜底轮询 + 页面 45s 心跳刷新（保持分页/筛选/滚动位置）——解决个别浏览器（Chrome/Edge 激进缓存 API）看到的旧主机列表/页面不更新、而 Firefox 正常的问题</li>
                 </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #7B1FA2;">⚡ 近期性能与稳定性优化（2026-09-03）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
