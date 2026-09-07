@@ -104,6 +104,17 @@
 - Connected Clients 记录持久化到 Redis（重启不丢、不自动删除），表格带序号列
 - Connected Clients 每行一个删除键：一键删除该主机记录及其发来的全部日志（管理员，红色确认）
 
+## 更新记录（2026-09-04 ~ 2026-09-07）
+
+> 与 About 页"开发者定制说明"同步；完整逐条清单见 About → Developers。
+
+- **分页与网页化配置**：Log Entries / AI History 均 100 条/页 + 翻页；AI 历史保留期与 Log Retention 同步并自动清扫过期记录；General Settings 可直接改 保留期 / 分析间隔 / 每批条数 / AI 采样上限（保存即生效、调度实时重排，无需重建容器）
+- **AI 解析与稳定性**：JSON 提取重写（字符串感知 + schema 评分 + 纠正性重试）；prompt 输入消毒（引号/换行/反斜杠）；输出预算与 temperature/frequency_penalty 调优，防小模型重复循环；失败批次自动重试自愈并自动清理残留失败记录
+- **AI 端点可运维**：Settings 可手动选择 OpenAI-compatible /v1 或 Ollama 原生协议；端点修改即时生效、自动补全 `/v1`；读超时 AI_READ_TIMEOUT 可配；4xx 错误透出服务端原因；AI 引擎可由 systemd 托管自启
+- **健康巡检与告警**：内置看门狗（积压 / AI 不可达 / 调度卡死 → Telegram 告警 + 恢复通知 + 每日日报），参数可在 General Settings 网页调整；`GET /api/health` 供外部轮询
+- **实时性修复**：API 全量 `Cache-Control: no-store` + 前端 cache-buster + Socket 断开 15s 兜底轮询 + 45s 心跳刷新，解决 Chromium 激进缓存导致的"页面不更新"
+- **存储优化（2026-09-07）**：移除冗余 `raw_message` 字段（零读取、重复存储）；每条日志分析结果改为紧凑 JSON（完整结果在 AI 历史），长期内存占用降 ~30-40%
+
 ## 文件结构
 
 ```
