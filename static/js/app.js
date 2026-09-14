@@ -2382,10 +2382,25 @@ function toggleSidebar() {
         return;
     }
     sidebar.classList.toggle('collapsed');
+    const collapsed = sidebar.classList.contains('collapsed');
     try {
-        localStorage.setItem('sidebar_collapsed', sidebar.classList.contains('collapsed'));
+        localStorage.setItem('sidebar_collapsed', collapsed);
+    } catch (e) {}
+    // Mirror into a cookie: the server renders the initial HTML already
+    // collapsed, so navigating to another page cannot flash the wide sidebar.
+    try {
+        document.cookie = 'sidebar_collapsed=' + (collapsed ? '1' : '0') +
+            '; path=/; max-age=31536000; SameSite=Lax';
     } catch (e) {}
 }
+
+// Re-enable the sidebar width animation once the initial state has been
+// painted (the <head> script adds .sidebar-init to suppress it during load).
+requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+        document.documentElement.classList.remove('sidebar-init');
+    });
+});
 
 // Remember each nav item's label so collapsed mode can show it as a tooltip.
 (function() {

@@ -50,6 +50,14 @@ body {
     flex-direction: column;
 }
 
+/* While the initial collapsed state is being applied (inline script in
+   base.html) the width transition is disabled, so navigating between pages
+   never shows the sidebar animating from wide to narrow.  app.js removes this
+   class right after the first paint, keeping the animation for user toggles. */
+html.sidebar-init .sidebar {
+    transition: none;
+}
+
 /* Collapsed sidebar */
 .sidebar.collapsed {
     width: 60px;

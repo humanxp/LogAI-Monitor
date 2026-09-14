@@ -229,11 +229,17 @@
     <!-- fontawesome is bundled locally to avoid CDN delays when offline -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script>
+    // Suppress the sidebar width animation while the initial collapsed state is
+    // applied; app.js re-enables it right after the first paint, so navigating
+    // between pages never shows the sidebar growing/shrinking.
+    document.documentElement.classList.add('sidebar-init');
+    </script>
 </head>
 <body>
     <div class="app-container">
         <!-- Sidebar Navigation (oVirt/Foreman style) -->
-        <nav class="sidebar">
+        <nav class="sidebar{% if request.cookies.get('sidebar_collapsed') == '1' %} collapsed{% endif %}">
             <div class="sidebar-header">
                 <div class="logo">
                     <i class="fas fa-shield-alt"></i>
@@ -338,15 +344,20 @@
         // Apply the remembered sidebar state BEFORE the main content lays out,
         // so the page never flashes the wide sidebar on load.  First visit
         // (no stored preference) auto-collapses on narrower windows.
+        // The state is mirrored into a cookie so the SERVER can already render
+        // the right width in the initial HTML (no flash on page navigation).
         (function () {
             try {
+                var sb = document.querySelector('.sidebar');
+                if (!sb) return;
                 var mobile = window.innerWidth < 768;
                 var saved = localStorage.getItem('sidebar_collapsed');
                 if (saved === null) saved = window.innerWidth < 1200 ? 'true' : 'false';
-                if (!mobile && saved === 'true') {
-                    var sb = document.querySelector('.sidebar');
-                    if (sb) sb.classList.add('collapsed');
+                if (!mobile && saved === 'true' && !sb.classList.contains('collapsed')) {
+                    sb.classList.add('collapsed');
                 }
+                document.cookie = 'sidebar_collapsed=' + (saved === 'true' ? '1' : '0') +
+                    '; path=/; max-age=31536000; SameSite=Lax';
             } catch (e) {}
         })();
         </script>
