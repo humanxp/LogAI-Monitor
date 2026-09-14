@@ -16,6 +16,7 @@ COPY services/syslog_receiver.py /app/services/syslog_receiver.py
 COPY services/telegram_notifier.py /app/services/telegram_notifier.py
 COPY app.py /app/app.py
 COPY static/js/app.js /app/static/js/app.js
+COPY static/css/style.css /app/static/css/style.css
 COPY templates/settings.html /app/templates/settings.html
 COPY templates/index.html /app/templates/index.html
 COPY templates/ai_history.html /app/templates/ai_history.html
@@ -26,3 +27,4 @@ COPY templates/docker.html /app/templates/docker.html
 COPY templates/alerts.html /app/templates/alerts.html
 COPY templates/clients.html /app/templates/clients.html
 COPY templates/base.html /app/templates/base.html
+COPY static/logaimonitor-architecture.html /app/static/logaimonitor-architecture.html

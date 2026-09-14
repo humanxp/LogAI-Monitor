@@ -115,6 +115,7 @@
 - **实时性修复**：API 全量 `Cache-Control: no-store` + 前端 cache-buster + Socket 断开 15s 兜底轮询 + 45s 心跳刷新，解决 Chromium 激进缓存导致的"页面不更新"
 - **存储优化（2026-09-07）**：移除冗余 `raw_message` 字段（零读取、重复存储）；每条日志分析结果改为紧凑 JSON（完整结果在 AI 历史），长期内存占用降 ~30-40%
 - **AI 分析防卡死（2026-09-07）**：同一批次解析连续失败 3 次自动"死信放行"（标记已分析并移出待分析队列），调度器继续处理新批次——此前会无限重试同一最老批次，模型无法解析的"毒批次"会永久阻塞队列（Analysis History 停更、未分析积压无限增长）；失败次数随历史记录累计（fail_count），第 3 次失败打印 `Dead-lettered` 日志后放行
+- **侧栏可收缩（2026-09-07）**：左侧导航支持窄栏（60px，仅图标 + 悬停名称气泡）/ 宽栏（250px，图标 + 文字）双模式；顶栏新增常显折叠按钮（原底部 chevron 与 Ctrl+B 保留）；状态记忆 localStorage，首次访问 &lt;1200px 默认窄栏，内联脚本在布局前应用无闪烁；同时修复移动端侧栏抽屉此前无按钮可打开的问题
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构

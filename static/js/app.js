@@ -157,7 +157,7 @@ function updateConnectionStatus(connected) {
 // Fetch stats
 async function fetchStats() {
     try {
-        const response = await fetch('/api/stats');
+        const response = await fetch('/api/stats?t=' + Date.now());
         state.stats = await response.json();
         updateStatsDisplay();
     } catch (error) {
@@ -214,6 +214,7 @@ async function fetchLogs(params = {}) {
         // Build query params, filtering out undefined/empty values
         const queryParams = new URLSearchParams();
         queryParams.set('limit', params.limit || LOG_PAGE_SIZE);
+        queryParams.set('t', Date.now());
         queryParams.set('offset', params.offset || 0);
         
         if (params.host && params.host !== '') {
@@ -259,7 +260,8 @@ async function fetchLogs(params = {}) {
 
 // --- Logs page pagination ------------------------------------------------
 
-function loadLogsPage(page) {
+function loadLogsPage(page, opts) {
+    opts = opts || {};
     const maxPage = Math.max(1, Math.ceil((state.logTotal || 0) / LOG_PAGE_SIZE));
     page = Math.min(Math.max(1, page), maxPage);
     state.logPage = page;
@@ -270,8 +272,10 @@ function loadLogsPage(page) {
         severity: activeFilters.severity,
         search: activeFilters.search
     };
-    const scroll = document.getElementById('logsContainer');
-    if (scroll) scroll.scrollTop = 0;
+    if (opts.scroll !== false) {
+        const scroll = document.getElementById('logsContainer');
+        if (scroll) scroll.scrollTop = 0;
+    }
     return fetchLogs(params);
 }
 
@@ -2275,12 +2279,56 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Refresh stats periodically
     setInterval(fetchStats, 30000);
+    // Live-update fallback: when the Socket.IO realtime link is down (expired
+    // session, network, proxy...) the page would otherwise freeze - rows are
+    // only appended by socket events.  Poll the current page data every 15s
+    // while disconnected so logs keep appearing even without the socket.
+    _startLiveFallback();
 });
+
+let _liveFallbackTimer = null;
+let _liveFallbackBusy = false;
+let _heartbeatTimer = null;
+
+function _startLiveFallback() {
+    if (_liveFallbackTimer) return;
+    // While the realtime socket is down: poll every 15s so the page moves.
+    _liveFallbackTimer = setInterval(async () => {
+        if (_liveFallbackBusy) return;
+        if (state.socket && state.connected) return;   // realtime channel OK
+        _liveFallbackBusy = true;
+        try { await _refreshCurrentPageData(); }
+        catch (e) { /* keep page as-is */ }
+        finally { _liveFallbackBusy = false; }
+    }, 15000);
+    // Heartbeat: even with the socket "Connected" the page can silently stop
+    // receiving events (half-open proxy connection etc).  Reload the current
+    // page's data every 45s as a guarantee that rows keep moving.
+    if (!_heartbeatTimer) {
+        _heartbeatTimer = setInterval(async () => {
+            if (_liveFallbackBusy) return;
+            _liveFallbackBusy = true;
+            try { await _refreshCurrentPageData(); }
+            catch (e) { /* ignore */ }
+            finally { _liveFallbackBusy = false; }
+        }, 45000);
+    }
+}
+
+async function _refreshCurrentPageData() {
+    const path = window.location.pathname;
+    if (path === '/logs') {
+        // keep the user's scroll position during background refreshes
+        await loadLogsPage(state.logPage || 1, { scroll: false });
+    } else if (path === '/' || path === '/index' || path === '/analysis') {
+        await fetchLogs({ limit: state.currentPage === 'analysis' ? 20 : 50 });
+    }
+}
 
 // Load hosts for filter dropdown
 async function loadHosts() {
     try {
-        const response = await fetch('/api/hosts');
+        const response = await fetch('/api/hosts?t=' + Date.now());
         const hosts = await response.json();
         
         // Filter to only show FQDNs (hostnames with dots) and exclude short names
@@ -2323,25 +2371,35 @@ document.addEventListener('keypress', (e) => {
     }
 });
 
-// Sidebar toggle function
+// Sidebar toggle: narrow (icons only) <-> wide (icons + labels).
+// Below 768px the sidebar is an off-canvas drawer instead, so the same button
+// opens/closes it rather than collapsing it.
 function toggleSidebar() {
     const sidebar = document.querySelector('.sidebar');
-    if (sidebar) {
-        sidebar.classList.toggle('collapsed');
-        localStorage.setItem('sidebar_collapsed', sidebar.classList.contains('collapsed'));
+    if (!sidebar) return;
+    if (window.innerWidth < 768) {
+        sidebar.classList.toggle('open');
+        return;
     }
+    sidebar.classList.toggle('collapsed');
+    try {
+        localStorage.setItem('sidebar_collapsed', sidebar.classList.contains('collapsed'));
+    } catch (e) {}
 }
 
-// Restore sidebar state on page load
+// Remember each nav item's label so collapsed mode can show it as a tooltip.
 (function() {
-    const collapsed = localStorage.getItem('sidebar_collapsed') === 'true';
-    if (collapsed) {
-        document.addEventListener('DOMContentLoaded', () => {
-            const sidebar = document.querySelector('.sidebar');
-            if (sidebar) sidebar.classList.add('collapsed');
-        });
-    }
+    document.querySelectorAll('.sidebar .nav-item').forEach((item) => {
+        const label = item.querySelector('span');
+        if (label && !item.dataset.label) {
+            item.dataset.label = label.textContent.trim();
+        }
+    });
 })();
+
+// Note: the persisted collapsed state is applied by an inline script in
+// base.html (directly after the sidebar markup) so the first paint already
+// uses the right width and the page never flashes the wide sidebar.
 
 // Keyboard shortcuts
 let keySequence = '';

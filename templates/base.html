@@ -334,12 +334,33 @@
                 </a>
             </div>
         </nav>
+        <script>
+        // Apply the remembered sidebar state BEFORE the main content lays out,
+        // so the page never flashes the wide sidebar on load.  First visit
+        // (no stored preference) auto-collapses on narrower windows.
+        (function () {
+            try {
+                var mobile = window.innerWidth < 768;
+                var saved = localStorage.getItem('sidebar_collapsed');
+                if (saved === null) saved = window.innerWidth < 1200 ? 'true' : 'false';
+                if (!mobile && saved === 'true') {
+                    var sb = document.querySelector('.sidebar');
+                    if (sb) sb.classList.add('collapsed');
+                }
+            } catch (e) {}
+        })();
+        </script>
         
         <!-- Main Content Area -->
         <main class="main-content">
             <!-- Header -->
             <header class="main-header">
-                <h2 class="header-title">{% block header_title %}Dashboard{% endblock %}</h2>
+                <div class="header-left">
+                    <button class="header-sidebar-toggle" onclick="toggleSidebar()" title="收缩 / 展开侧栏 (Ctrl+B)" aria-label="Toggle sidebar">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h2 class="header-title">{% block header_title %}Dashboard{% endblock %}</h2>
+                </div>
                 <div class="header-actions">
                     <div class="header-status">
                         <div class="status-indicator" id="connectionStatus">

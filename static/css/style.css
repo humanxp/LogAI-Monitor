@@ -134,6 +134,74 @@ body {
     margin-left: 60px;
 }
 
+/* Compact the section gaps while collapsed (titles are hidden, so the
+   original 0.5rem padding + margin would leave dead space between icons). */
+.sidebar.collapsed .nav-section {
+    padding: 0;
+    margin-top: 0.25rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Collapsed mode shows icons only: reveal each item's label as a hover
+   tooltip (data-label is filled in by app.js from the item's <span>). */
+.sidebar.collapsed .nav-item {
+    position: relative;
+}
+
+.sidebar.collapsed .nav-item::after {
+    content: attr(data-label);
+    position: absolute;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    background: #111827;
+    color: #fff;
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+    z-index: 1200;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.sidebar.collapsed .nav-item:hover::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+/* Header toggle: always visible (the footer chevron is easy to miss). */
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.header-sidebar-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: transparent;
+    color: #555;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.header-sidebar-toggle:hover {
+    background: #f1f3f5;
+    color: var(--sidebar-active);
+    border-color: var(--sidebar-active);
+}
+
 .sidebar-nav {
     flex: 1;
     overflow-y: auto;
@@ -1040,6 +1108,45 @@ tr:hover {
     }
     
     .main-content {
+        margin-left: 0;
+    }
+
+    /* Off-canvas drawer keeps the full width: neutralise any remembered
+       collapsed state so labels stay readable when it slides in. */
+    .sidebar.collapsed {
+        width: var(--sidebar-width);
+    }
+
+    .sidebar.collapsed .sidebar-header h1,
+    .sidebar.collapsed .nav-section-title,
+    .sidebar.collapsed .nav-item .badge {
+        display: block;
+    }
+
+    .sidebar.collapsed .nav-item span {
+        display: inline;
+    }
+
+    .sidebar.collapsed .sidebar-user-info {
+        display: flex !important;
+    }
+
+    .sidebar.collapsed .nav-item {
+        justify-content: flex-start;
+        padding: 0.75rem 1.25rem;
+    }
+
+    .sidebar.collapsed .nav-section {
+        padding: 0.5rem 1.25rem;
+        border-top: none;
+    }
+
+    .sidebar.collapsed .nav-item::after {
+        content: none;
+    }
+
+    .sidebar.collapsed + .main-content,
+    .app-container:has(.sidebar.collapsed) .main-content {
         margin-left: 0;
     }
     
