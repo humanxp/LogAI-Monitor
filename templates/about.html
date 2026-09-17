@@ -99,6 +99,13 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #6A1B9A;">🗄️ 保留期 720h（30 天）与容量配套（2026-09-17）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>Log Retention 调整为 <b>720 小时（30 天）</b>：Settings 值覆盖 env 默认（LOG_RETENTION_HOURS=12）；实测新写入日志 TTL = 720h，每小时清理任务与 AI 历史 TTL 同样按 720h 执行（可用 <code>cleanup:last_used_retention</code> 核验）</li>
+                    <li>存量数据 TTL 一次性延长：67 万条日志 + 7,144 条 AI 历史按"总寿命 720h"重算剩余 TTL（避免旧数据仍按写入时的 240h 提前消失），延长过程 49 秒、仅改过期时间不动内容</li>
+                    <li>Redis maxmemory <b>3GB → 4GB</b>（volatile-lru）：实测速率 2,444～3,036 条/小时，30 天数据量约 3.1～3.9GB，原 3GB 上限会触发静默 LRU 淘汰使实际保留期缩水</li>
+                    <li>该项设置可在 General Settings 页面随时调整并即时生效（写入 TTL 与清理均读取 Settings），但<b>只影响之后写入的数据</b>——如需让存量数据同步新保留期，须执行一次 TTL 延长</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #7B1FA2;">📊 架构动图演示（2026-09-07）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>用 GitHub 上的 Archify 工具生成了交互式架构动图：图中包含架构总览 + 三个场景（日志收集→ AI 批量分析→ 告警与 Telegram 推送），流动线条代表数据流向，提示卡展示各服务的关键指标</li>
@@ -155,7 +162,7 @@
                     <li>Socket.IO 实时连接鉴权：仅已登录会话可连接收流，匿名（含跨站）连接被拒绝 —— 此前匿名可收到全量日志广播</li>
                     <li>/api/logs/ingest 加固：可选共享令牌（X-Ingest-Token，LOG_INGEST_TOKEN）；severity 白名单强制归一；所有字段类型强制 + 长度上限；message 必填</li>
                     <li>实时统计推送：服务端 2 秒节流广播 stats 事件，替代每标签页在日志流期间约 1 次/秒的 /api/stats HTTP 轮询（保留 30 秒兜底）；Connected Clients 页诊断轮询 5s → 10s</li>
-                    <li>Redis 内存上限提至 3GB（volatile-lru），与 240h 保留期容量估算匹配，持续超速时仍优雅淘汰最旧日志</li>
+                    <li>Redis 内存上限 4GB（volatile-lru），与 720h 保留期容量估算匹配，持续超速时仍优雅淘汰最旧日志</li>
                     <li>修复 Esc 无法关闭模态框（openModal 用 .active 而 Esc 只清理 .show/.visible）；告警列表上限 200 条并按 id 去重，不再无限增长/全表重建/出现重复行</li>
                     <li>前端实时数据缓存修复（2026-09-06）：服务端全部 JSON API 增加 Cache-Control: no-store；/api/stats、/api/hosts、/api/logs 请求带时间戳 cache-buster 参数；Socket.IO 断开时 15s 兜底轮询 + 页面 45s 心跳刷新（保持分页/筛选/滚动位置）——解决个别浏览器（Chrome/Edge 激进缓存 API）看到的旧主机列表/页面不更新、而 Firefox 正常的问题</li>
                 </ul>

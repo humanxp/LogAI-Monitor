@@ -68,7 +68,7 @@ services:
     restart: unless-stopped
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 4096mb --maxmemory-policy volatile-lru
     networks:
       - logaimonitor-net
     healthcheck:
