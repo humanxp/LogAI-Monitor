@@ -4,13 +4,6 @@
 {% block header_title %}AI Analysis History{% endblock %}
 
 {% block content %}
-<!-- Page-level action: Clear All History lives at the very top of the page -->
-<div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
-    <button class="btn btn-danger btn-sm" id="clearAllHistoryBtn" onclick="clearAllHistory()">
-        <i class="fas fa-trash-alt"></i> Clear All History
-    </button>
-</div>
-
 <!-- Stats Cards -->
 <div class="stats-grid" style="margin-bottom: 1.5rem;">
     <div class="stat-card">
@@ -49,6 +42,13 @@
             <p>Critical Status</p>
         </div>
     </div>
+</div>
+
+<!-- Page action: sits directly above the Analysis History card -->
+<div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
+    <button class="btn btn-danger btn-sm" id="clearAllHistoryBtn" onclick="clearAllHistory()">
+        <i class="fas fa-trash-alt"></i> Clear All History
+    </button>
 </div>
 
 <!-- History List -->
