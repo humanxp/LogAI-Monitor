@@ -118,6 +118,7 @@
 - **侧栏可收缩（2026-09-07）**：左侧导航支持窄栏（60px，仅图标 + 悬停名称气泡）/ 宽栏（250px，图标 + 文字）双模式；顶栏新增常显折叠按钮（原底部 chevron 与 Ctrl+B 保留）；状态记忆 localStorage，首次访问 &lt;1200px 默认窄栏，内联脚本在布局前应用无闪烁；同时修复移动端侧栏抽屉此前无按钮可打开的问题
 - **保留期 720h 与容量配套（2026-09-17）**：Log Retention 调整为 720h（30 天），写入 TTL / 每小时清理 / AI 历史 TTL 均按 Settings 生效；存量 67 万条日志 + 7,144 条 AI 历史按"总寿命 720h"一次性延长剩余 TTL（只改过期时间）；Redis maxmemory 3GB→4GB（volatile-lru），匹配 30 天约 3.1~3.9GB 的容量估算，避免触顶静默淘汰导致实际保留期缩水
 - **Dashboard 首屏统计加速（2026-09-21）**：来源/级别列表改由索引注册集合（`logs:index:sources|hosts|severities`，写日志时同管道维护）读取，替代对整个键空间（116 万 key）的 SCAN；`/api/stats` 冷启动 **1315ms → 2.9ms**（HTTP 稳定 0.003s），解决打开 Dashboard 后 Total Logs / Logs (Last Hour) 延迟 1~1.5 秒才显示的问题；旧部署首次调用自动重建注册集合，清理任务顺带补录并清理空索引
+- **Logs 分页/按主机查询加速（2026-09-21）**：`logs:host|source|severity` 索引由 SET 改为 **ZSET（score=写入时间）**，分页下沉到 Redis（`ZREVRANGE(offset, offset+limit-1)` 只取当前页，总数 `ZCARD`；多条件用 `ZINTERSTORE` 交集并缓存 60s），不再"取全部匹配 ID → 逐条 ZSCORE → HGETALL offset+limit 条 → 切片"；实测深翻页 **5.099s → 0.006s**、severity 过滤 4.479s → 0.006s、source 2.850s → 0.006s、host 1.840s → 0.005s、18 万条大主机 2.785s → 0.006s；存量 77 个索引一次性迁移（7.9s），清理/删除路径同步改用 zrem/zrange/zcard
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构

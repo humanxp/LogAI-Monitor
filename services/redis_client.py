@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import redis
+import hashlib
 import json
 import time
 import os
@@ -95,9 +96,12 @@ class RedisClient:
         pipe.hset(log_id, mapping=self._jsonify(log_entry))
         pipe.zadd('logs:timeline', {log_id: now})
         pipe.zadd('logs:unanalyzed', {log_id: now})
-        pipe.sadd(f'logs:source:{source}', log_id)
-        pipe.sadd(f'logs:host:{hostname}', log_id)
-        pipe.sadd(f'logs:severity:{severity}', log_id)
+        # Sorted indexes (score = arrival time). A filtered page is then a
+        # plain ZREVRANGE of just that page instead of SMEMBERS of every
+        # matching id (180k+) followed by a per-id ZSCORE and a Python sort.
+        pipe.zadd(f'logs:source:{source}', {log_id: now})
+        pipe.zadd(f'logs:host:{hostname}', {log_id: now})
+        pipe.zadd(f'logs:severity:{severity}', {log_id: now})
         # Registry of which index keys exist. Reading the registry is O(#names)
         # while a full-keyspace SCAN costs ~650 ms at ~700k keys - that scan is
         # what made the first /api/stats request after opening the dashboard
@@ -134,67 +138,84 @@ class RedisClient:
                     pass
         return data
 
+    def _filtered_index_keys(self, host=None, source=None, severity=None) -> List[str]:
+        """Index keys (sorted sets) for the given exact-match filters."""
+        keys = []
+        if host and str(host).strip():
+            keys.append(f'logs:host:{str(host).strip()}')
+        if source and str(source).strip():
+            keys.append(f'logs:source:{str(source).strip()}')
+        if severity and str(severity).strip():
+            keys.append(f'logs:severity:{str(severity).strip()}')
+        return keys
+
+    def _filtered_page_key(self, keys: List[str]) -> str:
+        """Redis key to page over for these filters.
+
+        One filter pages its own index directly (O(log n + page)). Several
+        filters are intersected by Redis (ZINTERSTORE, C speed) into a
+        short-lived temp key so paging the same combination reuses it.
+        """
+        if len(keys) == 1:
+            return keys[0]
+        tmp = 'logs:q:' + hashlib.sha1('|'.join(keys).encode()).hexdigest()[:16]
+        if not self.client.exists(tmp):
+            self.client.zinterstore(tmp, keys, aggregate='MAX')
+            self.client.expire(tmp, 60)
+        return tmp
+
+    @staticmethod
+    def _apply_search(logs: List[Dict], search: str) -> List[Dict]:
+        needle = search.lower().strip()
+        return [
+            log for log in logs
+            if needle in (log.get('message') or '').lower()
+            or needle in (log.get('source') or '').lower()
+            or needle in (log.get('hostname') or '').lower()
+            or needle in (log.get('program') or '').lower()
+        ]
+
     def get_logs(self, limit: int = 100, offset: int = 0, source: str = None,
                  severity: str = None, search: str = None, start_time: float = None,
                  end_time: float = None, host: str = None) -> List[Dict]:
         """Get logs with optional filtering.
 
-        Two paths for speed and correctness:
-        * host/source/severity filter given -> use the Redis index sets, which
-          contain ALL matching ids regardless of age (a host whose logs were
-          pushed out of the newest window must still be queryable);
-        * no filter -> only the newest bounded window of the timeline is
-          considered (real-time recent-logs viewer).
-        Hashes are fetched with a redis pipeline either way.
+        Paging happens inside Redis: the ids of the requested page are read
+        with a single ZREVRANGE (over the host/source/severity index or the
+        timeline), so deep pages and per-host views no longer fetch and score
+        every matching id before slicing to one page.
+
+        Free-text search still filters in Python, so it uses a bounded
+        look-ahead window (the page plus 500 extra rows) to stay responsive.
         """
-        ids = []
-        if start_time and end_time:
-            ids = self.client.zrevrangebyscore('logs:timeline', end_time, start_time)
-        elif host and host.strip() or source and source.strip() or severity and severity.strip():
-            # Index-set based: exact matches at any age
-            sets = []
-            if host and host.strip():
-                sets.append(self.client.smembers(f'logs:host:{host}'))
-            if source and source.strip():
-                sets.append(self.client.smembers(f'logs:source:{source}'))
-            if severity and severity.strip():
-                sets.append(self.client.smembers(f'logs:severity:{severity}'))
-            ids = list(sets[0])
-            for s in sets[1:]:
-                ids = [lid for lid in ids if lid in s]
-        else:
-            # No filter: recent-logs viewer over a bounded newest window
+        limit = max(1, int(limit or 100))
+        offset = max(0, int(offset or 0))
+        keys = self._filtered_index_keys(host=host, source=source, severity=severity)
+        searching = bool(search and search.strip())
+
+        # Bounded look-ahead window used by the search path.
+        def _window_ids():
             window = offset + limit + 500
-            ids = self.client.zrevrange('logs:timeline', 0, window - 1)
+            if keys:
+                return self.client.zrevrange(self._filtered_page_key(keys), 0, window - 1)
+            return self.client.zrevrange('logs:timeline', 0, window - 1)
 
-        if not ids:
-            return []
+        if start_time and end_time and not searching:
+            # Time-range query: page inside Redis as well.
+            return self._fetch_logs_pipelined(
+                self.client.zrevrangebyscore('logs:timeline', end_time, start_time,
+                                             start=offset, num=limit))
 
-        # Newest-first by timeline score (pipelined zscores)
-        pipe = self.client.pipeline()
-        for lid in ids:
-            pipe.zscore('logs:timeline', lid)
-        scores = pipe.execute()
-        ordered = sorted(zip(ids, scores), key=lambda p: (p[1] or 0), reverse=True)
-        # Fetch at most what the page (+ search slack) can use
-        need = offset + limit + (500 if search and search.strip() else 0)
-        ordered_ids = [lid for lid, _ in ordered][:need]
+        if searching:
+            logs = self._apply_search(self._fetch_logs_pipelined(_window_ids()), search)
+            return logs[offset:offset + limit]
 
-        # Fetch hashes (pipelined) and apply search filter
-        logs = self._fetch_logs_pipelined(ordered_ids)
-        if search and search.strip():
-            search_lower = search.lower().strip()
-            filtered = []
-            for log in logs:
-                if (search_lower in (log.get('message') or '').lower() or
-                    search_lower in (log.get('source') or '').lower() or
-                    search_lower in (log.get('hostname') or '').lower() or
-                    search_lower in (log.get('program') or '').lower()):
-                    filtered.append(log)
-            logs = filtered
-
-        # Apply pagination
-        return logs[offset:offset + limit]
+        if keys:
+            ids = self.client.zrevrange(self._filtered_page_key(keys),
+                                        offset, offset + limit - 1)
+        else:
+            ids = self.client.zrevrange('logs:timeline', offset, offset + limit - 1)
+        return self._fetch_logs_pipelined(ids)
 
     def _fetch_logs_pipelined(self, log_ids) -> List[Dict]:
         """Fetch log hashes with a redis pipeline (chunked) instead of one
@@ -234,19 +255,11 @@ class RedisClient:
         (otherwise selecting one device would still report the whole-database
         total and paginate through unrelated pages).
         """
-        sets = []
-        if host and str(host).strip():
-            sets.append(self.client.smembers(f'logs:host:{host}'))
-        if source and str(source).strip():
-            sets.append(self.client.smembers(f'logs:source:{source}'))
-        if severity and str(severity).strip():
-            sets.append(self.client.smembers(f'logs:severity:{severity}'))
-        if not sets:
+        keys = self._filtered_index_keys(host=host, source=source, severity=severity)
+        if not keys:
             return self.get_logs_count()
-        base = set(sets[0])
-        for s in sets[1:]:
-            base &= s
-        return len(base)
+        # ZCARD on the index (or on the cached intersection) - no member fetch.
+        return int(self.client.zcard(self._filtered_page_key(keys)))
 
     # ------------------------------------------------------------------
     # Unanalyzed-log index.
@@ -475,9 +488,9 @@ class RedisClient:
             pipe = self.client.pipeline()
             for log_id, source, sev, host in removals:
                 if source is not None:
-                    pipe.srem(f'logs:source:{source}', log_id)
-                    pipe.srem(f'logs:severity:{sev}', log_id)
-                    pipe.srem(f'logs:host:{host}', log_id)
+                    pipe.zrem(f'logs:source:{source}', log_id)
+                    pipe.zrem(f'logs:severity:{sev}', log_id)
+                    pipe.zrem(f'logs:host:{host}', log_id)
                 pipe.delete(log_id)
                 pipe.zrem('logs:timeline', log_id)
                 pipe.zrem('logs:unanalyzed', log_id)
@@ -511,7 +524,7 @@ class RedisClient:
                     self.client.sadd(registry, name)
                 except Exception:
                     pass
-                members = list(self.client.smembers(key))
+                members = list(self.client.zrange(key, 0, -1))
                 for j in range(0, len(members), CHUNK):
                     mchunk = members[j:j + CHUNK]
                     pipe = self.client.pipeline()
@@ -520,11 +533,11 @@ class RedisClient:
                     results = pipe.execute()
                     dead = [m for m, ok in zip(mchunk, results) if not ok]
                     if dead:
-                        self.client.srem(key, *dead)
+                        self.client.zrem(key, *dead)
                 # Drop indexes that no longer reference anything (and their
                 # registry entry) so the dashboard lists stay clean.
                 try:
-                    if self.client.scard(key) == 0:
+                    if self.client.zcard(key) == 0:
                         self.client.delete(key)
                         self.client.srem(registry, name)
                 except Exception:
@@ -567,7 +580,7 @@ class RedisClient:
         removed - other hosts (even ones sharing the same parsed hostname) are
         untouched. Runs in pipelined batches.
         """
-        ids = list(self.client.smembers('logs:source:' + source_ip))
+        ids = list(self.client.zrange('logs:source:' + source_ip, 0, -1))
         removed = 0
         CHUNK = 1000
         for i in range(0, len(ids), CHUNK):
@@ -590,9 +603,9 @@ class RedisClient:
                 continue
             pipe = self.client.pipeline()
             for lid, host, sev in removals:
-                pipe.srem(f'logs:host:{host}', lid)
-                pipe.srem(f'logs:severity:{sev}', lid)
-                pipe.srem(f'logs:source:{source_ip}', lid)
+                pipe.zrem(f'logs:host:{host}', lid)
+                pipe.zrem(f'logs:severity:{sev}', lid)
+                pipe.zrem(f'logs:source:{source_ip}', lid)
                 pipe.zrem('logs:timeline', lid)
                 pipe.zrem('logs:unanalyzed', lid)
                 pipe.delete(lid)
