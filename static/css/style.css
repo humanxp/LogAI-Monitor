@@ -508,6 +508,55 @@ th {
     text-overflow: ellipsis;
 }
 
+/* Log Filters list: compact font, one bounded line per condition (long regexes
+   are ellipsized with the full text on hover). */
+#filtersContainer table {
+    font-size: 0.78rem;
+}
+
+#filtersContainer table th,
+#filtersContainer table td {
+    padding: 0.4rem 0.6rem;
+}
+
+#filtersContainer table th {
+    font-size: 0.72rem;
+}
+
+#filtersContainer table td.filter-conditions {
+    max-width: 480px;
+}
+
+.filter-cond {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.45;
+}
+
+.filter-cond code {
+    font-size: 0.74rem;
+    background: #f4f6f8;
+    padding: 0 0.25rem;
+    border-radius: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cond-label {
+    color: #8a8f98;
+    min-width: 3.6rem;
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+}
+
+.cond-none {
+    color: #999;
+}
+
 tr:hover {
     background-color: #f8f9fa;
 }

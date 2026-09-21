@@ -757,6 +757,32 @@ async function fetchFilters() {
     }
 }
 
+// Conditions cell for the filter table: one compact line per condition.
+// (message_regex was previously not rendered at all, so regex-only filters
+// appeared to have no conditions.)
+function _filterConditionsHtml(filter) {
+    const c = filter.conditions || {};
+    const lines = [];
+    if (c.severity) {
+        const sevs = Array.isArray(c.severity) ? c.severity : [c.severity];
+        lines.push(`<div class="filter-cond" title="Severity: ${escapeHtml(sevs.join(', '))}">`
+            + `<span class="cond-label">Severity</span>${sevs.map(severityBadge).join(' ')}</div>`);
+    }
+    if (c.source_contains) {
+        lines.push(`<div class="filter-cond" title="Source contains: ${escapeHtml(c.source_contains)}">`
+            + `<span class="cond-label">Source</span><code>${escapeHtml(c.source_contains)}</code></div>`);
+    }
+    if (c.message_contains) {
+        lines.push(`<div class="filter-cond" title="Message contains: ${escapeHtml(c.message_contains)}">`
+            + `<span class="cond-label">Message</span><code>${escapeHtml(c.message_contains)}</code></div>`);
+    }
+    if (c.message_regex) {
+        lines.push(`<div class="filter-cond" title="Message regex: ${escapeHtml(c.message_regex)}">`
+            + `<span class="cond-label">Regex</span><code>${escapeHtml(c.message_regex)}</code></div>`);
+    }
+    return lines.length ? lines.join('') : '<span class="cond-none">— 无限制（匹配所有日志）</span>';
+}
+
 // Render filters
 function renderFilters() {
     const container = document.getElementById('filtersContainer');
@@ -788,11 +814,7 @@ function renderFilters() {
                 ${state.filters.map(filter => `
                     <tr>
                         <td><strong>${escapeHtml(filter.name)}</strong></td>
-                        <td>
-                            ${filter.conditions?.severity ? severityBadge(filter.conditions.severity) : ''}
-                            ${filter.conditions?.source_contains ? `Source: ${escapeHtml(filter.conditions.source_contains)}` : ''}
-                            ${filter.conditions?.message_contains ? `Message: ${escapeHtml(filter.conditions.message_contains)}` : ''}
-                        </td>
+                        <td class="filter-conditions">${_filterConditionsHtml(filter)}</td>
                         <td>${filter.notify_telegram ? '📱 Telegram' : '-'}</td>
                         <td>
                             <label class="toggle-switch">
