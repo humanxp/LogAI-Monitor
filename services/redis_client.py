@@ -507,13 +507,26 @@ class RedisClient:
             self.client.hset(self._HOST_IPNAME, mapping=mapping)
         return mapping
 
+    # Long hostnames (RT-AC86U-1D30-17360F1-C, ...) made the filter dropdown
+    # extremely wide, so the closed-state label is a shortened hostname and the
+    # full "name (ip)" is kept in ``full`` for the hover tooltip.
+    _HOST_LABEL_MAX = 16
+
+    @classmethod
+    def _short_host_label(cls, name: str) -> str:
+        name = (name or '').strip()
+        if len(name) <= cls._HOST_LABEL_MAX + 1:
+            return name
+        return name[:cls._HOST_LABEL_MAX] + '…'
+
     def get_host_groups(self) -> List[Dict]:
         """Host filter options, one entry per DEVICE.
 
-        Each entry: ``{value, label, kind, count}`` where ``kind`` is ``'ip'``
-        for grouped devices (filter with ``source=<value>``) or ``'host'`` for
-        names that are not tied to a sender IP (e.g. docker logs). IPs with no
-        parsed hostname are still listed (labelled with the IP itself).
+        Each entry: ``{value, label, kind, count, full}`` where ``kind`` is
+        ``'ip'`` for grouped devices (filter with ``source=<value>``) or
+        ``'host'`` for names not tied to a sender IP. ``label`` is a compact
+        display name (shortened hostname, or the IP when there is no hostname)
+        and ``full`` carries "name (ip)" for the tooltip.
         """
         try:
             mapping = dict(self.client.hgetall(self._HOST_IPNAME) or {})
@@ -534,12 +547,22 @@ class RedisClient:
                 ips.add(name)
         for ip in sorted(ips):
             name = mapping.get(ip)
-            label = f'{name} ({ip})' if name else ip
+            label = self._short_host_label(name) if name else ip
             try:
                 count = int(self.client.zcard(f'logs:source:{ip}'))
             except Exception:
                 count = 0
-            groups.append({'value': ip, 'label': label, 'kind': 'ip', 'count': count})
+            groups.append({'value': ip, 'label': label, 'kind': 'ip',
+                           'count': count, 'full': f'{name} ({ip})' if name else ip})
+
+        # Disambiguate identical short labels (same hostname seen on two IPs)
+        # by appending the last octet, e.g. "uefi-x86 (.30)" / "uefi-x86 (.33)".
+        seen = {}
+        for g in groups:
+            seen[g['label']] = seen.get(g['label'], 0) + 1
+        for g in groups:
+            if seen.get(g['label'], 0) > 1 and g['kind'] == 'ip':
+                g['label'] = f"{g['label']} (.{g['value'].split('.')[-1]})"
 
         # 2) Names that are not represented by a sender IP (docker-host, ...)
         for name in sorted(host_names):
@@ -549,7 +572,8 @@ class RedisClient:
                 count = int(self.client.zcard(f'logs:host:{name}'))
             except Exception:
                 count = 0
-            groups.append({'value': name, 'label': name, 'kind': 'host', 'count': count})
+            groups.append({'value': name, 'label': self._short_host_label(name),
+                           'kind': 'host', 'count': count, 'full': name})
 
         groups.sort(key=lambda g: g['label'].lower())
         return groups

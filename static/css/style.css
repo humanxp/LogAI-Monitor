@@ -686,6 +686,16 @@ tr:hover {
     padding: 0.25rem 0.35rem;
 }
 
+/* Host/device list: labels are device names (sometimes shortened) - keep the
+   closed select about half its old width and ellipsize; the full "name (ip)"
+   is shown as a tooltip. */
+.filter-bar #filterHost {
+    width: 11rem;
+    max-width: 50vw;
+    min-width: 0;
+    text-overflow: ellipsis;
+}
+
 /* Log Entry */
 .log-entry {
     padding: 0.75rem 1rem;

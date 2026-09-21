@@ -103,7 +103,8 @@
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>修复现象：Logs 的 All Hosts 下拉里，同一台设备出现两次——一次是 hostname（如 <code>GL-AXT1800</code>）、一次是 IP（如 <code>10.10.10.7</code>）</li>
                     <li>原因：<b>hostname 只是解析结果</b>——设备的部分日志带主机名、部分（内核/启动早期等）解析不到，采集端会回退用发送方 IP 当名称；而<b>发送方 IP（source）才是设备身份</b>（实测 <code>logs:source:&lt;ip&gt;</code> 索引恰好等于该设备「带名称 + 不带名称」两种日志之和，差值恒为 0）</li>
-                    <li>方案：<b>按 source IP 归组</b>，显示名取该 IP 上出现最多的 hostname + IP，例如 <code>GL-AXT1800 (10.10.10.7)</code>、<code>localhost.localdomain (192.168.50.3)</code>；始终没有 hostname 的设备仍以其 IP 显示；非 IP 来源（如 docker 容器）保留为独立条目</li>
+                    <li>方案：<b>按 source IP 归组</b>，显示名取该 IP 上出现最多的 hostname（名称过长时截断为 16 字符 + <code>…</code>，完整的 <code>名称 (IP)</code> 作为悬停提示），例如 <code>GL-AXT1800</code>、<code>localhost.locald…</code>、<code>DESKTOP-8OI9QJQ.…</code>；同名出现在两个 IP 时追加末位段区分（<code>uefi-x86 (.30)</code> / <code>uefi-x86 (.33)</code>）；始终没有 hostname 的设备仍以其 IP 显示；非 IP 来源（如 docker 容器）保留为独立条目</li>
+                    <li>下拉框宽度固定 <b>11rem（约原来一半）</b>并自动省略超长文字，不再被长主机名撑宽、也不会把其它按钮挤到第二行</li>
                     <li>映射<b>自动推导、无需人工维护别名表</b>：每小时清理任务采样各主机索引的 source 并取多数（结果持久化到 <code>host:ipname</code>），设备改名或换 IP 会自动跟随</li>
                     <li>筛选行为：选择设备后按 <code>source=&lt;ip&gt;</code> 过滤，因此该设备<b>两种拼写的日志全部包含</b>（旧方式按 hostname 只覆盖一部分）</li>
                     <li>实测：主机条目 <b>40 → 29 个设备</b>；<code>localhost.localdomain (192.168.50.3)</code> 合并后 <b>241,461</b> 条（旧 165,176 + 套用 IP 名称的 76,285）、<code>DESKTOP-8OI9QJQ.lan (192.168.50.15)</code> 229,507（+40,106）、<code>MikroTik (10.10.10.6)</code> 7,033（+288）</li>

@@ -2243,10 +2243,16 @@ function _selectedHostKind() {
 }
 
  function applyLogFilters() {
-    const host = document.getElementById('filterHost')?.value || '';
+    const hostSel = document.getElementById('filterHost');
+    const host = hostSel?.value || '';
     const hostKind = _selectedHostKind();
     const severity = document.getElementById('filterSeveritySelect')?.value || '';
     const search = document.getElementById('filterSearch')?.value?.trim() || '';
+    // Show the full "name (ip)" on hover, since the closed label is shortened.
+    if (hostSel) {
+        const opt = hostSel.selectedOptions && hostSel.selectedOptions[0];
+        hostSel.title = (opt && opt.title) || '';
+    }
     
     // Store active filters for WebSocket log filtering
     activeFilters.host = host;
@@ -2499,15 +2505,16 @@ async function loadHosts() {
         // Plain string lists are still accepted for backwards compatibility.
         const items = (Array.isArray(data) ? data : []).map((h) => (
             (typeof h === 'string')
-                ? { value: h, label: h, kind: 'host', count: 0 }
-                : { value: h.value, label: h.label || h.value, kind: h.kind || 'host', count: h.count || 0 }
+                ? { value: h, label: h, kind: 'host', count: 0, full: h }
+                : { value: h.value, label: h.label || h.value, kind: h.kind || 'host',
+                    count: h.count || 0, full: h.full || h.label || h.value }
         ));
 
         const select = document.getElementById('filterHost');
         if (select) {
             const currentValue = select.value;
             select.innerHTML = '<option value="">All Hosts</option>' +
-                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}">${escapeHtml(h.label)}</option>`).join('');
+                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}" title="${escapeHtml(h.full)}">${escapeHtml(h.label)}</option>`).join('');
             // Restore selection if that device is still present
             if (currentValue && items.some((h) => h.value === currentValue)) {
                 select.value = currentValue;
