@@ -671,6 +671,13 @@ def cleanup_task():
             redis_client.purge_stale_failed_history()
         except Exception as _e:
             print(f"[Scheduler] purge_stale_failed_history error: {_e}")
+        # Refresh the IP -> hostname grouping used by the Logs host filter, so
+        # devices that changed name/address are merged correctly.
+        try:
+            mapping = redis_client.rebuild_host_ipname_map()
+            print(f"[Scheduler] host grouping refreshed ({len(mapping)} IPs mapped)")
+        except Exception as _e:
+            print(f"[Scheduler] host grouping refresh error: {_e}")
         status = redis_client.get_cleanup_status()
         msg = (f"[Scheduler] Cleanup run at {ts} - removed {count} old logs "
                f"(used_retention={retention}h) | timeline_count={status.get('timeline_count')} "
@@ -1416,8 +1423,17 @@ def api_sources():
 @app.route('/api/hosts')
 @require_redis_api
 def api_hosts():
-    """Get unique hostnames"""
-    return jsonify(redis_client.get_hosts())
+    """Host filter options grouped by DEVICE.
+
+    A device that sends some logs with a hostname and some without (where the
+    sender IP is used as the fallback name) used to appear twice. Entries are
+    grouped by sender IP; ``kind`` tells the client which filter to send:
+    ``ip`` -> ``source=<value>`` (the whole device), ``host`` -> ``host=<value>``.
+    ``?plain=1`` returns the legacy list of raw host names.
+    """
+    if request.args.get('plain') in ('1', 'true', 'yes'):
+        return jsonify(redis_client.get_hosts())
+    return jsonify(redis_client.get_host_groups())
 
 @app.route('/api/severities')
 @require_redis_api

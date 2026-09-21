@@ -122,6 +122,7 @@
 - **AI Analysis History 列表瘦身（2026-09-21）**：列表接口不再返回 `log_ids`（批量一条最多 500 个 id、约 7 KB、占单条 83%；前端不展示，重分析由服务端自行读取），100 条/页响应 **800KB → 160KB（-80%）**，服务端由逐条 HGETALL 改为单次管道；第 2 页起 0.0149→0.0067s，详情弹窗/重分析功能不变
 - **分页页码直接跳转（2026-09-21）**：Log Entries 与 AI Analysis History 翻页栏新增页码输入框（回车或点 Go 跳转）+ 首页/末页按钮；越界输入自动钳制到 1~最大页并提示，翻页按钮按边界禁用
 - **按指定日期查看日志/分析（2026-09-21）**：Logs 与 AI Analysis History 页面新增**日期范围过滤**——「年月日 ~ 年月日」两个紧凑日期框（起始日 00:00 ~ 结束日 23:59，含起止当天）+ 清除按钮；宽度压到 9rem 不挤占同行的 Search/Refresh/Clear；可与主机/级别/关键字叠加，支持单端自动补全与起止颠倒自动交换；生效期间列表为固定历史视图（实时日志不混入）。实现上索引均为按写入时间打分的 ZSET，范围由 Redis 原生 `ZRANGEBYSCORE`/`ZCOUNT` 处理；接口 `/api/logs`、`/api/ai-history`、`/api/ai-history/stats` 均支持 `start`/`end`（epoch 秒或 ISO-8601）
+- **主机归组：hostname 与 IP 合并（2026-09-21）**：同一设备因部分日志解析不到主机名（回退用发送方 IP 当名称）而在 All Hosts 中出现两次；现按 **source IP 归组**（source 索引 = 两种拼写之和，实测差值恒 0），显示名取该 IP 上最多的 hostname + IP（如 `GL-AXT1800 (10.10.10.7)`），筛选按 `source=<ip>` 返回该设备全部日志；映射由每小时清理任务自动采样推导（`host:ipname`）无需人工维护；主机条目 40 → 29 个设备；`/api/hosts` 返回 `{value,label,kind,count}`，`?plain=1` 兼容旧列表
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构

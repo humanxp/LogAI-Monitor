@@ -274,12 +274,17 @@ function loadLogsPage(page, opts) {
     const params = {
         limit: LOG_PAGE_SIZE,
         offset: (page - 1) * LOG_PAGE_SIZE,
-        host: activeFilters.host,
         severity: activeFilters.severity,
         search: activeFilters.search,
         start: activeFilters.startTime,
         end: activeFilters.endTime
     };
+    // Grouped device -> filter by sender IP (covers both spellings); plain
+    // hostname -> the hostname index.
+    if (activeFilters.host) {
+        if (activeFilters.hostKind === 'ip') params.source = activeFilters.host;
+        else params.host = activeFilters.host;
+    }
     if (opts.scroll !== false) {
         const scroll = document.getElementById('logsContainer');
         if (scroll) scroll.scrollTop = 0;
@@ -352,6 +357,9 @@ function logsPageBrowsingHistory() {
 // Current active filters (to check against new logs)
 const activeFilters = {
     host: '',
+    // How to apply `host`: 'ip' -> filter by sender IP (whole device, includes
+    // logs stored under both the hostname and the IP), 'host' -> hostname index.
+    hostKind: 'host',
     severity: '',
     search: '',
     // Epoch seconds; set when the user filters by a time window.
@@ -486,7 +494,15 @@ function _logPassesActiveFilters(log) {
     // While a time window is applied the list is a fixed historical view, so
     // live rows (arriving now) must not be mixed into it.
     if (activeFilters.startTime || activeFilters.endTime) return false;
-    if (activeFilters.host && (log.hostname || log.source) !== activeFilters.host) return false;
+    if (activeFilters.host) {
+        if (activeFilters.hostKind === 'ip') {
+            // Device grouping: match the sender IP (or a log that carries the
+            // IP as its fallback hostname).
+            if (log.source !== activeFilters.host && log.hostname !== activeFilters.host) return false;
+        } else if ((log.hostname || log.source) !== activeFilters.host) {
+            return false;
+        }
+    }
     if (activeFilters.severity && log.severity !== activeFilters.severity) return false;
     if (activeFilters.search) {
         const searchLower = activeFilters.search.toLowerCase();
@@ -2218,13 +2234,23 @@ function clearTimeFilter() {
 }
 
 // Apply log filters (always returns to page 1 of the filtered result)
+// How the currently selected host option must be applied: grouped devices are
+// filtered by sender IP (source), plain names by the hostname index.
+function _selectedHostKind() {
+    const sel = document.getElementById('filterHost');
+    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
+    return (opt && opt.dataset && opt.dataset.kind) || 'host';
+}
+
  function applyLogFilters() {
     const host = document.getElementById('filterHost')?.value || '';
+    const hostKind = _selectedHostKind();
     const severity = document.getElementById('filterSeveritySelect')?.value || '';
     const search = document.getElementById('filterSearch')?.value?.trim() || '';
     
     // Store active filters for WebSocket log filtering
     activeFilters.host = host;
+    activeFilters.hostKind = hostKind;
     activeFilters.severity = severity;
     activeFilters.search = search;
     _syncTimeFilterFromInputs();
@@ -2236,7 +2262,10 @@ function clearTimeFilter() {
     }
     
     const params = {};
-    if (host) params.host = host;  // Use host param for hostname filtering
+    if (host) {
+        if (hostKind === 'ip') params.source = host;   // whole device
+        else params.host = host;                       // hostname index
+    }
     if (severity) params.severity = severity;
     if (search) params.search = search;
     if (activeFilters.startTime) params.start = activeFilters.startTime;
@@ -2254,14 +2283,19 @@ async function refreshLogs() {
     if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
     try {
         const host = document.getElementById('filterHost')?.value || '';
+        const hostKind = _selectedHostKind();
         const severity = document.getElementById('filterSeveritySelect')?.value || '';
         const search = document.getElementById('filterSearch')?.value?.trim() || '';
         activeFilters.host = host;
+        activeFilters.hostKind = hostKind;
         activeFilters.severity = severity;
         activeFilters.search = search;
         _syncTimeFilterFromInputs();
         const params = {};
-        if (host) params.host = host;
+        if (host) {
+            if (hostKind === 'ip') params.source = host;
+            else params.host = host;
+        }
         if (severity) params.severity = severity;
         if (search) params.search = search;
         if (activeFilters.startTime) params.start = activeFilters.startTime;
@@ -2303,6 +2337,7 @@ async function clearFilters() {
         
         // Clear active filters
         activeFilters.host = '';
+        activeFilters.hostKind = 'host';
         activeFilters.severity = '';
         activeFilters.search = '';
         activeFilters.startTime = '';
@@ -2375,8 +2410,11 @@ document.addEventListener('DOMContentLoaded', () => {
         state.logTotal = 0;
         // Reset active filters on page load
         activeFilters.host = '';
+        activeFilters.hostKind = 'host';
         activeFilters.severity = '';
         activeFilters.search = '';
+        activeFilters.startTime = '';
+        activeFilters.endTime = '';
         // Load hide duplicates setting first, then fetch page 1
         loadHideDuplicatesDefault().then(() => {
             loadLogsPage(1);
@@ -2454,28 +2492,24 @@ async function _refreshCurrentPageData() {
 async function loadHosts() {
     try {
         const response = await fetch('/api/hosts?t=' + Date.now());
-        const hosts = await response.json();
-        
-        // Filter to only show FQDNs (hostnames with dots) and exclude short names
-        // If a short name has a corresponding FQDN, only show the FQDN
-        const fqdnHosts = hosts.filter(h => {
-            // If hostname contains a dot, it's likely a FQDN
-            if (h.includes('.')) return true;
-            // If it's a short name, check if there's a FQDN version
-            const hasFqdn = hosts.some(other => other.startsWith(h + '.'));
-            return !hasFqdn;  // Only include short name if no FQDN exists
-        });
-        
+        const data = await response.json();
+
+        // The server now returns one entry per DEVICE: {value, label, kind, count}
+        // (kind='ip' -> filter by source, kind='host' -> filter by hostname).
+        // Plain string lists are still accepted for backwards compatibility.
+        const items = (Array.isArray(data) ? data : []).map((h) => (
+            (typeof h === 'string')
+                ? { value: h, label: h, kind: 'host', count: 0 }
+                : { value: h.value, label: h.label || h.value, kind: h.kind || 'host', count: h.count || 0 }
+        ));
+
         const select = document.getElementById('filterHost');
         if (select) {
-            // Preserve current selection
             const currentValue = select.value;
-            
             select.innerHTML = '<option value="">All Hosts</option>' +
-                fqdnHosts.map(h => `<option value="${escapeHtml(h)}">${escapeHtml(h)}</option>`).join('');
-            
-            // Restore selection if it still exists in the list
-            if (currentValue && fqdnHosts.includes(currentValue)) {
+                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}">${escapeHtml(h.label)}</option>`).join('');
+            // Restore selection if that device is still present
+            if (currentValue && items.some((h) => h.value === currentValue)) {
                 select.value = currentValue;
             }
         }

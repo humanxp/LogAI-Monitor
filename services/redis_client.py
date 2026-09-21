@@ -446,6 +446,114 @@ class RedisClient:
         """Get all unique hostnames"""
         return self._index_names('logs:host:')
 
+    # ------------------------------------------------------------------
+    # Host grouping (IP vs hostname).
+    #
+    # A device sends some logs with a parsed hostname and some without, in which
+    # case the collector falls back to using the sender IP as the "hostname".
+    # The device therefore showed up as two entries (e.g. "GL-AXT1800" and
+    # "10.10.10.7"). The sender IP (``source``) is the real identity: the
+    # logs:source:<ip> index is exactly the union of both spellings, so devices
+    # are grouped by IP and the display label is the most common hostname seen
+    # from that IP.
+    # ------------------------------------------------------------------
+    _HOST_IPNAME = 'host:ipname'     # hash: ip -> dominant hostname
+
+    @staticmethod
+    def _looks_like_ip(value: str) -> bool:
+        if not value:
+            return False
+        parts = value.split('.')
+        if len(parts) != 4:
+            return False
+        return all(p.isdigit() and 0 <= int(p) <= 255 for p in parts)
+
+    def rebuild_host_ipname_map(self, sample_limit: int = 400) -> Dict:
+        """Derive ``ip -> dominant hostname`` from the stored logs.
+
+        Samples up to ``sample_limit`` recent logs per non-IP hostname index and
+        counts the sender IP actually seen. Cheap (a few hundred pipelined HGETs
+        per host) and re-run by the hourly cleanup so the grouping stays fresh.
+        """
+        try:
+            hosts = self._index_names('logs:host:')
+        except Exception:
+            hosts = []
+        votes = {}   # ip -> {name: count}
+        for name in hosts:
+            if self._looks_like_ip(name):
+                continue
+            try:
+                ids = self.client.zrevrange(f'logs:host:{name}', 0, max(0, sample_limit - 1))
+            except Exception:
+                continue
+            if not ids:
+                continue
+            pipe = self.client.pipeline()
+            for lid in ids:
+                pipe.hget(lid, 'source')
+            for src in pipe.execute():
+                if src and self._looks_like_ip(src):
+                    votes.setdefault(src, {})
+                    votes[src][name] = votes[src].get(name, 0) + 1
+
+        mapping = {}
+        for ip, names in votes.items():
+            best = max(names.items(), key=lambda kv: kv[1])
+            if best[1] >= 2:       # ignore one-off noise
+                mapping[ip] = best[0]
+        if mapping:
+            self.client.delete(self._HOST_IPNAME)
+            self.client.hset(self._HOST_IPNAME, mapping=mapping)
+        return mapping
+
+    def get_host_groups(self) -> List[Dict]:
+        """Host filter options, one entry per DEVICE.
+
+        Each entry: ``{value, label, kind, count}`` where ``kind`` is ``'ip'``
+        for grouped devices (filter with ``source=<value>``) or ``'host'`` for
+        names that are not tied to a sender IP (e.g. docker logs). IPs with no
+        parsed hostname are still listed (labelled with the IP itself).
+        """
+        try:
+            mapping = dict(self.client.hgetall(self._HOST_IPNAME) or {})
+        except Exception:
+            mapping = {}
+        try:
+            host_names = self._index_names('logs:host:')
+        except Exception:
+            host_names = []
+
+        groups = []
+        absorbed = set(mapping.values())
+
+        # 1) One entry per sender IP (mapped names + bare IPs seen in the host index)
+        ips = set(mapping.keys())
+        for name in host_names:
+            if self._looks_like_ip(name):
+                ips.add(name)
+        for ip in sorted(ips):
+            name = mapping.get(ip)
+            label = f'{name} ({ip})' if name else ip
+            try:
+                count = int(self.client.zcard(f'logs:source:{ip}'))
+            except Exception:
+                count = 0
+            groups.append({'value': ip, 'label': label, 'kind': 'ip', 'count': count})
+
+        # 2) Names that are not represented by a sender IP (docker-host, ...)
+        for name in sorted(host_names):
+            if self._looks_like_ip(name) or name in absorbed:
+                continue
+            try:
+                count = int(self.client.zcard(f'logs:host:{name}'))
+            except Exception:
+                count = 0
+            groups.append({'value': name, 'label': name, 'kind': 'host', 'count': count})
+
+        groups.sort(key=lambda g: g['label'].lower())
+        return groups
+
     def cleanup_old_logs(self, retention_hours: int = None):
         """Remove logs older than retention period and record cleanup status.
 
