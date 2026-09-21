@@ -6,9 +6,12 @@
 {% block content %}
 <!-- Filter Bar -->
 <div class="filter-bar">
-    <select class="form-control form-select" id="filterHost" onchange="applyLogFilters()">
+    <select class="form-control form-select" id="filterHost" onchange="applyLogFilters()" title="">
         <option value="">All Hosts</option>
     </select>
+    <!-- Custom hover bubble for the (shortened) device label: the native title
+         tooltip cannot be styled, and this one uses a larger font. -->
+    <div id="hostTooltip" class="host-tooltip" role="tooltip"></div>
     
     <select class="form-control form-select" id="filterSeveritySelect" onchange="applyLogFilters()">
         <option value="">All Severities</option>

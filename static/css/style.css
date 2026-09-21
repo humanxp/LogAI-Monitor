@@ -696,6 +696,27 @@ tr:hover {
     text-overflow: ellipsis;
 }
 
+/* Custom tooltip for the host select: the browser's native title tooltip
+   cannot be styled, and here the text is deliberately ~2x larger. */
+.host-tooltip {
+    position: absolute;
+    z-index: 3000;
+    display: none;
+    padding: 0.5rem 0.85rem;
+    background: #111827;
+    color: #fff;
+    border-radius: 6px;
+    font-size: 1.5rem;          /* ~2x a native browser tooltip */
+    line-height: 1.25;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    pointer-events: none;
+}
+
+.host-tooltip.show {
+    display: block;
+}
+
 /* Log Entry */
 .log-entry {
     padding: 0.75rem 1rem;

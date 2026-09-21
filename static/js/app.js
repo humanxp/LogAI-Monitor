@@ -2248,11 +2248,7 @@ function _selectedHostKind() {
     const hostKind = _selectedHostKind();
     const severity = document.getElementById('filterSeveritySelect')?.value || '';
     const search = document.getElementById('filterSearch')?.value?.trim() || '';
-    // Show the full "name (ip)" on hover, since the closed label is shortened.
-    if (hostSel) {
-        const opt = hostSel.selectedOptions && hostSel.selectedOptions[0];
-        hostSel.title = (opt && opt.title) || '';
-    }
+    // The full "name (ip)" is shown in the custom bubble (see _initHostTooltip).
     
     // Store active filters for WebSocket log filtering
     activeFilters.host = host;
@@ -2495,6 +2491,36 @@ async function _refreshCurrentPageData() {
 }
 
 // Load hosts for filter dropdown
+// Custom hover bubble for the host select: shows the FULL "name (ip)" of the
+// selected device. A native title tooltip cannot be styled, and this one uses
+// a deliberately larger font.
+function _initHostTooltip() {
+    const sel = document.getElementById('filterHost');
+    const tip = document.getElementById('hostTooltip');
+    if (!sel || !tip || sel.dataset.tooltipBound === '1') return;
+    sel.dataset.tooltipBound = '1';
+
+    const show = () => {
+        const opt = sel.selectedOptions && sel.selectedOptions[0];
+        const text = (opt && (opt.dataset.full || opt.textContent)) || '';
+        if (!text || text === 'All Hosts') { tip.classList.remove('show'); return; }
+        tip.textContent = text;
+        const r = sel.getBoundingClientRect();
+        tip.style.left = (r.left + window.scrollX) + 'px';
+        tip.style.top = (r.bottom + window.scrollY + 6) + 'px';
+        tip.classList.add('show');
+    };
+    const hide = () => tip.classList.remove('show');
+
+    sel.addEventListener('mouseenter', show);
+    sel.addEventListener('mouseleave', hide);
+    sel.addEventListener('focus', show);
+    sel.addEventListener('blur', hide);
+    // addEventListener (not onchange) so the inline applyLogFilters() still runs
+    sel.addEventListener('change', hide);
+    window.addEventListener('scroll', hide, true);
+}
+
 async function loadHosts() {
     try {
         const response = await fetch('/api/hosts?t=' + Date.now());
@@ -2514,11 +2540,12 @@ async function loadHosts() {
         if (select) {
             const currentValue = select.value;
             select.innerHTML = '<option value="">All Hosts</option>' +
-                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}" title="${escapeHtml(h.full)}">${escapeHtml(h.label)}</option>`).join('');
+                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}" data-full="${escapeHtml(h.full)}">${escapeHtml(h.label)}</option>`).join('');
             // Restore selection if that device is still present
             if (currentValue && items.some((h) => h.value === currentValue)) {
                 select.value = currentValue;
             }
+            _initHostTooltip();
         }
     } catch (error) {
         console.error('Error loading hosts:', error);
