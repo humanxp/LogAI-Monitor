@@ -25,19 +25,15 @@
     <input type="text" class="form-control" id="filterSearch" placeholder="Search logs..." 
            onkeyup="if(event.key === 'Enter') applyLogFilters()">
 
-    <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap;"
-          title="按时间范围查看日志（本地时间）">
-        <i class="fas fa-clock" style="color: #666;"></i>
-        <input type="datetime-local" class="form-control" id="filterStartTime" style="width: auto;"
-               onchange="applyLogFilters()" title="起始时间">
+    <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;"
+          title="按日期查看日志（本地日期，含起止当天）">
+        <i class="fas fa-calendar-day" style="color: #666;"></i>
+        <input type="date" class="form-control date-filter-input" id="filterStartDate"
+               onchange="applyLogFilters()" title="起始日期（当天 00:00 起）">
         <span style="color: #666;">~</span>
-        <input type="datetime-local" class="form-control" id="filterEndTime" style="width: auto;"
-               onchange="applyLogFilters()" title="结束时间">
+        <input type="date" class="form-control date-filter-input" id="filterEndDate"
+               onchange="applyLogFilters()" title="结束日期（当天 23:59 止）">
     </span>
-
-    <button class="btn btn-outline btn-sm" onclick="setQuickTimeRange('1h')" title="最近 1 小时">1h</button>
-    <button class="btn btn-outline btn-sm" onclick="setQuickTimeRange('24h')" title="最近 24 小时">24h</button>
-    <button class="btn btn-outline btn-sm" onclick="setQuickTimeRange('7d')" title="最近 7 天">7d</button>
     
     <button class="btn btn-primary" onclick="applyLogFilters()">
         <i class="fas fa-search"></i> Search
@@ -53,9 +49,8 @@
 </div>
 
 <div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; font-size: 0.85rem; color: #1565c0;">
-    <i class="fas fa-clock"></i> 时间过滤：<b id="timeFilterRange"></b>
-    <span style="color: #666; margin-left: 0.35rem;">（仅显示该时间段内的日志）</span>
-    <button type="button" class="btn btn-sm btn-outline" style="margin-left: 0.5rem;" onclick="clearTimeFilter()">清除时间过滤</button>
+    <i class="fas fa-calendar-day"></i> 日期过滤：<b id="timeFilterRange"></b>
+    <button type="button" class="btn btn-sm btn-outline" style="margin-left: 0.5rem;" onclick="clearTimeFilter()">清除</button>
 </div>
 
 <!-- Logs Table -->

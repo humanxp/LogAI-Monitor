@@ -99,12 +99,12 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
-                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00695C;">🕒 按指定时间查看日志 / 分析（2026-09-21）</div>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00695C;">🕒 按指定日期查看日志 / 分析（2026-09-21）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
-                    <li><b>Logs 页面</b>新增时间范围过滤：起始/结束时间选择器（本地时间）+ 快捷预设 <b>1h / 24h / 7d</b> + 清除；可与主机 / 级别 / 关键字叠加使用（例如"GL-AXT1800 最近 24 小时"）</li>
-                    <li>只填一端时自动补全：只填起始 → 到当前时刻；只填结束 → 从最早开始；区间填反自动交换；非法值忽略；生效期间列表为固定历史视图（<b>实时新日志不再混入</b>），顶部显示当前生效范围提示条并可一键清除</li>
-                    <li><b>AI Analysis History 页面</b>同样加入"分析时间"范围过滤，列表与顶部汇总卡片（总数/健康/警告/严重）同步按该范围统计</li>
-                    <li>实现要点：日志与历史的索引都是<b>按写入时间打分的 ZSET</b>，因此时间范围由 Redis 原生 <code>ZRANGEBYSCORE</code> / <code>ZCOUNT</code> 直接处理，与主机/级别过滤天然叠加且只取当前页——实测 7 天窗口取 100 条仅 <b>7ms</b></li>
+                    <li><b>Logs 页面</b>新增日期范围过滤：<b>年月日 ~ 年月日</b> 两个紧凑日期选择框（含起止整天：起始日 00:00 ~ 结束日 23:59）+ 清除按钮；宽度压到 9rem，不会把 Search / Refresh / Clear 挤到第二行；可与主机 / 级别 / 关键字叠加（例如"GL-AXT1800 + 某天"）</li>
+                    <li>只填一端时自动补全：只填起始 → 到当前；只填结束 → 从最早；起始晚于结束自动交换；生效期间列表为固定历史视图（<b>实时新日志不再混入</b>），顶部显示生效日期范围并可一键清除</li>
+                    <li><b>AI Analysis History 页面</b>同样加入"分析日期"过滤，列表与顶部汇总卡片（总数/健康/警告/严重）同步按该范围统计</li>
+                    <li>实现要点：日志与历史的索引都是<b>按写入时间打分的 ZSET</b>，因此范围由 Redis 原生 <code>ZRANGEBYSCORE</code> / <code>ZCOUNT</code> 直接处理，与主机/级别过滤天然叠加且只取当前页——实测 7 天窗口取 100 条仅 <b>7ms</b></li>
                     <li>接口：<code>/api/logs</code>、<code>/api/ai-history</code>、<code>/api/ai-history/stats</code> 均支持 <code>start</code>/<code>end</code>（epoch 秒或 ISO-8601），便于脚本调用</li>
                 </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #4527A0;">📜 AI Analysis History 列表瘦身（2026-09-21）</div>

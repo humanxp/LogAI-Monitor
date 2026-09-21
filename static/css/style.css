@@ -678,6 +678,14 @@ tr:hover {
     min-width: 150px;
 }
 
+/* Compact date-range inputs: the default 150px min-width (and the browser's
+   own minimum for date fields) pushed the filter buttons onto a second row. */
+.filter-bar .date-filter-input {
+    min-width: 0;
+    width: 9rem;
+    padding: 0.25rem 0.35rem;
+}
+
 /* Log Entry */
 .log-entry {
     padding: 0.75rem 1rem;

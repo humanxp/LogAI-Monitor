@@ -2155,21 +2155,16 @@ function submitFilterForm(event) {
     }
 }
 
-// --- Time-range filter helpers -------------------------------------------
-// The datetime-local inputs carry LOCAL time; convert to epoch seconds for the
-// API (which stores and filters on epoch arrival times). Bounds are kept as
+// --- Date-range filter helpers -------------------------------------------
+// The two inputs are plain DATES (local, YYYY-MM-DD): the start day runs from
+// 00:00:00 and the end day through 23:59:59, so "9/20 ~ 9/21" includes both
+// days. They are converted to epoch seconds for the API. Bounds are kept as
 // strings so "0" (open start) stays truthy in the checks below.
-function _toLocalInputValue(date) {
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
-         + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function _timeInputToEpoch(id) {
+function _dateInputToEpoch(id, isEnd) {
     const el = document.getElementById(id);
     const raw = (el && el.value) || '';
     if (!raw) return '';
-    const ms = new Date(raw).getTime();
+    const ms = new Date(raw + (isEnd ? 'T23:59:59' : 'T00:00:00')).getTime();
     return isNaN(ms) ? '' : String(Math.floor(ms / 1000));
 }
 
@@ -2180,25 +2175,24 @@ function _updateTimeFilterHint() {
     if (hint) hint.style.display = hasRange ? '' : 'none';
     if (rangeEl && hasRange) {
         const fmt = (v) => (v && v !== '0')
-            ? new Date(Number(v) * 1000).toLocaleString()
+            ? new Date(Number(v) * 1000).toLocaleDateString()
             : '最早';
         rangeEl.textContent = `${fmt(activeFilters.startTime)} ~ ${fmt(activeFilters.endTime)}`;
     }
 }
 
-// Read the two inputs into activeFilters, normalise inverted/one-sided ranges
-// and refresh the hint banner.
+// Read the two date inputs into activeFilters and normalise one-sided ranges.
 function _syncTimeFilterFromInputs() {
-    let start = _timeInputToEpoch('filterStartTime');
-    let end = _timeInputToEpoch('filterEndTime');
+    let start = _dateInputToEpoch('filterStartDate', false);
+    let end = _dateInputToEpoch('filterEndDate', true);
     if (start && !end) {
         end = String(Math.floor(Date.now() / 1000));       // start only -> up to now
     } else if (!start && end) {
         start = '0';                                       // end only -> from the beginning
     } else if (start && end && Number(start) > Number(end)) {
         const tmp = start; start = end; end = tmp;         // swap an inverted range
-        const sEl = document.getElementById('filterStartTime');
-        const eEl = document.getElementById('filterEndTime');
+        const sEl = document.getElementById('filterStartDate');
+        const eEl = document.getElementById('filterEndDate');
         if (sEl && eEl) { const v = sEl.value; sEl.value = eEl.value; eEl.value = v; }
     }
     activeFilters.startTime = start;
@@ -2206,23 +2200,9 @@ function _syncTimeFilterFromInputs() {
     _updateTimeFilterHint();
 }
 
-// Quick presets: last 1 hour / 24 hours / 7 days.
-function setQuickTimeRange(kind) {
-    const now = new Date();
-    const from = new Date(now);
-    if (kind === '1h') from.setHours(from.getHours() - 1);
-    else if (kind === '24h') from.setDate(from.getDate() - 1);
-    else if (kind === '7d') from.setDate(from.getDate() - 7);
-    const sEl = document.getElementById('filterStartTime');
-    const eEl = document.getElementById('filterEndTime');
-    if (sEl) sEl.value = _toLocalInputValue(from);
-    if (eEl) eEl.value = _toLocalInputValue(now);
-    applyLogFilters();
-}
-
 function clearTimeFilter() {
-    const sEl = document.getElementById('filterStartTime');
-    const eEl = document.getElementById('filterEndTime');
+    const sEl = document.getElementById('filterStartDate');
+    const eEl = document.getElementById('filterEndDate');
     if (sEl) sEl.value = '';
     if (eEl) eEl.value = '';
     activeFilters.startTime = '';
@@ -2312,8 +2292,8 @@ async function clearFilters() {
         const hostEl = document.getElementById('filterHost');
         const severityEl = document.getElementById('filterSeveritySelect');
         const searchEl = document.getElementById('filterSearch');
-        const startEl = document.getElementById('filterStartTime');
-        const endEl = document.getElementById('filterEndTime');
+        const startEl = document.getElementById('filterStartDate');
+        const endEl = document.getElementById('filterEndDate');
         
         if (hostEl) hostEl.value = '';
         if (severityEl) severityEl.value = '';
