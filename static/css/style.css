@@ -686,27 +686,77 @@ tr:hover {
     padding: 0.25rem 0.35rem;
 }
 
-/* Host/device list: labels are device names (sometimes shortened) - keep the
-   closed select about half its old width and ellipsize; the full "name (ip)"
-   is shown as a tooltip. */
-.filter-bar #filterHost {
+/* Device filter: custom dropdown (native <select> popups cannot show hints). */
+.host-combo {
+    position: relative;
+}
+
+.filter-bar .host-combo-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
     width: 11rem;
     max-width: 50vw;
     min-width: 0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.host-combo-toggle span {
+    overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.host-combo-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 2500;
+    display: none;
+    min-width: 15rem;
+    max-width: 60vw;
+    max-height: 22rem;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+.host-combo-list.show {
+    display: block;
+}
+
+.host-combo-item {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.9rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.host-combo-item:hover,
+.host-combo-item.active {
+    background: #eef4ff;
+}
+
+.host-combo-item.selected {
+    font-weight: 600;
+    color: var(--sidebar-active);
 }
 
 /* Custom tooltip for the host select: the browser's native title tooltip
-   cannot be styled, and here the text is deliberately ~2x larger. */
+   cannot be styled, and here the text is deliberately larger. */
 .host-tooltip {
     position: absolute;
     z-index: 3000;
     display: none;
-    padding: 0.5rem 0.85rem;
+    padding: 0.4rem 0.7rem;
     background: #111827;
     color: #fff;
     border-radius: 6px;
-    font-size: 1.5rem;          /* ~2x a native browser tooltip */
+    font-size: 1.15rem;         /* noticeably larger than a native tooltip */
     line-height: 1.25;
     white-space: nowrap;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);

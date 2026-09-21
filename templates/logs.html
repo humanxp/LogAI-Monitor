@@ -6,9 +6,18 @@
 {% block content %}
 <!-- Filter Bar -->
 <div class="filter-bar">
-    <select class="form-control form-select" id="filterHost" onchange="applyLogFilters()" title="">
-        <option value="">All Hosts</option>
-    </select>
+    <!-- Device filter: a custom dropdown instead of a native <select>, because
+         the native popup cannot show per-row hints. Rows show the full
+         "name (ip)" and hover shows the larger bubble. -->
+    <div class="host-combo" id="hostCombo">
+        <button type="button" class="form-control form-select host-combo-toggle" id="filterHostBtn"
+                onclick="toggleHostCombo(event)" aria-haspopup="listbox" aria-expanded="false">
+            <span id="filterHostText">All Hosts</span>
+            <i class="fas fa-caret-down" style="opacity: 0.6;"></i>
+        </button>
+        <div class="host-combo-list" id="hostComboList" role="listbox"></div>
+    </div>
+    <input type="hidden" id="filterHost" value="" data-kind="host" data-full="">
     <!-- Custom hover bubble for the (shortened) device label: the native title
          tooltip cannot be styled, and this one uses a larger font. -->
     <div id="hostTooltip" class="host-tooltip" role="tooltip"></div>

@@ -2234,12 +2234,12 @@ function clearTimeFilter() {
 }
 
 // Apply log filters (always returns to page 1 of the filtered result)
-// How the currently selected host option must be applied: grouped devices are
-// filtered by sender IP (source), plain names by the hostname index.
+// How the currently selected device must be applied: grouped devices are
+// filtered by sender IP (source), plain names by the hostname index. The
+// custom dropdown keeps this on the hidden #filterHost input.
 function _selectedHostKind() {
-    const sel = document.getElementById('filterHost');
-    const opt = sel && sel.selectedOptions && sel.selectedOptions[0];
-    return (opt && opt.dataset && opt.dataset.kind) || 'host';
+    const input = document.getElementById('filterHost');
+    return (input && input.dataset && input.dataset.kind) || 'host';
 }
 
  function applyLogFilters() {
@@ -2331,11 +2331,17 @@ async function clearFilters() {
         const startEl = document.getElementById('filterStartDate');
         const endEl = document.getElementById('filterEndDate');
         
-        if (hostEl) hostEl.value = '';
+        if (hostEl) {
+            hostEl.value = '';
+            hostEl.dataset.kind = 'host';
+            hostEl.dataset.full = '';
+        }
         if (severityEl) severityEl.value = '';
         if (searchEl) searchEl.value = '';
         if (startEl) startEl.value = '';
         if (endEl) endEl.value = '';
+        if (typeof _syncHostComboUI === 'function') _syncHostComboUI();
+        if (typeof closeHostCombo === 'function') closeHostCombo();
         
         // Clear active filters
         activeFilters.host = '';
@@ -2417,6 +2423,19 @@ document.addEventListener('DOMContentLoaded', () => {
         activeFilters.search = '';
         activeFilters.startTime = '';
         activeFilters.endTime = '';
+        // Reset the custom device dropdown + date inputs
+        const hostInputEl = document.getElementById('filterHost');
+        if (hostInputEl) {
+            hostInputEl.value = '';
+            hostInputEl.dataset.kind = 'host';
+            hostInputEl.dataset.full = '';
+        }
+        const hostTextEl = document.getElementById('filterHostText');
+        if (hostTextEl) hostTextEl.textContent = 'All Hosts';
+        ['filterSeveritySelect', 'filterSearch', 'filterStartDate', 'filterEndDate'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
         // Load hide duplicates setting first, then fetch page 1
         loadHideDuplicatesDefault().then(() => {
             loadLogsPage(1);
@@ -2490,35 +2509,76 @@ async function _refreshCurrentPageData() {
     }
 }
 
-// Load hosts for filter dropdown
-// Custom hover bubble for the host select: shows the FULL "name (ip)" of the
-// selected device. A native title tooltip cannot be styled, and this one uses
-// a deliberately larger font.
-function _initHostTooltip() {
-    const sel = document.getElementById('filterHost');
+// --- Device filter: custom dropdown ---------------------------------------
+// A native <select> popup is drawn by the browser and cannot show hints, so the
+// device filter is a small custom listbox: the closed control keeps a compact
+// label, the OPEN list shows the full "name (ip)" per row, and hovering either
+// the control or a row shows the larger bubble.
+function _hostTooltipShow(text, anchorRect) {
     const tip = document.getElementById('hostTooltip');
-    if (!sel || !tip || sel.dataset.tooltipBound === '1') return;
-    sel.dataset.tooltipBound = '1';
+    if (!tip) return;
+    if (!text) { tip.classList.remove('show'); return; }
+    tip.textContent = text;
+    tip.style.left = (anchorRect.left + window.scrollX) + 'px';
+    tip.style.top = (anchorRect.bottom + window.scrollY + 6) + 'px';
+    tip.classList.add('show');
+}
 
-    const show = () => {
-        const opt = sel.selectedOptions && sel.selectedOptions[0];
-        const text = (opt && (opt.dataset.full || opt.textContent)) || '';
-        if (!text || text === 'All Hosts') { tip.classList.remove('show'); return; }
-        tip.textContent = text;
-        const r = sel.getBoundingClientRect();
-        tip.style.left = (r.left + window.scrollX) + 'px';
-        tip.style.top = (r.bottom + window.scrollY + 6) + 'px';
-        tip.classList.add('show');
-    };
-    const hide = () => tip.classList.remove('show');
+function _hostTooltipHide() {
+    const tip = document.getElementById('hostTooltip');
+    if (tip) tip.classList.remove('show');
+}
 
-    sel.addEventListener('mouseenter', show);
-    sel.addEventListener('mouseleave', hide);
-    sel.addEventListener('focus', show);
-    sel.addEventListener('blur', hide);
-    // addEventListener (not onchange) so the inline applyLogFilters() still runs
-    sel.addEventListener('change', hide);
-    window.addEventListener('scroll', hide, true);
+function closeHostCombo() {
+    const list = document.getElementById('hostComboList');
+    const btn = document.getElementById('filterHostBtn');
+    if (list) list.classList.remove('show');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    _hostTooltipHide();
+}
+
+function toggleHostCombo(event) {
+    if (event) event.stopPropagation();
+    const list = document.getElementById('hostComboList');
+    const btn = document.getElementById('filterHostBtn');
+    if (!list) return;
+    const willShow = !list.classList.contains('show');
+    list.classList.toggle('show', willShow);
+    if (btn) btn.setAttribute('aria-expanded', willShow ? 'true' : 'false');
+    // Mark the current selection so it is easy to spot while choosing.
+    const current = document.getElementById('filterHost')?.value || '';
+    list.querySelectorAll('.host-combo-item').forEach((el) => {
+        el.classList.toggle('selected', (el.dataset.value || '') === current);
+    });
+}
+
+function _selectHostComboItem(el) {
+    const input = document.getElementById('filterHost');
+    const textEl = document.getElementById('filterHostText');
+    const value = el.dataset.value || '';
+    if (input) {
+        input.value = value;
+        input.dataset.kind = el.dataset.kind || 'host';
+        input.dataset.full = el.dataset.full || '';
+    }
+    if (textEl) textEl.textContent = el.dataset.label || el.dataset.full || value || 'All Hosts';
+    closeHostCombo();
+    applyLogFilters();
+}
+
+// Keep the custom control in sync with the hidden input (used by clear/reset).
+function _syncHostComboUI() {
+    const input = document.getElementById('filterHost');
+    const textEl = document.getElementById('filterHostText');
+    const list = document.getElementById('hostComboList');
+    const value = input?.value || '';
+    if (!textEl) return;
+    if (!value) {
+        textEl.textContent = 'All Hosts';
+        return;
+    }
+    const el = list && list.querySelector(`.host-combo-item[data-value="${CSS.escape(value)}"]`);
+    textEl.textContent = (el && (el.dataset.label || el.dataset.full)) || value;
 }
 
 async function loadHosts() {
@@ -2526,7 +2586,7 @@ async function loadHosts() {
         const response = await fetch('/api/hosts?t=' + Date.now());
         const data = await response.json();
 
-        // The server now returns one entry per DEVICE: {value, label, kind, count}
+        // The server returns one entry per DEVICE: {value, label, kind, count, full}
         // (kind='ip' -> filter by source, kind='host' -> filter by hostname).
         // Plain string lists are still accepted for backwards compatibility.
         const items = (Array.isArray(data) ? data : []).map((h) => (
@@ -2536,21 +2596,65 @@ async function loadHosts() {
                     count: h.count || 0, full: h.full || h.label || h.value }
         ));
 
-        const select = document.getElementById('filterHost');
-        if (select) {
-            const currentValue = select.value;
-            select.innerHTML = '<option value="">All Hosts</option>' +
-                items.map((h) => `<option value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}" data-full="${escapeHtml(h.full)}">${escapeHtml(h.label)}</option>`).join('');
-            // Restore selection if that device is still present
-            if (currentValue && items.some((h) => h.value === currentValue)) {
-                select.value = currentValue;
-            }
-            _initHostTooltip();
+        const list = document.getElementById('hostComboList');
+        if (!list) return;
+        const rows = [`<div class="host-combo-item" data-value="" data-kind="host" data-full="" data-label="All Hosts" style="color:#666;">All Hosts</div>`]
+            .concat(items.map((h) => (
+                `<div class="host-combo-item" data-value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}"` +
+                ` data-full="${escapeHtml(h.full)}" data-label="${escapeHtml(h.label)}">${escapeHtml(h.full)}</div>`
+            )));
+        list.innerHTML = rows.join('');
+
+        list.querySelectorAll('.host-combo-item').forEach((el) => {
+            el.addEventListener('click', () => _selectHostComboItem(el));
+            el.addEventListener('mouseenter', () => {
+                const full = el.dataset.full || '';
+                if (full) _hostTooltipShow(full, el.getBoundingClientRect());
+            });
+            el.addEventListener('mouseleave', _hostTooltipHide);
+        });
+
+        // Drop a selection that no longer exists, then reflect it in the control
+        const input = document.getElementById('filterHost');
+        if (input && input.value && !items.some((h) => h.value === input.value)) {
+            input.value = '';
+            input.dataset.kind = 'host';
+            input.dataset.full = '';
         }
+        _syncHostComboUI();
+        _initHostTooltip();
     } catch (error) {
         console.error('Error loading hosts:', error);
     }
 }
+
+// Hover bubble for the CLOSED control (the open list shows full names already).
+function _initHostTooltip() {
+    const btn = document.getElementById('filterHostBtn');
+    const input = document.getElementById('filterHost');
+    if (!btn || !input || btn.dataset.tooltipBound === '1') return;
+    btn.dataset.tooltipBound = '1';
+
+    const show = () => {
+        const full = input.dataset.full || '';
+        if (!full) { _hostTooltipHide(); return; }
+        _hostTooltipShow(full, btn.getBoundingClientRect());
+    };
+    btn.addEventListener('mouseenter', show);
+    btn.addEventListener('mouseleave', _hostTooltipHide);
+    btn.addEventListener('focus', show);
+    btn.addEventListener('blur', _hostTooltipHide);
+    window.addEventListener('scroll', _hostTooltipHide, true);
+}
+
+// Close the device list when clicking elsewhere or pressing Escape.
+document.addEventListener('click', (e) => {
+    const combo = document.getElementById('hostCombo');
+    if (combo && !combo.contains(e.target)) closeHostCombo();
+});
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeHostCombo();
+});
 
 // Legacy function for backward compatibility
 async function loadSources() {
