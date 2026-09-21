@@ -480,6 +480,34 @@ th {
     letter-spacing: 0.5px;
 }
 
+/* Alert History: compact rows that never wrap. Long messages are ellipsized
+   (full text on hover) and the container scrolls horizontally if needed. */
+#alertsContainer table {
+    font-size: 0.78rem;
+}
+
+#alertsContainer table th,
+#alertsContainer table td {
+    padding: 0.4rem 0.6rem;
+    white-space: nowrap;
+}
+
+#alertsContainer table th {
+    font-size: 0.72rem;
+}
+
+#alertsContainer table td.alert-message {
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#alertsContainer table td.alert-filter {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 tr:hover {
     background-color: #f8f9fa;
 }

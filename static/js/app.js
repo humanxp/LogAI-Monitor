@@ -1003,10 +1003,10 @@ function renderAlerts() {
                     <tr class="${alert.acknowledged ? '' : 'unread'}">
                         <td>${escapeHtml(new Date(alert.timestamp).toLocaleString())}</td>
                         <td>${severityBadge(alert.severity)}</td>
-                        <td>${escapeHtml(alert.filter_name || '-')}</td>
+                        <td class="alert-filter">${escapeHtml(alert.filter_name || '-')}</td>
                         <td><span class="log-host" title="${escapeHtml(alert.hostname || alert.source || '-')}">${escapeHtml(alert.hostname || alert.source || '-')}</span></td>
                         <td>${escapeHtml(alert.source || '-')}</td>
-                        <td>${escapeHtml(alert.message?.substring(0, 100) || '-')}...</td>
+                        <td class="alert-message" title="${escapeHtml(alert.message || '-')}">${escapeHtml(alert.message?.substring(0, 120) || '-')}</td>
                         <td>${alert.acknowledged ? '✓ Acknowledged' : '⚠ New'}</td>
                         <td>
                             ${!alert.acknowledged ? `
