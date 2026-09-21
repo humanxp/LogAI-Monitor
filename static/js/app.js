@@ -229,6 +229,12 @@ async function fetchLogs(params = {}) {
         if (params.search && params.search !== '') {
             queryParams.set('search', params.search);
         }
+        if (params.start) {
+            queryParams.set('start', params.start);
+        }
+        if (params.end) {
+            queryParams.set('end', params.end);
+        }
         
         const response = await fetch(`/api/logs?${queryParams}`);
         const data = await response.json();
@@ -270,7 +276,9 @@ function loadLogsPage(page, opts) {
         offset: (page - 1) * LOG_PAGE_SIZE,
         host: activeFilters.host,
         severity: activeFilters.severity,
-        search: activeFilters.search
+        search: activeFilters.search,
+        start: activeFilters.startTime,
+        end: activeFilters.endTime
     };
     if (opts.scroll !== false) {
         const scroll = document.getElementById('logsContainer');
@@ -345,7 +353,10 @@ function logsPageBrowsingHistory() {
 const activeFilters = {
     host: '',
     severity: '',
-    search: ''
+    search: '',
+    // Epoch seconds; set when the user filters by a time window.
+    startTime: '',
+    endTime: ''
 };
 
 // Normalize a message for duplicate comparison by removing timestamps, durations, and variable parts
@@ -472,6 +483,9 @@ function _refreshDuplicateBadge(duplicateKey, count) {
 }
 
 function _logPassesActiveFilters(log) {
+    // While a time window is applied the list is a fixed historical view, so
+    // live rows (arriving now) must not be mixed into it.
+    if (activeFilters.startTime || activeFilters.endTime) return false;
     if (activeFilters.host && (log.hostname || log.source) !== activeFilters.host) return false;
     if (activeFilters.severity && log.severity !== activeFilters.severity) return false;
     if (activeFilters.search) {
@@ -2141,6 +2155,88 @@ function submitFilterForm(event) {
     }
 }
 
+// --- Time-range filter helpers -------------------------------------------
+// The datetime-local inputs carry LOCAL time; convert to epoch seconds for the
+// API (which stores and filters on epoch arrival times). Bounds are kept as
+// strings so "0" (open start) stays truthy in the checks below.
+function _toLocalInputValue(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+         + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function _timeInputToEpoch(id) {
+    const el = document.getElementById(id);
+    const raw = (el && el.value) || '';
+    if (!raw) return '';
+    const ms = new Date(raw).getTime();
+    return isNaN(ms) ? '' : String(Math.floor(ms / 1000));
+}
+
+function _updateTimeFilterHint() {
+    const hint = document.getElementById('timeFilterHint');
+    const rangeEl = document.getElementById('timeFilterRange');
+    const hasRange = !!(activeFilters.startTime || activeFilters.endTime);
+    if (hint) hint.style.display = hasRange ? '' : 'none';
+    if (rangeEl && hasRange) {
+        const fmt = (v) => (v && v !== '0')
+            ? new Date(Number(v) * 1000).toLocaleString()
+            : '最早';
+        rangeEl.textContent = `${fmt(activeFilters.startTime)} ~ ${fmt(activeFilters.endTime)}`;
+    }
+}
+
+// Read the two inputs into activeFilters, normalise inverted/one-sided ranges
+// and refresh the hint banner.
+function _syncTimeFilterFromInputs() {
+    let start = _timeInputToEpoch('filterStartTime');
+    let end = _timeInputToEpoch('filterEndTime');
+    if (start && !end) {
+        end = String(Math.floor(Date.now() / 1000));       // start only -> up to now
+    } else if (!start && end) {
+        start = '0';                                       // end only -> from the beginning
+    } else if (start && end && Number(start) > Number(end)) {
+        const tmp = start; start = end; end = tmp;         // swap an inverted range
+        const sEl = document.getElementById('filterStartTime');
+        const eEl = document.getElementById('filterEndTime');
+        if (sEl && eEl) { const v = sEl.value; sEl.value = eEl.value; eEl.value = v; }
+    }
+    activeFilters.startTime = start;
+    activeFilters.endTime = end;
+    _updateTimeFilterHint();
+}
+
+// Quick presets: last 1 hour / 24 hours / 7 days.
+function setQuickTimeRange(kind) {
+    const now = new Date();
+    const from = new Date(now);
+    if (kind === '1h') from.setHours(from.getHours() - 1);
+    else if (kind === '24h') from.setDate(from.getDate() - 1);
+    else if (kind === '7d') from.setDate(from.getDate() - 7);
+    const sEl = document.getElementById('filterStartTime');
+    const eEl = document.getElementById('filterEndTime');
+    if (sEl) sEl.value = _toLocalInputValue(from);
+    if (eEl) eEl.value = _toLocalInputValue(now);
+    applyLogFilters();
+}
+
+function clearTimeFilter() {
+    const sEl = document.getElementById('filterStartTime');
+    const eEl = document.getElementById('filterEndTime');
+    if (sEl) sEl.value = '';
+    if (eEl) eEl.value = '';
+    activeFilters.startTime = '';
+    activeFilters.endTime = '';
+    _updateTimeFilterHint();
+    state.logPage = 1;
+    if (state.currentPage === 'logs') {
+        loadLogsPage(1);
+    } else {
+        fetchLogs();
+    }
+    showToast('Time filter', '已清除时间过滤', 'info');
+}
+
 // Apply log filters (always returns to page 1 of the filtered result)
  function applyLogFilters() {
     const host = document.getElementById('filterHost')?.value || '';
@@ -2151,6 +2247,7 @@ function submitFilterForm(event) {
     activeFilters.host = host;
     activeFilters.severity = severity;
     activeFilters.search = search;
+    _syncTimeFilterFromInputs();
     state.logPage = 1;
     
     if (state.currentPage === 'logs') {
@@ -2162,6 +2259,8 @@ function submitFilterForm(event) {
     if (host) params.host = host;  // Use host param for hostname filtering
     if (severity) params.severity = severity;
     if (search) params.search = search;
+    if (activeFilters.startTime) params.start = activeFilters.startTime;
+    if (activeFilters.endTime) params.end = activeFilters.endTime;
     
     fetchLogs(params);
 }
@@ -2180,10 +2279,13 @@ async function refreshLogs() {
         activeFilters.host = host;
         activeFilters.severity = severity;
         activeFilters.search = search;
+        _syncTimeFilterFromInputs();
         const params = {};
         if (host) params.host = host;
         if (severity) params.severity = severity;
         if (search) params.search = search;
+        if (activeFilters.startTime) params.start = activeFilters.startTime;
+        if (activeFilters.endTime) params.end = activeFilters.endTime;
         // On the Logs page a refresh keeps the current page (respect filters)
         if (state.currentPage === 'logs') {
             await loadLogsPage(state.logPage || 1);
@@ -2210,15 +2312,22 @@ async function clearFilters() {
         const hostEl = document.getElementById('filterHost');
         const severityEl = document.getElementById('filterSeveritySelect');
         const searchEl = document.getElementById('filterSearch');
+        const startEl = document.getElementById('filterStartTime');
+        const endEl = document.getElementById('filterEndTime');
         
         if (hostEl) hostEl.value = '';
         if (severityEl) severityEl.value = '';
         if (searchEl) searchEl.value = '';
+        if (startEl) startEl.value = '';
+        if (endEl) endEl.value = '';
         
         // Clear active filters
         activeFilters.host = '';
         activeFilters.severity = '';
         activeFilters.search = '';
+        activeFilters.startTime = '';
+        activeFilters.endTime = '';
+        _updateTimeFilterHint();
         state.logPage = 1;
         
         // Fetch all logs (page 1)

@@ -1200,6 +1200,37 @@ def api_stats():
     """Get system statistics"""
     return jsonify(_collect_stats_payload())
 
+def _parse_time_range_args():
+    """Parse optional ``?start=&end=`` into an epoch-second window.
+
+    The UI sends epoch seconds (from its datetime-local inputs); ISO-8601 is
+    also accepted for scripted/API use. Returns (None, None) unless BOTH ends
+    parse, and swaps them when they arrive inverted.
+    """
+    def _one(name):
+        raw = (request.args.get(name) or '').strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+        try:
+            dt = datetime.fromisoformat(raw.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            return None
+
+    start = _one('start')
+    end = _one('end')
+    if start is None or end is None:
+        return None, None
+    if start > end:
+        start, end = end, start
+    return start, end
+
 @app.route('/api/logs')
 @require_redis_api
 def api_logs():
@@ -1210,6 +1241,7 @@ def api_logs():
     host = request.args.get('host')
     severity = request.args.get('severity')
     search = request.args.get('search')
+    start_time, end_time = _parse_time_range_args()
     
     logs = redis_client.get_logs(
         limit=limit,
@@ -1217,19 +1249,19 @@ def api_logs():
         source=source,
         host=host,
         severity=severity,
-        search=search
+        search=search,
+        start_time=start_time,
+        end_time=end_time
     )
 
-    # When index filters (host/source/severity) are active, report the
-    # FILTERED total so the frontend paginator walks only the matching
-    # records - the raw timeline count would make the pager behave as if the
-    # filter was not applied.  (Free-text search alone still uses the
-    # timeline count because it is evaluated after the newest-window fetch.)
-    if host or source or severity:
-        total = redis_client.get_filtered_log_count(source=source, host=host,
-                                                    severity=severity)
-    else:
-        total = redis_client.get_logs_count()
+    # Report the total of the FILTERED dataset (index filters and/or time
+    # window) so the paginator walks only the matching records - the raw
+    # timeline count would make the pager behave as if no filter was applied.
+    # (Free-text search alone still uses the timeline count because it is
+    # evaluated after the newest-window fetch.)
+    total = redis_client.get_filtered_log_count(
+        source=source, host=host, severity=severity,
+        start_time=start_time, end_time=end_time)
 
     return jsonify({
         'logs': logs,
@@ -1626,13 +1658,20 @@ def api_ollama_analyze():
 @require_redis_api
 def api_ai_history():
     """Get AI analysis history page (newest-first, ``limit`` per page at
-    ``offset``) plus the live total for pagination."""
+    ``offset``) plus the live total for pagination.
+
+    Optional ``start``/``end`` (epoch seconds) restrict the page to entries
+    created inside that window; the total then counts only that window."""
     limit = min(request.args.get('limit', 100, type=int), 500)
     offset = max(request.args.get('offset', 0, type=int), 0)
-    history = redis_client.get_analysis_history(limit=limit, offset=offset)
+    start_time, end_time = _parse_time_range_args()
+    history = redis_client.get_analysis_history(limit=limit, offset=offset,
+                                                start_time=start_time,
+                                                end_time=end_time)
     return jsonify({
         'history': history,
-        'total': redis_client.get_analysis_history_count(),
+        'total': redis_client.get_analysis_history_count(start_time=start_time,
+                                                         end_time=end_time),
         'offset': offset,
         'limit': limit
     })
@@ -1640,9 +1679,12 @@ def api_ai_history():
 @app.route('/api/ai-history/stats')
 @require_redis_api
 def api_ai_history_stats():
-    """Aggregate status counts across ALL live analysis-history entries
-    (cached ~60s server-side)."""
-    return jsonify(redis_client.get_ai_history_stats())
+    """Aggregate status counts across live analysis-history entries, optionally
+    limited to a ``start``/``end`` window (the unfiltered result is cached
+    ~60s server-side; a specific window is aggregated on demand)."""
+    start_time, end_time = _parse_time_range_args()
+    return jsonify(redis_client.get_ai_history_stats(start_time=start_time,
+                                                     end_time=end_time))
 
 @app.route('/api/ai-history/<history_id>')
 @require_redis_api

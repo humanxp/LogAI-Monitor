@@ -185,6 +185,10 @@ class RedisClient:
         timeline), so deep pages and per-host views no longer fetch and score
         every matching id before slicing to one page.
 
+        ``start_time``/``end_time`` (epoch seconds) restrict the page to a time
+        window; because every index is a ZSET scored by arrival time the range
+        is applied natively by Redis and combines with host/source/severity.
+
         Free-text search still filters in Python, so it uses a bounded
         look-ahead window (the page plus 500 extra rows) to stay responsive.
         """
@@ -192,29 +196,25 @@ class RedisClient:
         offset = max(0, int(offset or 0))
         keys = self._filtered_index_keys(host=host, source=source, severity=severity)
         searching = bool(search and search.strip())
-
-        # Bounded look-ahead window used by the search path.
-        def _window_ids():
-            window = offset + limit + 500
-            if keys:
-                return self.client.zrevrange(self._filtered_page_key(keys), 0, window - 1)
-            return self.client.zrevrange('logs:timeline', 0, window - 1)
-
-        if start_time and end_time and not searching:
-            # Time-range query: page inside Redis as well.
-            return self._fetch_logs_pipelined(
-                self.client.zrevrangebyscore('logs:timeline', end_time, start_time,
-                                             start=offset, num=limit))
+        page_key = self._filtered_page_key(keys) if keys else 'logs:timeline'
+        ranged = start_time is not None and end_time is not None
 
         if searching:
-            logs = self._apply_search(self._fetch_logs_pipelined(_window_ids()), search)
+            # Bounded look-ahead window; filtering happens in Python.
+            window = offset + limit + 500
+            if ranged:
+                ids = self.client.zrevrangebyscore(page_key, end_time, start_time,
+                                                   start=0, num=window)
+            else:
+                ids = self.client.zrevrange(page_key, 0, window - 1)
+            logs = self._apply_search(self._fetch_logs_pipelined(ids), search)
             return logs[offset:offset + limit]
 
-        if keys:
-            ids = self.client.zrevrange(self._filtered_page_key(keys),
-                                        offset, offset + limit - 1)
+        if ranged:
+            ids = self.client.zrevrangebyscore(page_key, end_time, start_time,
+                                               start=offset, num=limit)
         else:
-            ids = self.client.zrevrange('logs:timeline', offset, offset + limit - 1)
+            ids = self.client.zrevrange(page_key, offset, offset + limit - 1)
         return self._fetch_logs_pipelined(ids)
 
     def _fetch_logs_pipelined(self, log_ids) -> List[Dict]:
@@ -247,19 +247,21 @@ class RedisClient:
         return self.client.zcard('logs:timeline')
 
     def get_filtered_log_count(self, source: str = None, host: str = None,
-                               severity: str = None) -> int:
-        """Number of log ids that match the given host/source/severity index
-        filters (exact-match, like get_logs' filtered path).
+                               severity: str = None, start_time: float = None,
+                               end_time: float = None) -> int:
+        """Number of live logs matching the given host/source/severity filters
+        and optional time window.
 
         Used by /api/logs so the UI paginator counts the FILTERED dataset
         (otherwise selecting one device would still report the whole-database
-        total and paginate through unrelated pages).
+        total and paginate through unrelated pages). ZCARD / ZCOUNT on the
+        index - no member fetch.
         """
         keys = self._filtered_index_keys(host=host, source=source, severity=severity)
-        if not keys:
-            return self.get_logs_count()
-        # ZCARD on the index (or on the cached intersection) - no member fetch.
-        return int(self.client.zcard(self._filtered_page_key(keys)))
+        page_key = self._filtered_page_key(keys) if keys else 'logs:timeline'
+        if start_time is not None and end_time is not None:
+            return int(self.client.zcount(page_key, start_time, end_time))
+        return int(self.client.zcard(page_key))
 
     # ------------------------------------------------------------------
     # Unanalyzed-log index.
@@ -1024,7 +1026,9 @@ class RedisClient:
         except Exception as e:
             print(f"[Redis] ai_history prune failed: {e}")
 
-    def get_analysis_history(self, limit: int = 50, offset: int = 0) -> List[Dict]:
+    def get_analysis_history(self, limit: int = 50, offset: int = 0,
+                             start_time: float = None,
+                             end_time: float = None) -> List[Dict]:
         """Get AI analysis history (newest-first page).
 
         ``offset`` enables pagination; dead (TTL-expired) members are pruned
@@ -1036,11 +1040,20 @@ class RedisClient:
         reads straight from Redis (see /api/analysis/reanalyze). Dropping them
         takes a 100-row page from ~800 KB down to ~145 KB. The hashes are also
         fetched in ONE pipeline instead of a round trip per entry.
+
+        ``start_time``/``end_time`` (epoch seconds) restrict the page to entries
+        created inside that window (the timeline is a ZSET scored by creation
+        time, so Redis applies the range directly).
         """
         self._prune_ai_history_dead()
         start = max(0, offset)
         stop = offset + max(0, limit) - 1
-        history_ids = self.client.zrevrange('ai_history:timeline', start, stop)
+        if start_time is not None and end_time is not None:
+            history_ids = self.client.zrevrangebyscore(
+                'ai_history:timeline', end_time, start_time,
+                start=start, num=max(0, limit))
+        else:
+            history_ids = self.client.zrevrange('ai_history:timeline', start, stop)
         if not history_ids:
             return []
 
@@ -1064,28 +1077,38 @@ class RedisClient:
             history.append(data)
         return history
 
-    def get_analysis_history_count(self) -> int:
-        """Return the total number of LIVE AI analysis history entries (dead
-        TTL-expired members are pruned first, so this matches what pagination
-        walks over)."""
+    def get_analysis_history_count(self, start_time: float = None,
+                                   end_time: float = None) -> int:
+        """Return the number of LIVE AI analysis history entries, optionally
+        limited to a creation-time window (dead TTL-expired members are pruned
+        first, so this matches what pagination walks over)."""
         self._prune_ai_history_dead()
+        if start_time is not None and end_time is not None:
+            return int(self.client.zcount('ai_history:timeline', start_time, end_time))
         return self.client.zcard('ai_history:timeline')
 
-    def get_ai_history_stats(self) -> Dict:
-        """Aggregate status counts across ALL live analysis-history entries.
+    def get_ai_history_stats(self, start_time: float = None,
+                             end_time: float = None) -> Dict:
+        """Aggregate status counts across live analysis-history entries.
 
         Called from the AI History page (which is paginated now, so the
         per-page payload alone can no longer feed the summary cards).
-        Cached ~60s in-process: only recomputed on page open / refresh.
+        The unfiltered result is cached ~60s in-process; a specific time window
+        is aggregated on demand so the cards always match the visible range.
         """
-        with self._cache_lock:
-            now = time.time()
-            cached = getattr(self, '_ai_stats_cache', None)
-            if cached and (now - cached[0]) < 60:
-                return cached[1]
+        ranged = start_time is not None and end_time is not None
+        if not ranged:
+            with self._cache_lock:
+                now = time.time()
+                cached = getattr(self, '_ai_stats_cache', None)
+                if cached and (now - cached[0]) < 60:
+                    return cached[1]
 
         self._prune_ai_history_dead()
-        ids = self.client.zrange('ai_history:timeline', 0, -1)
+        if ranged:
+            ids = self.client.zrangebyscore('ai_history:timeline', start_time, end_time)
+        else:
+            ids = self.client.zrange('ai_history:timeline', 0, -1)
         total = len(ids)
         counts = {'healthy': 0, 'warning': 0, 'critical': 0, 'other': 0}
         if ids:
@@ -1119,7 +1142,8 @@ class RedisClient:
                     counts['other'] += 1
 
         result = {'total': total, **counts}
-        self._ai_stats_cache = (time.time(), result)
+        if not ranged:
+            self._ai_stats_cache = (time.time(), result)
         return result
 
     def purge_stale_failed_history(self, limit: int = 150) -> int:

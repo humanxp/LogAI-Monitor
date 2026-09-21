@@ -80,6 +80,20 @@
             </button>
         </div>
     </div>
+    <div style="padding: 0.5rem 1.25rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; font-size: 0.9rem;">
+        <i class="fas fa-clock" style="color: #666;"></i>
+        <span style="color: #666;">分析时间：</span>
+        <input type="datetime-local" class="form-control" id="historyStartTime" style="width: auto;"
+               onchange="historyApplyTimeFilter()" title="起始时间（本地时间）">
+        <span style="color: #666;">~</span>
+        <input type="datetime-local" class="form-control" id="historyEndTime" style="width: auto;"
+               onchange="historyApplyTimeFilter()" title="结束时间（本地时间）">
+        <button type="button" class="btn btn-sm btn-outline" onclick="historySetQuickRange('1h')" title="最近 1 小时">1h</button>
+        <button type="button" class="btn btn-sm btn-outline" onclick="historySetQuickRange('24h')" title="最近 24 小时">24h</button>
+        <button type="button" class="btn btn-sm btn-outline" onclick="historySetQuickRange('7d')" title="最近 7 天">7d</button>
+        <button type="button" class="btn btn-sm btn-outline" onclick="historyClearTimeFilter()">清除</button>
+        <span id="historyTimeRange" style="display: none; color: #1565c0;"></span>
+    </div>
     <div class="card-body" style="padding: 0;">
         <div id="historyContainer" class="table-container">
             <div class="empty-state">
@@ -121,6 +135,9 @@ let currentHistoryId = null;
 // aggregate (all pages), so the numbers stay correct while browsing.
 const HISTORY_PAGE_SIZE = 100;
 let historyPage = 1;
+// Active analysis-time window (epoch seconds as strings; '' = no bound).
+let historyStartTime = '';
+let historyEndTime = '';
 
 function isFailedAnalysis(a) {
     if (!a) return true;
@@ -131,6 +148,83 @@ function isFailedAnalysis(a) {
     return hay.indexOf('Unable to parse') !== -1 || hay.indexOf('did not respond') !== -1;
 }
 
+// --- Analysis-time filter -------------------------------------------------
+// The inputs carry LOCAL time; the API filters on epoch creation time.
+function _hToLocalInputValue(date) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+         + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function _hTimeInputToEpoch(id) {
+    const el = document.getElementById(id);
+    const raw = (el && el.value) || '';
+    if (!raw) return '';
+    const ms = new Date(raw).getTime();
+    return isNaN(ms) ? '' : String(Math.floor(ms / 1000));
+}
+
+function _updateHistoryTimeHint() {
+    const el = document.getElementById('historyTimeRange');
+    if (!el) return;
+    const hasRange = !!(historyStartTime || historyEndTime);
+    el.style.display = hasRange ? '' : 'none';
+    if (hasRange) {
+        const fmt = (v) => (v && v !== '0')
+            ? new Date(Number(v) * 1000).toLocaleString()
+            : '最早';
+        el.textContent = `（筛选：${fmt(historyStartTime)} ~ ${fmt(historyEndTime)}）`;
+    }
+}
+
+function _syncHistoryTimeFilter() {
+    let start = _hTimeInputToEpoch('historyStartTime');
+    let end = _hTimeInputToEpoch('historyEndTime');
+    if (start && !end) {
+        end = String(Math.floor(Date.now() / 1000));
+    } else if (!start && end) {
+        start = '0';
+    } else if (start && end && Number(start) > Number(end)) {
+        const tmp = start; start = end; end = tmp;
+        const sEl = document.getElementById('historyStartTime');
+        const eEl = document.getElementById('historyEndTime');
+        if (sEl && eEl) { const v = sEl.value; sEl.value = eEl.value; eEl.value = v; }
+    }
+    historyStartTime = start;
+    historyEndTime = end;
+    _updateHistoryTimeHint();
+}
+
+function historyApplyTimeFilter() {
+    _syncHistoryTimeFilter();
+    fetchAIHistory(1);
+}
+
+function historySetQuickRange(kind) {
+    const now = new Date();
+    const from = new Date(now);
+    if (kind === '1h') from.setHours(from.getHours() - 1);
+    else if (kind === '24h') from.setDate(from.getDate() - 1);
+    else if (kind === '7d') from.setDate(from.getDate() - 7);
+    const sEl = document.getElementById('historyStartTime');
+    const eEl = document.getElementById('historyEndTime');
+    if (sEl) sEl.value = _hToLocalInputValue(from);
+    if (eEl) eEl.value = _hToLocalInputValue(now);
+    historyApplyTimeFilter();
+}
+
+function historyClearTimeFilter() {
+    const sEl = document.getElementById('historyStartTime');
+    const eEl = document.getElementById('historyEndTime');
+    if (sEl) sEl.value = '';
+    if (eEl) eEl.value = '';
+    historyStartTime = '';
+    historyEndTime = '';
+    _updateHistoryTimeHint();
+    fetchAIHistory(1);
+    if (typeof showToast === 'function') showToast('Time filter', '已清除时间过滤', 'info');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     fetchAIHistory(1);
 });
@@ -139,7 +233,10 @@ async function fetchAIHistory(page) {
     historyPage = page || 1;
     try {
         const offset = (historyPage - 1) * HISTORY_PAGE_SIZE;
-        const response = await fetch(`/api/ai-history?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`);
+        let url = `/api/ai-history?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`;
+        if (historyStartTime) url += `&start=${encodeURIComponent(historyStartTime)}`;
+        if (historyEndTime) url += `&end=${encodeURIComponent(historyEndTime)}`;
+        const response = await fetch(url);
         const data = await response.json();
         // Response shape: {history: [...], total: N, offset, limit}
         historyData = Array.isArray(data) ? data : (data.history || []);
@@ -216,7 +313,12 @@ function historyPageGo() {
 // Aggregate status counts over ALL history records (server cached ~60s)
 async function fetchHistoryStats() {
     try {
-        const response = await fetch('/api/ai-history/stats');
+        let url = '/api/ai-history/stats';
+        const qs = [];
+        if (historyStartTime) qs.push('start=' + encodeURIComponent(historyStartTime));
+        if (historyEndTime) qs.push('end=' + encodeURIComponent(historyEndTime));
+        if (qs.length) url += '?' + qs.join('&');
+        const response = await fetch(url);
         const s = await response.json();
         document.getElementById('totalAnalyses').textContent = s.total ?? historyTotal;
         document.getElementById('healthyCount').textContent = s.healthy || 0;

@@ -121,6 +121,7 @@
 - **Logs 分页/按主机查询加速（2026-09-21）**：`logs:host|source|severity` 索引由 SET 改为 **ZSET（score=写入时间）**，分页下沉到 Redis（`ZREVRANGE(offset, offset+limit-1)` 只取当前页，总数 `ZCARD`；多条件用 `ZINTERSTORE` 交集并缓存 60s），不再"取全部匹配 ID → 逐条 ZSCORE → HGETALL offset+limit 条 → 切片"；实测深翻页 **5.099s → 0.006s**、severity 过滤 4.479s → 0.006s、source 2.850s → 0.006s、host 1.840s → 0.005s、18 万条大主机 2.785s → 0.006s；存量 77 个索引一次性迁移（7.9s），清理/删除路径同步改用 zrem/zrange/zcard
 - **AI Analysis History 列表瘦身（2026-09-21）**：列表接口不再返回 `log_ids`（批量一条最多 500 个 id、约 7 KB、占单条 83%；前端不展示，重分析由服务端自行读取），100 条/页响应 **800KB → 160KB（-80%）**，服务端由逐条 HGETALL 改为单次管道；第 2 页起 0.0149→0.0067s，详情弹窗/重分析功能不变
 - **分页页码直接跳转（2026-09-21）**：Log Entries 与 AI Analysis History 翻页栏新增页码输入框（回车或点 Go 跳转）+ 首页/末页按钮；越界输入自动钳制到 1~最大页并提示，翻页按钮按边界禁用
+- **按指定时间查看日志/分析（2026-09-21）**：Logs 与 AI Analysis History 页面新增时间范围过滤（起始/结束时间选择器 + 快捷 1h/24h/7d + 清除）；可与主机/级别/关键字叠加，支持单端自动补全与区间颠倒自动交换；生效期间列表为固定历史视图（实时日志不混入）。实现上索引均为按写入时间打分的 ZSET，范围由 Redis 原生 `ZRANGEBYSCORE`/`ZCOUNT` 处理（7 天窗口取 100 条仅 7ms）；接口 `/api/logs`、`/api/ai-history`、`/api/ai-history/stats` 均支持 `start`/`end`（epoch 秒或 ISO-8601）
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构
