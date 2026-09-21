@@ -99,6 +99,13 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #4527A0;">📜 AI Analysis History 列表瘦身（2026-09-21）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>修复现象：AI Analysis History 页面加载 / 翻页 / 刷新偏慢</li>
+                    <li>根因：列表接口把每条历史的 <code>log_ids</code> 全量返回——批量分析一条最多含 500 个日志 id（约 7 KB，占单条记录的 <b>83%</b>），100 条/页即 <b>约 800 KB</b>，浏览器要下载并解析这些列表根本用不到的数据；此外服务端是逐条 HGETALL（100 次串行往返）</li>
+                    <li>修复：列表接口剔除 <code>log_ids</code>（前端从不使用它，重新分析时由服务端直接从 Redis 取出 log_ids），并把逐条 HGETALL 改为 <b>单次管道</b>；展示所需的 analysis / issues_found / recommendations / critical_count 等字段完整保留，详情弹窗与重分析功能不受影响</li>
+                    <li>实测：100 条/页 <b>800,723 B → 159,746 B（-80%）</b>，第 2 页起耗时 0.0149→0.0067s；20 条/页 145,589→29,646 B；单条平均传输量 8.5 KB → 1.4 KB</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2E7D32;">🚀 Logs 分页与按主机查询加速：索引改有序集合（2026-09-21）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>修复现象：Logs 页面 All host 与按每台主机查看日志、翻页很慢（深翻页 5.1s、按 severity 4.5s、按 host 1.8～2.9s）</li>
