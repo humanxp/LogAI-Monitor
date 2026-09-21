@@ -2512,8 +2512,8 @@ async function _refreshCurrentPageData() {
 // --- Device filter: custom dropdown ---------------------------------------
 // A native <select> popup is drawn by the browser and cannot show hints, so the
 // device filter is a small custom listbox: the closed control keeps a compact
-// label, the OPEN list shows the full "name (ip)" per row, and hovering either
-// the control or a row shows the larger bubble.
+// label (with a hover bubble revealing the full name), while the OPEN list
+// simply shows the full "name (ip)" on every row - no tooltip needed there.
 function _hostTooltipShow(text, anchorRect) {
     const tip = document.getElementById('hostTooltip');
     if (!tip) return;
@@ -2543,6 +2543,8 @@ function toggleHostCombo(event) {
     const btn = document.getElementById('filterHostBtn');
     if (!list) return;
     const willShow = !list.classList.contains('show');
+    // Opening the list: rows carry the full name, so drop the control bubble.
+    if (willShow) _hostTooltipHide();
     list.classList.toggle('show', willShow);
     if (btn) btn.setAttribute('aria-expanded', willShow ? 'true' : 'false');
     // Mark the current selection so it is easy to spot while choosing.
@@ -2605,13 +2607,10 @@ async function loadHosts() {
             )));
         list.innerHTML = rows.join('');
 
+        // Rows already show the full "name (ip)", so no per-row tooltip is
+        // needed while the list is open - only the closed control has one.
         list.querySelectorAll('.host-combo-item').forEach((el) => {
             el.addEventListener('click', () => _selectHostComboItem(el));
-            el.addEventListener('mouseenter', () => {
-                const full = el.dataset.full || '';
-                if (full) _hostTooltipShow(full, el.getBoundingClientRect());
-            });
-            el.addEventListener('mouseleave', _hostTooltipHide);
         });
 
         // Drop a selection that no longer exists, then reflect it in the control
