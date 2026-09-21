@@ -480,20 +480,20 @@ th {
     letter-spacing: 0.5px;
 }
 
-/* Alert History: compact rows that never wrap. Long messages are ellipsized
-   (full text on hover) and the container scrolls horizontally if needed. */
+/* Alert History: same font/spacing as the project's .data-table, single-line
+   rows (long messages are ellipsized, full text on hover). */
 #alertsContainer table {
-    font-size: 0.78rem;
+    font-size: 0.9rem;
 }
 
 #alertsContainer table th,
 #alertsContainer table td {
-    padding: 0.4rem 0.6rem;
+    padding: 0.75rem 0.5rem;
     white-space: nowrap;
 }
 
 #alertsContainer table th {
-    font-size: 0.72rem;
+    font-size: 0.8rem;
 }
 
 #alertsContainer table td.alert-message {
@@ -508,19 +508,19 @@ th {
     text-overflow: ellipsis;
 }
 
-/* Log Filters list: compact font, one bounded line per condition (long regexes
-   are ellipsized with the full text on hover). */
+/* Log Filters list: same font/spacing as the project's .data-table, with one
+   bounded line per condition (long regexes ellipsized, full text on hover). */
 #filtersContainer table {
-    font-size: 0.78rem;
+    font-size: 0.9rem;
 }
 
 #filtersContainer table th,
 #filtersContainer table td {
-    padding: 0.4rem 0.6rem;
+    padding: 0.75rem 0.5rem;
 }
 
 #filtersContainer table th {
-    font-size: 0.72rem;
+    font-size: 0.8rem;
 }
 
 #filtersContainer table td.filter-conditions {
@@ -538,7 +538,7 @@ th {
 }
 
 .filter-cond code {
-    font-size: 0.74rem;
+    font-size: 0.85rem;
     background: #f4f6f8;
     padding: 0 0.25rem;
     border-radius: 3px;
@@ -550,7 +550,7 @@ th {
     color: #8a8f98;
     min-width: 3.6rem;
     flex: 0 0 auto;
-    font-size: 0.72rem;
+    font-size: 0.8rem;
 }
 
 .cond-none {
