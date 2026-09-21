@@ -98,6 +98,13 @@ class RedisClient:
         pipe.sadd(f'logs:source:{source}', log_id)
         pipe.sadd(f'logs:host:{hostname}', log_id)
         pipe.sadd(f'logs:severity:{severity}', log_id)
+        # Registry of which index keys exist. Reading the registry is O(#names)
+        # while a full-keyspace SCAN costs ~650 ms at ~700k keys - that scan is
+        # what made the first /api/stats request after opening the dashboard
+        # take >1 s (Total Logs / Logs Last Hour appeared late).
+        pipe.sadd(self._REGISTRY_SOURCES, source)
+        pipe.sadd(self._REGISTRY_HOSTS, hostname)
+        pipe.sadd(self._REGISTRY_SEVERITIES, severity)
         if ttl_seconds and ttl_seconds > 0:
             pipe.expire(log_id, ttl_seconds)
         pipe.execute()
@@ -327,39 +334,102 @@ class RedisClient:
                 logs.append(log)
         return logs
 
-    def mark_log_analyzed(self, log_id: str, analysis: str):
-        """Mark a single log as analyzed and store the analysis."""
+    @staticmethod
+    def _compact_analysis(analysis) -> str:
+        """Compact per-log analysis snippet.
+
+        The FULL batch analysis (~1-2 KB) used to be copied into EVERY log of
+        a batch (500 x duplicated JSON in Redis). Only the log-detail modal
+        reads this field, so store a small subset instead; the complete
+        analysis remains available in the AI History entry."""
+        try:
+            data = json.loads(analysis) if isinstance(analysis, str) else analysis
+            if isinstance(data, dict):
+                compact = {
+                    'overall_status': data.get('overall_status'),
+                    'critical_count': data.get('critical_count', 0),
+                    'issues_found': (data.get('issues_found') or [])[:3],
+                    'recommendations': (data.get('recommendations') or [])[:2],
+                }
+                return json.dumps(compact, ensure_ascii=False)
+        except Exception:
+            pass
+        text = str(analysis or '')
+        return text[:400]
+
+    def mark_log_analyzed(self, log_id: str, analysis):
+        """Mark a single log as analyzed and store a COMPACT analysis
+        snippet (the full analysis lives in the AI history entry)."""
+        compact = self._compact_analysis(analysis)
         pipe = self.client.pipeline()
         pipe.hset(log_id, 'analyzed', 'true')
-        pipe.hset(log_id, 'analysis', analysis)
+        pipe.hset(log_id, 'analysis', compact)
         pipe.zrem('logs:unanalyzed', log_id)
         pipe.execute()
 
-    def mark_logs_analyzed(self, logs: List[Dict], analysis: str):
-        """Mark many logs analyzed in ONE pipeline (batch path)."""
+    def mark_logs_analyzed(self, logs: List[Dict], analysis):
+        """Mark many logs analyzed in ONE pipeline (batch path).
+
+        Stores a compact per-log analysis snippet instead of duplicating the
+        full batch JSON into every log hash."""
         if not logs:
             return
+        compact = self._compact_analysis(analysis)
         pipe = self.client.pipeline()
         for log in logs:
             lid = log.get('id')
             if not lid:
                 continue
             pipe.hset(lid, 'analyzed', 'true')
-            pipe.hset(lid, 'analysis', analysis)
+            pipe.hset(lid, 'analysis', compact)
             pipe.zrem('logs:unanalyzed', lid)
         pipe.execute()
 
+    # Registry sets: names of the live logs:source:/host:/severity: indexes.
+    # They turn the "list distinct sources/hosts/severities" lookups from a
+    # full-keyspace SCAN (~650 ms) into a single SMEMBERS (~0.1 ms).
+    _REGISTRY_SOURCES = 'logs:index:sources'
+    _REGISTRY_HOSTS = 'logs:index:hosts'
+    _REGISTRY_SEVERITIES = 'logs:index:severities'
+    _REGISTRY_BY_PREFIX = {
+        'logs:source:': _REGISTRY_SOURCES,
+        'logs:host:': _REGISTRY_HOSTS,
+        'logs:severity:': _REGISTRY_SEVERITIES,
+    }
+
+    def _index_names(self, prefix: str) -> List[str]:
+        """Names of the live indexes for ``prefix`` (source / host / severity).
+
+        Served from the registry set maintained on every write. If the registry
+        is empty (first call after upgrading an existing deployment) it is
+        rebuilt once from the index keys, so the data always matches.
+        """
+        registry = self._REGISTRY_BY_PREFIX[prefix]
+        try:
+            names = set(self.client.smembers(registry))
+        except Exception:
+            names = set()
+        if names:
+            return sorted(names)
+        names = {k[len(prefix):] for k in self._scan_keys(prefix + '*')}
+        if names:
+            try:
+                self.client.sadd(registry, *names)
+            except Exception:
+                pass
+        return sorted(names)
+
     def get_sources(self) -> List[str]:
         """Get all unique log sources"""
-        return [k.replace('logs:source:', '') for k in self._scan_keys('logs:source:*')]
+        return self._index_names('logs:source:')
 
     def get_severities(self) -> List[str]:
         """Get all unique severities"""
-        return [k.replace('logs:severity:', '') for k in self._scan_keys('logs:severity:*')]
+        return self._index_names('logs:severity:')
 
     def get_hosts(self) -> List[str]:
         """Get all unique hostnames"""
-        return sorted([k.replace('logs:host:', '') for k in self._scan_keys('logs:host:*')])
+        return self._index_names('logs:host:')
 
     def cleanup_old_logs(self, retention_hours: int = None):
         """Remove logs older than retention period and record cleanup status.
@@ -432,7 +502,15 @@ class RedisClient:
         # Phase 3: purge stale ids from the index sets (they only reference
         # hashes, so a missing hash means the id is dead).
         for pattern in ('logs:host:*', 'logs:source:*', 'logs:severity:*'):
+            registry = self._REGISTRY_BY_PREFIX[pattern[:-1]]
             for key in self._scan_keys(pattern):
+                name = key[len(pattern) - 1:]
+                # Keep the registry in sync with the indexes that really exist
+                # (this also migrates pre-registry deployments on the first run).
+                try:
+                    self.client.sadd(registry, name)
+                except Exception:
+                    pass
                 members = list(self.client.smembers(key))
                 for j in range(0, len(members), CHUNK):
                     mchunk = members[j:j + CHUNK]
@@ -443,6 +521,14 @@ class RedisClient:
                     dead = [m for m, ok in zip(mchunk, results) if not ok]
                     if dead:
                         self.client.srem(key, *dead)
+                # Drop indexes that no longer reference anything (and their
+                # registry entry) so the dashboard lists stay clean.
+                try:
+                    if self.client.scard(key) == 0:
+                        self.client.delete(key)
+                        self.client.srem(registry, name)
+                except Exception:
+                    pass
 
         total_removed = removed + removed_dead
         # Record last cleanup info so we can inspect it later (useful in Docker)

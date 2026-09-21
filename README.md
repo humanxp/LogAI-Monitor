@@ -104,7 +104,7 @@
 - Connected Clients 记录持久化到 Redis（重启不丢、不自动删除），表格带序号列
 - Connected Clients 每行一个删除键：一键删除该主机记录及其发来的全部日志（管理员，红色确认）
 
-## 更新记录（2026-09-04 ~ 2026-09-17）
+## 更新记录（2026-09-04 ~ 2026-09-21）
 
 > 与 About 页"开发者定制说明"同步；完整逐条清单见 About → Developers。
 
@@ -117,6 +117,7 @@
 - **AI 分析防卡死（2026-09-07）**：同一批次解析连续失败 3 次自动"死信放行"（标记已分析并移出待分析队列），调度器继续处理新批次——此前会无限重试同一最老批次，模型无法解析的"毒批次"会永久阻塞队列（Analysis History 停更、未分析积压无限增长）；失败次数随历史记录累计（fail_count），第 3 次失败打印 `Dead-lettered` 日志后放行
 - **侧栏可收缩（2026-09-07）**：左侧导航支持窄栏（60px，仅图标 + 悬停名称气泡）/ 宽栏（250px，图标 + 文字）双模式；顶栏新增常显折叠按钮（原底部 chevron 与 Ctrl+B 保留）；状态记忆 localStorage，首次访问 &lt;1200px 默认窄栏，内联脚本在布局前应用无闪烁；同时修复移动端侧栏抽屉此前无按钮可打开的问题
 - **保留期 720h 与容量配套（2026-09-17）**：Log Retention 调整为 720h（30 天），写入 TTL / 每小时清理 / AI 历史 TTL 均按 Settings 生效；存量 67 万条日志 + 7,144 条 AI 历史按"总寿命 720h"一次性延长剩余 TTL（只改过期时间）；Redis maxmemory 3GB→4GB（volatile-lru），匹配 30 天约 3.1~3.9GB 的容量估算，避免触顶静默淘汰导致实际保留期缩水
+- **Dashboard 首屏统计加速（2026-09-21）**：来源/级别列表改由索引注册集合（`logs:index:sources|hosts|severities`，写日志时同管道维护）读取，替代对整个键空间（116 万 key）的 SCAN；`/api/stats` 冷启动 **1315ms → 2.9ms**（HTTP 稳定 0.003s），解决打开 Dashboard 后 Total Logs / Logs (Last Hour) 延迟 1~1.5 秒才显示的问题；旧部署首次调用自动重建注册集合，清理任务顺带补录并清理空索引
 - **架构动图演示（2026-09-07）**：用 [Archify](https://github.com/tt-a1i/archify) 生成交互式架构动图（架构总览 + 日志采集 / AI 分析 / 告警推送三个场景，流动线条展示数据流向）。在线演示见 [`docs/logaimonitor-architecture.html`](docs/logaimonitor-architecture.html)（单 HTML 自包含、无需联网；浏览器打开即自动播放轨迹动画，查看器工具栏可切换场景并导出 PNG / WebM 视频）；生产部署后也可直接访问 `/static/logaimonitor-architecture.html`，About 页顶部有入口按钮
 
 ## 文件结构

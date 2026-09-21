@@ -99,6 +99,13 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00838F;">⚡ Dashboard 首屏统计加速：索引注册集合（2026-09-21）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li>修复现象：打开 Dashboard 后 <b>Total Logs / Logs (Last Hour) 要等 1～1.5 秒</b>才显示数字</li>
+                    <li>根因：统计接口为了列出 来源/级别 列表，对<b>整个键空间做 SCAN</b>（当时 116 万 key，单次约 650ms，两处合计约 1.3s）；而统计结果只有 2 秒缓存，打开页面的第一个请求正好撞上冷缓存，于是数字延迟出现</li>
+                    <li>修复：新增索引注册集合 <code>logs:index:sources / logs:index:hosts / logs:index:severities</code>，写日志时在同一管道内维护；列表查询由"全库 SCAN（~650ms）"改为"单次 SMEMBERS（~0.1ms）"；旧部署首次调用自动从现有索引重建，每小时清理任务也会顺带补录与清理空索引</li>
+                    <li>实测效果：<code>/api/stats</code> 冷启动 <b>1315ms → 2.9ms</b>，HTTP 稳定 <b>0.003s</b>；Dashboard 两个数字即时显示，/api/hosts 与筛选下拉同样提速</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #6A1B9A;">🗄️ 保留期 720h（30 天）与容量配套（2026-09-17）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>Log Retention 调整为 <b>720 小时（30 天）</b>：Settings 值覆盖 env 默认（LOG_RETENTION_HOURS=12）；实测新写入日志 TTL = 720h，每小时清理任务与 AI 历史 TTL 同样按 720h 执行（可用 <code>cleanup:last_used_retention</code> 核验）</li>
