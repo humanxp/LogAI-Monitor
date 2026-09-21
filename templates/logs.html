@@ -48,13 +48,27 @@
                 <span style="font-size: 0.9rem;">Hide repeated</span>
             </label>
             <span><span id="logCount">0</span> logs shown</span>
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-left: auto;">
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-left: auto; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm btn-outline" id="firstLogPageBtn" onclick="logPageFirst()" disabled title="First page">
+                    <i class="fas fa-angles-left"></i>
+                </button>
                 <button type="button" class="btn btn-sm btn-outline" id="prevLogPageBtn" onclick="logPagePrev()" disabled title="Previous page">
                     <i class="fas fa-chevron-left"></i> Prev
                 </button>
-                <span id="logPageInfo" style="white-space: nowrap; font-size: 0.9rem;">Page 1 / 1</span>
+                <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem;">
+                    Page
+                    <input type="number" class="form-control" id="logPageInput" min="1" step="1" value="1"
+                           style="width: 5rem; padding: 0.15rem 0.35rem; text-align: center;"
+                           onkeydown="if (event.key === 'Enter') { event.preventDefault(); logPageGo(); }"
+                           title="输入页码后回车或点 Go 跳转到指定页">
+                    / <span id="logMaxPage">1</span>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline" id="goLogPageBtn" onclick="logPageGo()" title="跳转到输入的页码">Go</button>
                 <button type="button" class="btn btn-sm btn-outline" id="nextLogPageBtn" onclick="logPageNext()" disabled title="Next page">
                     Next <i class="fas fa-chevron-right"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="lastLogPageBtn" onclick="logPageLast()" disabled title="Last page">
+                    <i class="fas fa-angles-right"></i>
                 </button>
             </div>
         </div>

@@ -166,6 +166,7 @@
                     <li>历史保存时间同步：AI 分析历史 TTL 与 General Settings 的 Log Retention (hours) 一致（当前 240h），不再固定 30 天</li>
                     <li>General Settings 网页可直接修改并立即生效（无需改 .env / 重启）：Log Retention (hours)、Auto Analysis Interval (minutes)（保存后调度实时重排）、Logs per Analysis Run（MAX_LOGS_PER_ANALYSIS，积压触发阈值与每批取数）、AI Sample Limit per Batch（BATCH_SAMPLE_LIMIT，每批发给模型的条数上限）；数值均做范围钳制</li>
                     <li>接口分页提速：/api/logs 与 /api/ai-history 支持 offset 分页，只取当前页数据，读取更快</li>
+                    <li>页码直接跳转（2026-09-21）：Log Entries 与 AI Analysis History 的翻页栏加入<b>页码输入框</b>，输入后按回车或点 <b>Go</b> 直接跳到指定页；同时提供 <b>⏮ 首页 / 末页 ⏭</b> 按钮；输入非法或越界时自动钳制到 1 ~ 最大页并给出提示，翻页按钮按边界自动禁用</li>
                 </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #00695C;">🤖 AI 输出解析加固（2026-09-04）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">

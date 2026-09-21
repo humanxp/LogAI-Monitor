@@ -283,12 +283,20 @@ function updateLogsPagerInfo() {
     const page = state.logPage || 1;
     const total = state.logTotal || 0;
     const maxPage = Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
-    const infoEl = document.getElementById('logPageInfo');
+    const input = document.getElementById('logPageInput');
+    const maxEl = document.getElementById('logMaxPage');
+    const firstBtn = document.getElementById('firstLogPageBtn');
     const prevBtn = document.getElementById('prevLogPageBtn');
     const nextBtn = document.getElementById('nextLogPageBtn');
-    if (infoEl) infoEl.textContent = `Page ${page} / ${maxPage}`;
+    const lastBtn = document.getElementById('lastLogPageBtn');
+    // Keep the jump box in sync, but never fight the user while they type.
+    if (input && document.activeElement !== input) input.value = page;
+    if (input) input.max = maxPage;
+    if (maxEl) maxEl.textContent = maxPage;
+    if (firstBtn) firstBtn.disabled = page <= 1;
     if (prevBtn) prevBtn.disabled = page <= 1;
     if (nextBtn) nextBtn.disabled = page >= maxPage;
+    if (lastBtn) lastBtn.disabled = page >= maxPage;
 }
 
 function logPagePrev() {
@@ -297,6 +305,34 @@ function logPagePrev() {
 
 function logPageNext() {
     loadLogsPage((state.logPage || 1) + 1);
+}
+
+function logPageFirst() {
+    loadLogsPage(1);
+}
+
+function logPageLast() {
+    const maxPage = Math.max(1, Math.ceil((state.logTotal || 0) / LOG_PAGE_SIZE));
+    loadLogsPage(maxPage);
+}
+
+// Jump to the page typed in the pager input (Enter key or the Go button).
+function logPageGo() {
+    const input = document.getElementById('logPageInput');
+    const maxPage = Math.max(1, Math.ceil((state.logTotal || 0) / LOG_PAGE_SIZE));
+    const raw = ((input && input.value) || '').trim();
+    const page = parseInt(raw, 10);
+    if (!page || page < 1) {
+        if (typeof showToast === 'function') {
+            showToast('Page', `请输入 1 ~ ${maxPage} 之间的页码`, 'error');
+        }
+        if (input) input.value = state.logPage || 1;
+        return;
+    }
+    if (page > maxPage && typeof showToast === 'function') {
+        showToast('Page', `页码超出范围，已跳转到最后一页（${maxPage}）`, 'info');
+    }
+    loadLogsPage(Math.min(page, maxPage));
 }
 
 // True while the Logs page is showing an older page - live rows belong to

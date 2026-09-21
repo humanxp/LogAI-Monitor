@@ -49,13 +49,27 @@
     <div class="card-header">
         <h3><i class="fas fa-history"></i> Analysis History</h3>
         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 0.5rem; margin-right: 0.25rem;">
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-right: 0.25rem; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm btn-outline" id="historyFirstBtn" onclick="historyPageFirst()" disabled title="First page">
+                    <i class="fas fa-angles-left"></i>
+                </button>
                 <button type="button" class="btn btn-sm btn-outline" id="historyPrevBtn" onclick="historyPagePrev()" disabled title="Previous page">
                     <i class="fas fa-chevron-left"></i> Prev
                 </button>
-                <span id="historyPageInfo" style="white-space: nowrap; font-size: 0.9rem;">Page 1 / 1</span>
+                <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem;">
+                    Page
+                    <input type="number" class="form-control" id="historyPageInput" min="1" step="1" value="1"
+                           style="width: 5rem; padding: 0.15rem 0.35rem; text-align: center;"
+                           onkeydown="if (event.key === 'Enter') { event.preventDefault(); historyPageGo(); }"
+                           title="输入页码后回车或点 Go 跳转到指定页">
+                    / <span id="historyMaxPage">1</span>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline" id="historyGoBtn" onclick="historyPageGo()" title="跳转到输入的页码">Go</button>
                 <button type="button" class="btn btn-sm btn-outline" id="historyNextBtn" onclick="historyPageNext()" disabled title="Next page">
                     Next <i class="fas fa-chevron-right"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="historyLastBtn" onclick="historyPageLast()" disabled title="Last page">
+                    <i class="fas fa-angles-right"></i>
                 </button>
             </div>
             <button class="btn btn-danger btn-sm" id="clearAllHistoryBtn" onclick="clearAllHistory()">
@@ -147,12 +161,20 @@ async function fetchAIHistory(page) {
 
 function updateHistoryPager() {
     const maxPage = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
-    const infoEl = document.getElementById('historyPageInfo');
+    const input = document.getElementById('historyPageInput');
+    const maxEl = document.getElementById('historyMaxPage');
+    const firstBtn = document.getElementById('historyFirstBtn');
     const prevBtn = document.getElementById('historyPrevBtn');
     const nextBtn = document.getElementById('historyNextBtn');
-    if (infoEl) infoEl.textContent = `Page ${historyPage} / ${maxPage}`;
+    const lastBtn = document.getElementById('historyLastBtn');
+    // Keep the jump box in sync, but never fight the user while they type.
+    if (input && document.activeElement !== input) input.value = historyPage;
+    if (input) input.max = maxPage;
+    if (maxEl) maxEl.textContent = maxPage;
+    if (firstBtn) firstBtn.disabled = historyPage <= 1;
     if (prevBtn) prevBtn.disabled = historyPage <= 1;
     if (nextBtn) nextBtn.disabled = historyPage >= maxPage;
+    if (lastBtn) lastBtn.disabled = historyPage >= maxPage;
 }
 
 function historyPagePrev() {
@@ -161,6 +183,34 @@ function historyPagePrev() {
 
 function historyPageNext() {
     fetchAIHistory(historyPage + 1);
+}
+
+function historyPageFirst() {
+    fetchAIHistory(1);
+}
+
+function historyPageLast() {
+    const maxPage = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
+    fetchAIHistory(maxPage);
+}
+
+// Jump to the page typed in the pager input (Enter key or the Go button).
+function historyPageGo() {
+    const input = document.getElementById('historyPageInput');
+    const maxPage = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
+    const raw = ((input && input.value) || '').trim();
+    const page = parseInt(raw, 10);
+    if (!page || page < 1) {
+        if (typeof showToast === 'function') {
+            showToast('Page', `请输入 1 ~ ${maxPage} 之间的页码`, 'error');
+        }
+        if (input) input.value = historyPage;
+        return;
+    }
+    if (page > maxPage && typeof showToast === 'function') {
+        showToast('Page', `页码超出范围，已跳转到最后一页（${maxPage}）`, 'info');
+    }
+    fetchAIHistory(Math.min(page, maxPage));
 }
 
 // Aggregate status counts over ALL history records (server cached ~60s)
