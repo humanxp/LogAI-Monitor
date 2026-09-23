@@ -12,7 +12,7 @@
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
-            <p>总分析次数</p>
+            <p>Total Analyses</p>
         </div>
     </div>
     <div class="stat-card">
@@ -21,7 +21,7 @@
         </div>
         <div class="stat-info">
             <h3 id="healthyCount">0</h3>
-            <p>正常</p>
+            <p>Healthy Status</p>
         </div>
     </div>
     <div class="stat-card">
@@ -30,7 +30,7 @@
         </div>
         <div class="stat-info">
             <h3 id="warningCount">0</h3>
-            <p>警告</p>
+            <p>Warning Status</p>
         </div>
     </div>
     <div class="stat-card">
@@ -39,7 +39,7 @@
         </div>
         <div class="stat-info">
             <h3 id="criticalCount">0</h3>
-            <p>严重</p>
+            <p>Critical Status</p>
         </div>
     </div>
 </div>
@@ -110,7 +110,7 @@
 <div class="modal-overlay" id="historyDetailModal">
     <div class="modal" style="max-width: 700px;">
         <div class="modal-header">
-            <h3>分析详情</h3>
+            <h3>Analysis Details</h3>
             <button class="modal-close" onclick="closeModal('historyDetailModal')">&times;</button>
         </div>
         <div class="modal-body" id="historyDetailContent">
@@ -362,12 +362,12 @@ function renderHistory() {
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>时间</th>
-                    <th>类型</th>
-                    <th>分析日志数</th>
-                    <th>状态</th>
-                    <th>摘要</th>
-                    <th>操作</th>
+                    <th>Timestamp</th>
+                    <th>Type</th>
+                    <th>Logs Analyzed</th>
+                    <th>Status</th>
+                    <th>Summary</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -381,7 +381,7 @@ function renderHistoryRow(entry) {
     const timestamp = new Date(entry.timestamp).toLocaleString();
     // 'auto' (periodic/batch trigger) and 'batch' records are batch analyses;
     // only 'single' is a single-log analysis.
-    const type = entry.type === 'single' ? '📝 单条' : '📊 批量';
+    const type = entry.type === 'single' ? '📝 Single' : '📊 Batch';
     const logsCount = entry.logs_analyzed || 1;
     
     const analysis = entry.analysis || {};
@@ -390,14 +390,14 @@ function renderHistoryRow(entry) {
     const statusIcon = getStatusIcon(status);
     
     const summary = analysis.summary || 
-                   (analysis.issues_found?.length ? analysis.issues_found[0] : '未发现问题');
+                   (analysis.issues_found?.length ? analysis.issues_found[0] : 'No issues found');
     
     return `
         <tr>
             <td>${timestamp}</td>
             <td>${type}</td>
             <td>${logsCount}</td>
-            <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(statusZh(status))}</span></td>
+            <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(status)}</span></td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 ${escapeHtml(summary.substring(0, 100))}
             </td>
@@ -411,17 +411,6 @@ function renderHistoryRow(entry) {
             </td>
         </tr>
     `;
-}
-
-// Chinese label for the AI status value (the stored value stays English; only
-// the display is translated).
-function statusZh(status) {
-    const s = String(status || '').toLowerCase();
-    if (s === 'healthy' || s === 'info' || s === 'ok' || s === 'normal') return '正常';
-    if (s === 'warning' || s === 'warn') return '警告';
-    if (s === 'critical' || s === 'error' || s === 'emergency' || s === 'alert') return '严重';
-    if (s === 'unknown' || !s) return '未知';
-    return status;
 }
 
 // Map an analysis to a display status. Single-log analyses use
@@ -498,24 +487,24 @@ function showHistoryDetail(historyId) {
     
     document.getElementById('historyDetailContent').innerHTML = `
         <div class="form-group">
-            <label class="form-label">时间</label>
+            <label class="form-label">Timestamp</label>
             <p>${new Date(entry.timestamp).toLocaleString()}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">分析类型</label>
+            <label class="form-label">Analysis Type</label>
             <p>${entry.type === 'single' ? 'Single Log Analysis' : 'Batch Analysis'}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">分析日志数</label>
+            <label class="form-label">Logs Analyzed</label>
             <p>${entry.logs_analyzed || 1}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">状态</label>
-            <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(statusZh(status))}</span></p>
+            <label class="form-label">Overall Status</label>
+            <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(status)}</span></p>
         </div>
         ${analysis.summary ? `
         <div class="form-group">
-            <label class="form-label">摘要</label>
+            <label class="form-label">Summary</label>
             <p>${escapeHtml(analysis.summary)}</p>
         </div>
         ` : ''}
@@ -529,7 +518,7 @@ function showHistoryDetail(historyId) {
         ` : ''}
         ${entry.log_source ? `
         <div class="form-group">
-            <label class="form-label">日志来源</label>
+            <label class="form-label">Log Source</label>
             <p>${escapeHtml(entry.log_source)}</p>
         </div>
         ` : ''}
