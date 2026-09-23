@@ -99,6 +99,14 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #0277BD;">🔔 Alerts / Filters 页完善与 AI 分析（2026-09-23）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li><b>Alert History 每条告警新增 Details 详情弹窗</b>：完整展示 时间 / 状态 / 级别 / 命中规则 / 主机 / 来源 / Log ID / <b>完整消息</b>（列表里是省略号，弹窗内不截断），并可在弹窗内直接 Acknowledge</li>
+                    <li><b>详情弹窗内一键 🤖 AI 分析</b>：优先用告警关联的 <code>log_id</code> 调单条分析接口；若该日志已过保留期（TTL），自动回退为用告警自带消息分析，保证按钮始终可用。结果显示 <b>状态 / 摘要 / 发现的问题 / 处理建议</b>，并写入 AI History</li>
+                    <li>Alert History 列表改为<b>单行紧凑</b>展示：单元格不换行、超长消息省略号 + 悬停显示全文，字号与项目其它表格（<code>.data-table</code>）一致</li>
+                    <li><b>修复 Log Filters 条件列缺陷</b>：此前完全未渲染 <code>message_regex</code>，导致正则类规则的条件列显示为空；现已补齐 <code>Regex</code> 行，并兼容"级别多选"徽章与"无限制"提示，长正则省略号 + 悬停看全文</li>
+                    <li><b>Analysis History 的 View 弹窗字段中文化</b>：<code>Issues Found / Recommendations / Critical Issues Count</code> 三处改为 <b>发现的问题 / 处理建议 / 严重问题数</b>，其余字段与页面保持原文不变</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #E65100;">🧩 主机归组：hostname 与 IP 合并为同一设备（2026-09-21）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li>修复现象：Logs 的 All Hosts 下拉里，同一台设备出现两次——一次是 hostname（如 <code>GL-AXT1800</code>）、一次是 IP（如 <code>10.10.10.7</code>）</li>
