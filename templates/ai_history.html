@@ -528,7 +528,6 @@ function showHistoryDetail(historyId) {
 }
 
 
-// Re-run the AI analysis for the logs behind this history entry.
 async function reanalyzeHistory() {
     if (!currentHistoryId) return;
     const entry = historyData.find(h => h.id === currentHistoryId);
