@@ -49,6 +49,20 @@
         <p>Acknowledge alerts to mark them as reviewed. If Telegram notifications are enabled, alerts will be sent to your configured chat.</p>
     </div>
 </div>
+
+<!-- Alert detail modal (opened by the Details button on each row) -->
+<div class="modal-overlay" id="alertDetailModal">
+    <div class="modal" style="max-width: 760px;">
+        <div class="modal-header">
+            <h3><i class="fas fa-bell"></i> Alert Detail</h3>
+            <button class="modal-close" onclick="closeModal('alertDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="alertDetailContent"></div>
+        <div class="modal-footer" id="alertDetailFooter">
+            <button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

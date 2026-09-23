@@ -1031,8 +1031,11 @@ function renderAlerts() {
                         <td class="alert-message" title="${escapeHtml(alert.message || '-')}">${escapeHtml(alert.message?.substring(0, 120) || '-')}</td>
                         <td>${alert.acknowledged ? '✓ Acknowledged' : '⚠ New'}</td>
                         <td>
+                            <button class="btn btn-sm btn-outline" onclick="showAlertDetail('${alert.id}')" title="查看告警详情">
+                                <i class="fas fa-info-circle"></i> Details
+                            </button>
                             ${!alert.acknowledged ? `
-                                <button class="btn btn-sm btn-success" onclick="acknowledgeAlert('${alert.id}')">
+                                <button class="btn btn-sm btn-success" onclick="acknowledgeAlert('${alert.id}')" title="标记为已确认">
                                     <i class="fas fa-check"></i> Ack
                                 </button>
                             ` : ''}
@@ -1044,9 +1047,51 @@ function renderAlerts() {
     `;
 }
 
+// Show ONE alert's full details in a modal. The table rows stay compact and
+// non-clickable, so a per-row Details button opens this instead.
+function showAlertDetail(alertId) {
+    const alert = (state.alerts || []).find((a) => a.id === alertId);
+    const body = document.getElementById('alertDetailContent');
+    const footer = document.getElementById('alertDetailFooter');
+    if (!alert || !body) return;
+
+    const field = (label, value) => `
+        <div class="form-group" style="margin-bottom: 0.7rem;">
+            <label class="form-label" style="margin-bottom: 0.15rem;">${label}</label>
+            <div>${value}</div>
+        </div>`;
+
+    body.innerHTML =
+        field('Time', escapeHtml(new Date(alert.timestamp).toLocaleString())) +
+        field('Status', alert.acknowledged ? '✓ Acknowledged' : '⚠ New') +
+        field('Severity', severityBadge(alert.severity)) +
+        field('Filter', escapeHtml(alert.filter_name || '-')) +
+        field('Host', escapeHtml(alert.hostname || '-')) +
+        field('Source', escapeHtml(alert.source || '-')) +
+        field('Log ID', `<code>${escapeHtml(alert.log_id || '-')}</code>`) +
+        field('Message', `<div style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa;
+            border: 1px solid #e9ecef; border-radius: 4px; padding: 0.6rem 0.75rem;
+            font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85rem;">${escapeHtml(alert.message || '-')}</div>`);
+
+    if (footer) {
+        footer.innerHTML =
+            `<button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>` +
+            (!alert.acknowledged
+                ? `<button type="button" class="btn btn-success" onclick="acknowledgeAlertFromDetail('${alert.id}')">
+                       <i class="fas fa-check"></i> Acknowledge
+                   </button>`
+                : '');
+    }
+    openModal('alertDetailModal');
+}
+
+async function acknowledgeAlertFromDetail(alertId) {
+    await acknowledgeAlert(alertId);
+    closeModal('alertDetailModal');
+}
+
 // Acknowledge alert
-async function acknowledgeAlert(alertId) {
-    try {
+async function acknowledgeAlert(alertId) {    try {
         const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
             method: 'POST'
         });
