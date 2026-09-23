@@ -1071,10 +1071,14 @@ function showAlertDetail(alertId) {
         field('Log ID', `<code>${escapeHtml(alert.log_id || '-')}</code>`) +
         field('Message', `<div style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa;
             border: 1px solid #e9ecef; border-radius: 4px; padding: 0.6rem 0.75rem;
-            font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85rem;">${escapeHtml(alert.message || '-')}</div>`);
+            font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85rem;">${escapeHtml(alert.message || '-')}</div>`) +
+        `<div id="alertAiResult"></div>`;
 
     if (footer) {
         footer.innerHTML =
+            `<button type="button" class="btn btn-primary" id="alertAiBtn" onclick="analyzeAlertFromDetail('${alert.id}')">
+                 <i class="fas fa-robot"></i> AI 分析
+             </button>` +
             `<button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>` +
             (!alert.acknowledged
                 ? `<button type="button" class="btn btn-success" onclick="acknowledgeAlertFromDetail('${alert.id}')">
@@ -1085,13 +1089,91 @@ function showAlertDetail(alertId) {
     openModal('alertDetailModal');
 }
 
+// Run the AI analysis for the log behind an alert. Uses the stored log when it
+// still exists (TTL) and otherwise falls back to the alert's own message, so
+// the button always works. The single-analysis path also writes an AI History
+// entry (type=single).
+async function analyzeAlertFromDetail(alertId) {
+    const alert = (state.alerts || []).find((a) => a.id === alertId);
+    const box = document.getElementById('alertAiResult');
+    const btn = document.getElementById('alertAiBtn');
+    if (!alert || !box) return;
+
+    const setBusy = (busy) => {
+        if (!btn) return;
+        btn.disabled = busy;
+        btn.innerHTML = busy
+            ? '<i class="fas fa-spinner fa-spin"></i> 分析中…'
+            : '<i class="fas fa-robot"></i> AI 分析';
+    };
+    setBusy(true);
+    box.innerHTML = '<div style="margin-top:.6rem; color:#666; font-size:.9rem;">'
+        + '<i class="fas fa-spinner fa-spin"></i> 正在调用 AI 分析该日志，请稍候…</div>';
+
+    const post = (payload) => fetch('/api/ollama/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => ({})) }));
+
+    try {
+        let res = alert.log_id ? await post({ log_id: alert.log_id }) : { ok: false, data: {} };
+        if (!res.ok || res.data.error) {
+            // Log expired/not found -> analyse the alert's stored message instead.
+            res = await post({ logs: [{
+                id: alert.log_id || ('alert:' + alert.id),
+                message: alert.message || '',
+                severity: alert.severity || 'info',
+                source: alert.source || 'unknown',
+                hostname: alert.hostname || alert.source || 'unknown',
+                program: 'alert',
+                timestamp: alert.timestamp
+            }] });
+        }
+        renderAlertAiResult(box, res.data);
+    } catch (e) {
+        box.innerHTML = `<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">`
+            + `AI 分析失败：${escapeHtml(e.message || String(e))}</div>`;
+    } finally {
+        setBusy(false);
+    }
+}
+
+function renderAlertAiResult(box, data) {
+    if (!data || data.success === false || data.error) {
+        const msg = (data && (data.error || data.message)) || '未知错误';
+        box.innerHTML = `<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">`
+            + `AI 分析失败：${escapeHtml(String(msg))}</div>`;
+        return;
+    }
+    const a = data.analysis || {};
+    const status = a.overall_status || a.category || (a.is_critical ? 'critical' : 'unknown');
+    const issues = a.issues_found || [];
+    const recs = a.recommendations || [];
+    const li = (arr) => arr.map((x) => `<li>${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}</li>`).join('');
+    box.innerHTML = `
+        <div style="margin-top:.75rem; border-top:1px solid #e9ecef; padding-top:.6rem;">
+            <div style="font-weight:600; margin-bottom:.4rem;">
+                <i class="fas fa-robot"></i> AI 分析结果
+                <span style="font-weight:400; color:#888; font-size:.8rem;">（已写入 AI History）</span>
+            </div>
+            <div style="margin-bottom:.4rem;">状态：${severityBadge(status)}</div>
+            ${a.summary ? `<div style="margin-bottom:.4rem;">${escapeHtml(a.summary)}</div>` : ''}
+            ${issues.length ? `<div style="margin-bottom:.4rem;"><b>发现的问题</b>
+                <ul style="margin:.2rem 0 0 1.2rem;">${li(issues)}</ul></div>` : ''}
+            ${recs.length ? `<div><b>处理建议</b>
+                <ul style="margin:.2rem 0 0 1.2rem;">${li(recs)}</ul></div>` : ''}
+        </div>`;
+}
+
 async function acknowledgeAlertFromDetail(alertId) {
     await acknowledgeAlert(alertId);
     closeModal('alertDetailModal');
 }
 
 // Acknowledge alert
-async function acknowledgeAlert(alertId) {    try {
+async function acknowledgeAlert(alertId) {
+    try {
         const response = await fetch(`/api/alerts/${alertId}/acknowledge`, {
             method: 'POST'
         });
