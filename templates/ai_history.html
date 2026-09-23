@@ -12,7 +12,7 @@
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
-            <p>Total Analyses</p>
+            <p>总分析次数</p>
         </div>
     </div>
     <div class="stat-card">
@@ -21,7 +21,7 @@
         </div>
         <div class="stat-info">
             <h3 id="healthyCount">0</h3>
-            <p>Healthy Status</p>
+            <p>正常</p>
         </div>
     </div>
     <div class="stat-card">
@@ -30,7 +30,7 @@
         </div>
         <div class="stat-info">
             <h3 id="warningCount">0</h3>
-            <p>Warning Status</p>
+            <p>警告</p>
         </div>
     </div>
     <div class="stat-card">
@@ -39,7 +39,7 @@
         </div>
         <div class="stat-info">
             <h3 id="criticalCount">0</h3>
-            <p>Critical Status</p>
+            <p>严重</p>
         </div>
     </div>
 </div>
@@ -110,14 +110,14 @@
 <div class="modal-overlay" id="historyDetailModal">
     <div class="modal" style="max-width: 700px;">
         <div class="modal-header">
-            <h3>Analysis Details</h3>
+            <h3>分析详情</h3>
             <button class="modal-close" onclick="closeModal('historyDetailModal')">&times;</button>
         </div>
         <div class="modal-body" id="historyDetailContent">
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" id="reanalyzeBtn" onclick="reanalyzeHistory()">
-                <i class="fas fa-robot"></i> AI 分析
+                <i class="fas fa-sync"></i> Re-analyze
             </button>
             <button class="btn btn-danger" id="deleteHistoryBtn" onclick="deleteCurrentHistory()">
                 <i class="fas fa-trash"></i> Delete
@@ -362,12 +362,12 @@ function renderHistory() {
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Timestamp</th>
-                    <th>Type</th>
-                    <th>Logs Analyzed</th>
-                    <th>Status</th>
-                    <th>Summary</th>
-                    <th>Actions</th>
+                    <th>时间</th>
+                    <th>类型</th>
+                    <th>分析日志数</th>
+                    <th>状态</th>
+                    <th>摘要</th>
+                    <th>操作</th>
                 </tr>
             </thead>
             <tbody>
@@ -381,7 +381,7 @@ function renderHistoryRow(entry) {
     const timestamp = new Date(entry.timestamp).toLocaleString();
     // 'auto' (periodic/batch trigger) and 'batch' records are batch analyses;
     // only 'single' is a single-log analysis.
-    const type = entry.type === 'single' ? '📝 Single' : '📊 Batch';
+    const type = entry.type === 'single' ? '📝 单条' : '📊 批量';
     const logsCount = entry.logs_analyzed || 1;
     
     const analysis = entry.analysis || {};
@@ -390,14 +390,14 @@ function renderHistoryRow(entry) {
     const statusIcon = getStatusIcon(status);
     
     const summary = analysis.summary || 
-                   (analysis.issues_found?.length ? analysis.issues_found[0] : 'No issues found');
+                   (analysis.issues_found?.length ? analysis.issues_found[0] : '未发现问题');
     
     return `
         <tr>
             <td>${timestamp}</td>
             <td>${type}</td>
             <td>${logsCount}</td>
-            <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(status)}</span></td>
+            <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(statusZh(status))}</span></td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 ${escapeHtml(summary.substring(0, 100))}
             </td>
@@ -411,6 +411,17 @@ function renderHistoryRow(entry) {
             </td>
         </tr>
     `;
+}
+
+// Chinese label for the AI status value (the stored value stays English; only
+// the display is translated).
+function statusZh(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'healthy' || s === 'info' || s === 'ok' || s === 'normal') return '正常';
+    if (s === 'warning' || s === 'warn') return '警告';
+    if (s === 'critical' || s === 'error' || s === 'emergency' || s === 'alert') return '严重';
+    if (s === 'unknown' || !s) return '未知';
+    return status;
 }
 
 // Map an analysis to a display status. Single-log analyses use
@@ -453,18 +464,17 @@ function showHistoryDetail(historyId) {
     currentHistoryId = historyId;
     const analysis = entry.analysis || {};
     
-    // The AI analysis button is available for EVERY entry (not only failed
-    // ones), so any record can be re-analysed on demand.
+    // Only show the Re-analyze button when this record is a failed/unparseable one.
     const reanalyzeBtn = document.getElementById('reanalyzeBtn');
     if (reanalyzeBtn) {
-        reanalyzeBtn.style.display = '';
+        reanalyzeBtn.style.display = isFailedAnalysis(analysis) ? '' : 'none';
     }
     
     let issuesHtml = '';
     if (analysis.issues_found && analysis.issues_found.length > 0) {
         issuesHtml = `
             <div class="form-group">
-                <label class="form-label">Issues Found</label>
+                <label class="form-label">发现的问题</label>
                 <ul style="margin: 0; padding-left: 1.5rem;">
                     ${analysis.issues_found.map(i => `<li>${escapeHtml(i)}</li>`).join('')}
                 </ul>
@@ -476,7 +486,7 @@ function showHistoryDetail(historyId) {
     if (analysis.recommendations && analysis.recommendations.length > 0) {
         recommendationsHtml = `
             <div class="form-group">
-                <label class="form-label">Recommendations</label>
+                <label class="form-label">处理建议</label>
                 <ul style="margin: 0; padding-left: 1.5rem;">
                     ${analysis.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
                 </ul>
@@ -488,24 +498,24 @@ function showHistoryDetail(historyId) {
     
     document.getElementById('historyDetailContent').innerHTML = `
         <div class="form-group">
-            <label class="form-label">Timestamp</label>
+            <label class="form-label">时间</label>
             <p>${new Date(entry.timestamp).toLocaleString()}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">Analysis Type</label>
+            <label class="form-label">分析类型</label>
             <p>${entry.type === 'single' ? 'Single Log Analysis' : 'Batch Analysis'}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">Logs Analyzed</label>
+            <label class="form-label">分析日志数</label>
             <p>${entry.logs_analyzed || 1}</p>
         </div>
         <div class="form-group">
-            <label class="form-label">Overall Status</label>
-            <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(status)}</span></p>
+            <label class="form-label">状态</label>
+            <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(statusZh(status))}</span></p>
         </div>
         ${analysis.summary ? `
         <div class="form-group">
-            <label class="form-label">Summary</label>
+            <label class="form-label">摘要</label>
             <p>${escapeHtml(analysis.summary)}</p>
         </div>
         ` : ''}
@@ -513,46 +523,31 @@ function showHistoryDetail(historyId) {
         ${recommendationsHtml}
         ${analysis.critical_count !== undefined ? `
         <div class="form-group">
-            <label class="form-label">Critical Issues Count</label>
+            <label class="form-label">严重问题数</label>
             <p>${analysis.critical_count}</p>
         </div>
         ` : ''}
         ${entry.log_source ? `
         <div class="form-group">
-            <label class="form-label">Log Source</label>
+            <label class="form-label">日志来源</label>
             <p>${escapeHtml(entry.log_source)}</p>
         </div>
         ` : ''}
-        <div id="historyAiResult"></div>
     `;
     
     openModal('historyDetailModal');
 }
 
 
-// Run AI analysis for the logs behind this history entry and show the result
-// INSIDE the modal, in exactly the same format as the Alert detail modal
-// (shared renderAiAnalysisBox from app.js). The modal stays open; the list is
-// refreshed in the background.
+// Re-run the AI analysis for the logs behind this history entry.
 async function reanalyzeHistory() {
     if (!currentHistoryId) return;
     const entry = historyData.find(h => h.id === currentHistoryId);
     if (!entry) return;
+    if (!confirm('Re-run AI analysis on the logs from this session? (\nOnly logs that still exist will be sent.)')) return;
 
     const btn = document.getElementById('reanalyzeBtn');
-    const box = document.getElementById('historyAiResult');
-    const setBusy = (busy) => {
-        if (!btn) return;
-        btn.disabled = busy;
-        btn.innerHTML = busy
-            ? '<i class="fas fa-spinner fa-spin"></i> 分析中…'
-            : '<i class="fas fa-robot"></i> AI 分析';
-    };
-    setBusy(true);
-    if (box) {
-        box.innerHTML = '<div style="margin-top:.6rem; color:#666; font-size:.9rem;">'
-            + '<i class="fas fa-spinner fa-spin"></i> 正在调用 AI 重新分析该批日志，请稍候…</div>';
-    }
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Re-analyzing...'; }
     try {
         const response = await fetch('/api/analysis/reanalyze', {
             method: 'POST',
@@ -560,35 +555,20 @@ async function reanalyzeHistory() {
             body: JSON.stringify({ history_id: currentHistoryId })
         });
         const data = await response.json();
-
-        if (data.analysis && typeof renderAiAnalysisBox === 'function') {
-            // Success (updated) or a parse failure again - both carry an analysis.
-            renderAiAnalysisBox(box, data.analysis, {
-                note: data.updated ? '（已写入 AI History）' : '（本次仍未成功，原记录未改动）'
-            });
-            if (data.updated) {
-                showToast('Success', 'AI 分析完成（' + (data.available || 0) + ' 条日志）', 'success');
-            } else {
-                showToast('Info', '本次 AI 分析仍未成功，原记录保持不变', 'info');
-            }
-            fetchAIHistory(historyPage);   // refresh list, keep modal open
+        if (data.reanalyzed && data.updated) {
+            showToast('Success', 'Re-analysis complete (' + (data.available||0) + ' logs)', 'success');
+            fetchAIHistory(historyPage);
+            closeModal('historyDetailModal');
+        } else if (data.reanalyzed && !data.updated) {
+            showToast('Info', 'Re-analysis still failed; the original record is unchanged.', 'info');
         } else {
-            if (typeof renderAiAnalysisBox === 'function') {
-                renderAiAnalysisBox(box, null, {
-                    error: data.msg || data.error || '无法分析该条目'
-                });
-            }
-            showToast('Info', data.msg || data.error || '无法分析该条目', 'info');
+            showToast('Info', data.msg || data.error || 'Could not re-analyze this entry', 'info');
         }
     } catch (error) {
         console.error('Error re-analyzing:', error);
-        if (box) {
-            box.innerHTML = '<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">'
-                + 'AI 分析失败：' + escapeHtml(error.message || String(error)) + '</div>';
-        }
-        showToast('Error', 'AI 分析失败', 'error');
+        showToast('Error', 'Re-analysis failed', 'error');
     } finally {
-        setBusy(false);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i> Re-analyze'; }
     }
 }
 
