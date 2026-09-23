@@ -106,6 +106,7 @@
                     <li>Alert History 列表改为<b>单行紧凑</b>展示：单元格不换行、超长消息省略号 + 悬停显示全文，字号与项目其它表格（<code>.data-table</code>）一致</li>
                     <li><b>修复 Log Filters 条件列缺陷</b>：此前完全未渲染 <code>message_regex</code>，导致正则类规则的条件列显示为空；现已补齐 <code>Regex</code> 行，并兼容"级别多选"徽章与"无限制"提示，长正则省略号 + 悬停看全文</li>
                     <li><b>Analysis History 的 View 弹窗字段中文化</b>：<code>Issues Found / Recommendations / Critical Issues Count</code> 三处改为 <b>发现的问题 / 处理建议 / 严重问题数</b>，其余字段与页面保持原文不变</li>
+                    <li><b>Log Entries 手动 AI 分析结果中文化</b>：日志详情弹窗点「AI 分析」后，结果标签统一为中文——<b>摘要 / 分类 / 是否严重 / 是否需要告警 / 建议 / 总体状态 / 发现的问题 / 处理建议 / 受影响主机 / 严重问题数</b>，状态值显示为 正常 / 警告 / 严重 / 未知（存储值仍为英文），数组字段渲染为列表；按钮与提示文案同步中文化</li>
                 </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #E65100;">🧩 主机归组：hostname 与 IP 合并为同一设备（2026-09-21）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">

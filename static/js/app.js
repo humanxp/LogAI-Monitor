@@ -734,7 +734,7 @@ function showLogDetail(log) {
         </div>
         ${log.analysis ? `
         <div class="form-group">
-            <label class="form-label">AI Analysis</label>
+            <label class="form-label">AI 分析</label>
             <div class="analysis-result">${formatAnalysisResult(log.analysis)}</div>
         </div>
         ` : ''}
@@ -1616,45 +1616,83 @@ function formatAnalysisResult(analysis) {
     return escapeHtml(String(analysis));
 }
 
-// Format an analysis object into readable HTML
+// Chinese labels for analysis fields / status values (display only - the stored
+// analysis keeps the original English keys and values).
+const AI_FIELD_LABELS = {
+    summary: '摘要',
+    category: '分类',
+    is_critical: '是否严重',
+    alert_user: '是否需要告警',
+    recommendation: '建议',
+    overall_status: '总体状态',
+    issues_found: '发现的问题',
+    recommendations: '处理建议',
+    affected_hosts: '受影响主机',
+    critical_count: '严重问题数',
+    alert_message: '告警消息',
+    log_source: '日志来源',
+    log_severity: '日志级别'
+};
+
+function aiStatusZh(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'healthy' || s === 'info' || s === 'ok' || s === 'normal') return '正常';
+    if (s === 'warning' || s === 'warn') return '警告';
+    if (s === 'critical' || s === 'error' || s === 'emergency' || s === 'alert') return '严重';
+    if (s === 'unknown' || !s) return '未知';
+    return status;
+}
+
+// Format an analysis object into readable HTML (Chinese labels)
 function formatAnalysisObject(obj) {
     if (!obj) return '';
     
     let html = '<div class="analysis-formatted">';
     
+    const fieldHtml = (label, value) => {
+        if (Array.isArray(value)) {
+            return value.length
+                ? `<p><strong>${label}：</strong></p><ul>${value.map(v => `<li>${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}</li>`).join('')}</ul>`
+                : '';
+        }
+        return `<p><strong>${label}：</strong> ${escapeHtml(String(value))}</p>`;
+    };
+
     // Handle summary first if present
     if (obj.summary) {
-        html += `<p><strong>Summary:</strong> ${escapeHtml(obj.summary)}</p>`;
+        html += fieldHtml(AI_FIELD_LABELS.summary, obj.summary);
     }
     
     // Handle category
     if (obj.category) {
-        html += `<p><strong>Category:</strong> ${escapeHtml(obj.category)}</p>`;
+        html += fieldHtml(AI_FIELD_LABELS.category, obj.category);
     }
     
     // Handle is_critical
     if (obj.is_critical !== undefined) {
-        const criticalText = obj.is_critical ? '⚠️ Yes - Requires attention' : '✅ No';
-        html += `<p><strong>Critical:</strong> ${criticalText}</p>`;
+        const criticalText = obj.is_critical ? '⚠️ 是（需要关注）' : '✅ 否';
+        html += `<p><strong>${AI_FIELD_LABELS.is_critical}：</strong> ${criticalText}</p>`;
     }
     
     // Handle alert_user
     if (obj.alert_user !== undefined) {
-        const alertText = obj.alert_user ? '🔔 Yes' : 'No';
-        html += `<p><strong>Alert Required:</strong> ${alertText}</p>`;
+        const alertText = obj.alert_user ? '🔔 是' : '否';
+        html += `<p><strong>${AI_FIELD_LABELS.alert_user}：</strong> ${alertText}</p>`;
     }
     
     // Handle recommendation
     if (obj.recommendation) {
-        html += `<p><strong>Recommendation:</strong> ${escapeHtml(obj.recommendation)}</p>`;
+        html += fieldHtml(AI_FIELD_LABELS.recommendation, obj.recommendation);
     }
     
     // Handle any other fields
     const handledFields = ['summary', 'category', 'is_critical', 'alert_user', 'recommendation'];
     Object.keys(obj).forEach(key => {
         if (!handledFields.includes(key) && obj[key]) {
-            const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-            html += `<p><strong>${escapeHtml(label)}:</strong> ${escapeHtml(String(obj[key]))}</p>`;
+            const label = AI_FIELD_LABELS[key]
+                || key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            const value = (key === 'overall_status') ? aiStatusZh(obj[key]) : obj[key];
+            html += fieldHtml(label, value);
         }
     });
     
@@ -1669,7 +1707,7 @@ async function analyzeLog() {
     if (!logId) return;
     
     const btn = document.getElementById('analyzeLogBtn');
-    btn.innerHTML = '<span class="spinner"></span> Analyzing...';
+    btn.innerHTML = '<span class="spinner"></span> 分析中…';
     btn.disabled = true;
     
     try {
@@ -1682,7 +1720,7 @@ async function analyzeLog() {
         const data = await response.json();
         
         if (data.success) {
-            showToast('Success', 'Analysis complete', 'success');
+            showToast('Success', 'AI 分析完成', 'success');
             // Refresh log detail
             const log = state.logs.find(l => l.id === logId);
             if (log) {
@@ -1690,14 +1728,14 @@ async function analyzeLog() {
                 showLogDetail(log);
             }
         } else {
-            showToast('Error', data.error || 'Analysis failed', 'error');
+            showToast('Error', data.error || 'AI 分析失败', 'error');
         }
         
     } catch (error) {
         console.error('Error analyzing log:', error);
-        showToast('Error', 'Failed to analyze log', 'error');
+        showToast('Error', 'AI 分析失败', 'error');
     } finally {
-        btn.innerHTML = '<i class="fas fa-brain"></i> Analyze with AI';
+        btn.innerHTML = '<i class="fas fa-brain"></i> AI 分析';
         btn.disabled = false;
     }
 }
@@ -1738,21 +1776,18 @@ function updateAnalysisDisplay(analysis) {
     const container = document.getElementById('analysisResult');
     if (!container) return;
     
-    const statusClass = {
-        'healthy': 'success',
-        'warning': 'warning',
-        'critical': 'danger'
-    }[analysis.overall_status] || '';
+    const status = String(analysis.overall_status || 'unknown').toLowerCase();
+    const icon = status === 'healthy' ? '✅' : (status === 'warning' ? '⚠️' : '🚨');
     
     container.innerHTML = `
         <div class="analysis-status ${severityClass(analysis.overall_status)}">
-            ${analysis.overall_status === 'healthy' ? '✅' : analysis.overall_status === 'warning' ? '⚠️' : '🚨'}
-            ${escapeHtml((analysis.overall_status || 'Unknown')).toUpperCase()}
+            ${icon}
+            ${escapeHtml(aiStatusZh(analysis.overall_status))}
         </div>
         
         ${analysis.affected_hosts?.length > 0 ? `
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-server"></i> Affected Hosts</h4>
+            <h4><i class="fas fa-server"></i> 受影响主机</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                 ${analysis.affected_hosts.map(host => `<span class="badge" style="background: #2196F3; color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
             </div>
@@ -1760,21 +1795,21 @@ function updateAnalysisDisplay(analysis) {
         ` : ''}
         
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-exclamation-triangle"></i> Issues Found (${analysis.critical_count || 0} critical)</h4>
+            <h4><i class="fas fa-exclamation-triangle"></i> 发现的问题（${analysis.critical_count || 0} 个严重）</h4>
             ${analysis.issues_found?.length > 0 ? `
                 <ul>
                     ${analysis.issues_found.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}
                 </ul>
-            ` : '<p>No issues found</p>'}
+            ` : '<p>未发现问题</p>'}
         </div>
         
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-lightbulb"></i> Recommendations</h4>
+            <h4><i class="fas fa-lightbulb"></i> 处理建议</h4>
             ${analysis.recommendations?.length > 0 ? `
                 <ul>
                     ${analysis.recommendations.map(rec => `<li>${escapeHtml(rec)}</li>`).join('')}
                 </ul>
-            ` : '<p>No recommendations</p>'}
+            ` : '<p>暂无建议</p>'}
         </div>
     `;
 }
