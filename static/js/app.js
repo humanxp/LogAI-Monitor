@@ -1139,14 +1139,18 @@ async function analyzeAlertFromDetail(alertId) {
     }
 }
 
-function renderAlertAiResult(box, data) {
-    if (!data || data.success === false || data.error) {
-        const msg = (data && (data.error || data.message)) || '未知错误';
+// Shared renderer for an AI analysis block. Used by BOTH the Alert detail modal
+// and the AI History detail modal so the two look identical.
+function renderAiAnalysisBox(box, analysis, opts) {
+    if (!box) return;
+    opts = opts || {};
+    if (!analysis || opts.error) {
+        const msg = opts.error || '未知错误';
         box.innerHTML = `<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">`
             + `AI 分析失败：${escapeHtml(String(msg))}</div>`;
         return;
     }
-    const a = data.analysis || {};
+    const a = analysis;
     const status = a.overall_status || a.category || (a.is_critical ? 'critical' : 'unknown');
     const issues = a.issues_found || [];
     const recs = a.recommendations || [];
@@ -1155,7 +1159,7 @@ function renderAlertAiResult(box, data) {
         <div style="margin-top:.75rem; border-top:1px solid #e9ecef; padding-top:.6rem;">
             <div style="font-weight:600; margin-bottom:.4rem;">
                 <i class="fas fa-robot"></i> AI 分析结果
-                <span style="font-weight:400; color:#888; font-size:.8rem;">（已写入 AI History）</span>
+                <span style="font-weight:400; color:#888; font-size:.8rem;">${escapeHtml(opts.note || '（已写入 AI History）')}</span>
             </div>
             <div style="margin-bottom:.4rem;">状态：${severityBadge(status)}</div>
             ${a.summary ? `<div style="margin-bottom:.4rem;">${escapeHtml(a.summary)}</div>` : ''}
@@ -1164,6 +1168,12 @@ function renderAlertAiResult(box, data) {
             ${recs.length ? `<div><b>处理建议</b>
                 <ul style="margin:.2rem 0 0 1.2rem;">${li(recs)}</ul></div>` : ''}
         </div>`;
+}
+
+function renderAlertAiResult(box, data) {
+    renderAiAnalysisBox(box, data && data.analysis, {
+        error: (data && (data.error || data.message)) || (!data ? '未知错误' : null)
+    });
 }
 
 async function acknowledgeAlertFromDetail(alertId) {
