@@ -68,15 +68,15 @@ services:
     restart: unless-stopped
     # 双层保护（防 OOM）：Redis 自身先按 maxmemory 淘汰最旧的“带 TTL”的键；
     # 这里再给容器加硬上限并禁用 swap，作为最后一道防线，避免拖垮主机。
-    # 主机内存需 ≥ maxmemory + 应用 + 系统余量（本项目 5.8G 主机用 3.5G/4G）。
-    mem_limit: 4g
-    memswap_limit: 4g
+    # 主机内存需 ≥ maxmemory + 应用 + 系统余量（本项目 8G 主机用 6G/6.5G）。
+    mem_limit: 6.5g
+    memswap_limit: 6.5g
     volumes:
       - redis-data:/data
     # volatile-lru 只淘汰带 TTL 的键（日志/告警/AI 历史都有 TTL），
     # settings、users、索引注册集合无 TTL，永不会被淘汰；
     # maxmemory-clients 限制客户端输出缓冲，lazyfree 让淘汰异步释放不阻塞。
-    command: redis-server --appendonly yes --maxmemory 3584mb --maxmemory-policy volatile-lru --maxmemory-samples 5 --maxmemory-clients 5% --lazyfree-lazy-eviction yes
+    command: redis-server --appendonly yes --maxmemory 6144mb --maxmemory-policy volatile-lru --maxmemory-samples 5 --maxmemory-clients 5% --lazyfree-lazy-eviction yes
     networks:
       - logaimonitor-net
     healthcheck:
