@@ -25,6 +25,7 @@ COPY templates/logs.html /app/templates/logs.html
 COPY templates/users.html /app/templates/users.html
 COPY templates/docker.html /app/templates/docker.html
 COPY templates/alerts.html /app/templates/alerts.html
+COPY templates/filters.html /app/templates/filters.html
 COPY templates/clients.html /app/templates/clients.html
 COPY templates/base.html /app/templates/base.html
 COPY static/logaimonitor-architecture.html /app/static/logaimonitor-architecture.html

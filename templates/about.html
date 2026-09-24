@@ -99,6 +99,14 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2E7D32;">💾 磁盘规则正则细化 + 过滤器「任意级别通知」（2026-09-25）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li><b>背景</b>：ESXi 主机日志里 <code>vmkernel</code> 的严重磁盘错误（SCSI 命令失败 <code>failed H:0x0 D:0x8 P:0x0</code>、<code>NMP throttle</code> 路径抖动）上报的 syslog 级别是 <b>info</b>，而 Telegram 通知有<b>全局级别门限</b>（只发 critical/emergency/alert/error），导致这类真问题虽然命中了规则却不会推送</li>
+                    <li><b>过滤器新增「忽略级别门限」开关</b>（Filters 弹窗第二个复选框，字段 <code>notify_any_severity</code>）：勾选后该规则命中即推送，不受全局级别限制；规则列表 Notify 列显示 <code>📱 Telegram · 全部级别</code> 以区分普通规则</li>
+                    <li><b>磁盘/文件系统异常 正则细化</b>：新增 <code>failed:?\s*h:0x</code>（SCSI 命令失败）、<code>nmp_(throttlelogfordevice|resetdevicelogthrottling)</code>（NMP 路径抖动）、<code>permanently removed</code> / <code>device offline</code> / <code>lost access</code> / <code>all paths down</code>；用真实主机日志回放验证 <b>94 → 54 条</b>（排除 40 条 <code>Aborting command</code> 无害中断），<b>0 条真实问题漏报</b>；同时确认 smartd 的 <code>Reallocated_Sector_Ct</code> 误报（阈值 90、实际 0）不再匹配</li>
+                    <li><b>实测</b>：发送一条 <code>info</code> 级 <code>Buffer I/O error</code> 合成日志 → 命中磁盘规则 → <b>Telegram 推送成功</b>（容器日志出现 <code>[TelegramNotifier] Message sent successfully</code>）；验证后已清理该测试日志、告警与遗留的合成测试主机</li>
+                    <li><b>修复</b>：<code>Dockerfile</code> 补上 <code>COPY templates/filters.html</code>——此前该模板不在镜像 COPY 列表里，filters 页的模板改动无法进入容器</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #B71C1C;">🛡️ Redis 内存双层保护（防 OOM）（2026-09-25）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>背景</b>：此前 Redis 容器<b>没有内存上限</b>（Docker Memory limit=0），RSS 已达 3.16G 而主机总内存仅 5.8G、可用仅 1.6G，一旦数据继续增长或 AOF 重写 fork 产生写时复制，存在拖垮主机/OOM 的风险</li>

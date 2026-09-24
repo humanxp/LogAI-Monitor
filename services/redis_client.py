@@ -816,6 +816,7 @@ class RedisClient:
         filter_data['created_at'] = datetime.now(timezone.utc).isoformat()
         filter_data['enabled'] = filter_data.get('enabled', True)
         filter_data['notify_telegram'] = filter_data.get('notify_telegram', False)
+        filter_data['notify_any_severity'] = filter_data.get('notify_any_severity', False)
 
         self.client.hset(filter_id, mapping=self._jsonify(filter_data))
         self.client.sadd('filters:all', filter_id)
@@ -829,7 +830,7 @@ class RedisClient:
             return None
 
         # Parse JSON fields (including booleans stored as JSON)
-        for key in ['conditions', 'enabled', 'notify_telegram']:
+        for key in ['conditions', 'enabled', 'notify_telegram', 'notify_any_severity']:
             if key in data:
                 try:
                     data[key] = json.loads(data[key])

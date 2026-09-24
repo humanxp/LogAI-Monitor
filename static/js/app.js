@@ -815,7 +815,7 @@ function renderFilters() {
                     <tr>
                         <td><strong>${escapeHtml(filter.name)}</strong></td>
                         <td class="filter-conditions">${_filterConditionsHtml(filter)}</td>
-                        <td>${filter.notify_telegram ? '📱 Telegram' : '-'}</td>
+                        <td>${filter.notify_telegram ? ('📱 Telegram' + (filter.notify_any_severity ? ' · 全部级别' : '')) : '-'}</td>
                         <td>
                             <label class="toggle-switch">
                                 <input type="checkbox" ${filter.enabled ? 'checked' : ''} 
@@ -931,6 +931,7 @@ function editFilter(filterId) {
     document.getElementById('filterMessageContains').value = filter.conditions?.message_contains || '';
     document.getElementById('filterMessageRegex').value = filter.conditions?.message_regex || '';
     document.getElementById('filterNotifyTelegram').checked = filter.notify_telegram || false;
+    document.getElementById('filterNotifyAny').checked = filter.notify_any_severity || false;
     document.getElementById('filterEnabled').checked = filter.enabled !== false;
     
     openModal('filterModal');
@@ -943,6 +944,7 @@ function showNewFilterModal() {
     document.getElementById('filterId').value = '';
     // Explicitly set checkbox states for new filter
     document.getElementById('filterNotifyTelegram').checked = false;
+    document.getElementById('filterNotifyAny').checked = false;
     document.getElementById('filterEnabled').checked = true;
     openModal('filterModal');
 }
@@ -2349,6 +2351,7 @@ function submitFilterForm(event) {
             message_regex: document.getElementById('filterMessageRegex').value || undefined
         },
         notify_telegram: document.getElementById('filterNotifyTelegram').checked,
+        notify_any_severity: document.getElementById('filterNotifyAny').checked,
         enabled: document.getElementById('filterEnabled').checked
     };
     

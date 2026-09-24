@@ -304,7 +304,10 @@ def _process_log_filters(log_entry, log_id):
                         notify_levels += ['critical', 'emergency', 'alert']
                     if settings.get('alert_on_error', True):
                         notify_levels.append('error')
-                    if severity not in notify_levels:
+                    # Some sources (e.g. ESXi vmkernel) deliver serious content
+                    # with an "info" syslog severity, so a filter can opt out of
+                    # the global level gate ("always notify").
+                    if severity not in notify_levels and not f.get('notify_any_severity'):
                         continue
                     hostname = log_entry.get('hostname', log_entry.get('source', 'unknown'))
                     filter_id = f.get('id', 'unknown')
