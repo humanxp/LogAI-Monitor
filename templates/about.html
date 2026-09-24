@@ -99,6 +99,14 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #B71C1C;">🛡️ Redis 内存双层保护（防 OOM）（2026-09-25）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li><b>背景</b>：此前 Redis 容器<b>没有内存上限</b>（Docker Memory limit=0），RSS 已达 3.16G 而主机总内存仅 5.8G、可用仅 1.6G，一旦数据继续增长或 AOF 重写 fork 产生写时复制，存在拖垮主机/OOM 的风险</li>
+                    <li><b>Redis 层（自身淘汰）</b>：<code>maxmemory 3.5GB</code> + <code>volatile-lru</code>（只淘汰<b>带 TTL</b> 的键：日志哈希 / 告警 / AI 历史；<code>settings</code>、<code>users</code>、索引注册集合无 TTL，<b>永不会被淘汰</b>）+ <code>maxmemory-samples 5</code> + <code>maxmemory-clients 5%</code>（限制客户端输出缓冲，防止慢客户端撑爆内存）+ <code>lazyfree-lazy-eviction yes</code>（异步释放，淘汰不阻塞写入）</li>
+                    <li><b>容器层（硬上限）</b>：<code>mem_limit: 4g</code> + <code>memswap_limit: 4g</code>——给容器加硬上限并<b>禁用 swap</b>，作为最后一道防线；主机 5.8G 的分配为 Redis 3.5G/4G + 应用 ~0.35G + 系统余量</li>
+                    <li><b>内核层</b>：<code>vm.overcommit_memory=1</code>（已持久化到 <code>/etc/sysctl.d/99-redis-overcommit.conf</code>）——避免 AOF 重写/BGSAVE fork 时因写时复制导致 fork 失败或内存申请被拒</li>
+                    <li>实测：配置全部生效（maxmemory 3.50G / 容器 4GiB / 当前 RSS 3.12GiB / overcommit=1），数据完整（timeline 160 万条、DBSIZE 161 万不变）、AOF 状态 ok、应用重启期间无缝重连</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #0277BD;">🔔 Alerts / Filters 页完善与 AI 分析（2026-09-23）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>Alert History 每条告警新增 Details 详情弹窗</b>：完整展示 时间 / 状态 / 级别 / 命中规则 / 主机 / 来源 / Log ID / <b>完整消息</b>（列表里是省略号，弹窗内不截断），并可在弹窗内直接 Acknowledge</li>
