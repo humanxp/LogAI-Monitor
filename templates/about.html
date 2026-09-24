@@ -102,11 +102,11 @@
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #B71C1C;">🛡️ Redis 内存双层保护（防 OOM）（2026-09-25）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>背景</b>：此前 Redis 容器<b>没有内存上限</b>（Docker Memory limit=0），RSS 已达 3.16G 而主机总内存仅 5.8G、可用仅 1.6G，一旦数据继续增长或 AOF 重写 fork 产生写时复制，存在拖垮主机/OOM 的风险</li>
-                    <li><b>Redis 层（自身淘汰）</b>：<code>maxmemory 6GB</code> + <code>volatile-lru</code>（只淘汰<b>带 TTL</b> 的键：日志哈希 / 告警 / AI 历史；<code>settings</code>、<code>users</code>、索引注册集合无 TTL，<b>永不会被淘汰</b>）+ <code>maxmemory-samples 5</code> + <code>maxmemory-clients 5%</code>（限制客户端输出缓冲，防止慢客户端撑爆内存）+ <code>lazyfree-lazy-eviction yes</code>（异步释放，淘汰不阻塞写入）</li>
-                    <li><b>容器层（硬上限）</b>：<code>mem_limit: 6.5g</code> + <code>memswap_limit: 6.5g</code>——给容器加硬上限并<b>禁用 swap</b>，作为最后一道防线；8G 主机分配为 Redis 6G/6.5G + 应用 ~0.1G + 系统与缓存余量</li>
+                    <li><b>Redis 层（自身淘汰）</b>：<code>maxmemory 9GB</code> + <code>volatile-lru</code>（只淘汰<b>带 TTL</b> 的键：日志哈希 / 告警 / AI 历史；<code>settings</code>、<code>users</code>、索引注册集合无 TTL，<b>永不会被淘汰</b>）+ <code>maxmemory-samples 5</code> + <code>maxmemory-clients 5%</code>（限制客户端输出缓冲，防止慢客户端撑爆内存）+ <code>lazyfree-lazy-eviction yes</code>（异步释放，淘汰不阻塞写入）</li>
+                    <li><b>容器层（硬上限）</b>：<code>mem_limit: 10g</code> + <code>memswap_limit: 10g</code>——给容器加硬上限并<b>禁用 swap</b>，作为最后一道防线；12G 主机分配为 Redis 9G/10G + 应用 ~0.1G + 系统与缓存余量</li>
                     <li><b>内核层</b>：<code>vm.overcommit_memory=1</code>（已持久化到 <code>/etc/sysctl.d/99-redis-overcommit.conf</code>）——避免 AOF 重写/BGSAVE fork 时因写时复制导致 fork 失败或内存申请被拒</li>
-                    <li>实测：配置全部生效（maxmemory 6G / 容器 6.5GiB / 当前 RSS 3.12GiB / overcommit=1），数据完整（timeline 160 万条、DBSIZE 161 万不变）、AOF 状态 ok、应用重启期间无缝重连</li>
-                    <li><b>宿主机扩容（2026-09-25）</b>：ESXi 侧把本 VM 内存由 6GB 提升到 <b>8GB</b>（客户机识别 7.75GiB），Redis 上限同步 3.5G→6G、容器硬顶 4G→6.5G；实测宿主机可用内存由 1.6G 提升到 <b>4.0G</b>，Redis 用量 3.12G/6.5G（48%）余量充足。<b>容量提示</b>：当前采集速率约 5,216 条/小时（约 2KB/条），6GB 约可容纳 24 天数据；若保持 720h（30 天）设置，末端约 6GB 处会由 LRU 优雅淘汰最旧日志（不会 OOM）。如需完整 30 天不淘汰，可将 Retention 调为 576h（24 天）或继续给 VM 加内存</li>
+                    <li>实测：配置全部生效（maxmemory 9G / 容器 10GiB / 当前 RSS 3.13GiB / overcommit=1），数据完整（timeline 160 万条、DBSIZE 161 万不变）、AOF 状态 ok、应用重启期间无缝重连</li>
+                    <li><b>宿主机扩容（2026-09-25）</b>：ESXi 侧把本 VM 内存分两步 <b>6GB → 8GB → 12GB</b>（客户机识别 11.68GiB），Redis 上限随之 3.5G → 6G → <b>9G</b>、容器硬顶 4G → 6.5G → <b>10G</b>；实测宿主机可用内存由 1.6G 提升到 <b>7.9G</b>，Redis 用量 3.13G/10G（31%）余量充足。<b>容量结论</b>：按当前实测 5,230 条/小时、约 2KB/条，720h（30 天）预计约 <b>7.2GB &lt; 9G</b>，因此 <b>720h 保留期现在可完整保留、不再触发淘汰</b>（此前 3.5G/6G 时会在 24 天左右开始淘汰最旧日志）</li>
                 </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #0277BD;">🔔 Alerts / Filters 页完善与 AI 分析（2026-09-23）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
