@@ -99,6 +99,16 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #6A1B9A;">🧹 主机列表「假主机」修复：syslog 主机名缺失（2026-10-01）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li><b>现象</b>：All Hosts 里混进 <code>avahi-daemon[891]:</code>、<code>connmand[350]:</code>、<code>getty[936]:</code>、<code>lircd-0.10.1[637]:</code>、<code>ntpd[1025]:</code>、<code>rngd:</code> 这类条目，而且设备 <code>192.168.50.37</code> 的显示名被劫持成 <code>connmand[350]:</code></li>
+                    <li><b>根因</b>：<code>192.168.50.37</code>（自报 <code>LANSCAN-SYSLOG</code> 的日志转发器）转发过来的行<b>只有时间戳、没有主机名字段</b>，而旧的 RFC 3164 正则把第二个 token <b>无条件</b>当作主机名 → 程序名 <code>prog[pid]:</code> 被存成 hostname，program / message <b>整体左移一格</b>（<code>ntp</code> 被当成 program、<code>adjust (jump): …</code> 被当成 message）。只有消息体里含冒号时正则才会"错误地匹配成功"，所以同一台设备 1,058 条无冒号的行反而正确回退成 IP，306 条形如 <code>connmand[350]: ntp: …</code> 的被误解析</li>
+                    <li><b>修复 ①　解析器加固</b>：新增 <code>_plausible_hostname()</code>——真实主机名不含 <code>:</code> 与 <code>[]</code>，一旦 hostname 位拿到 <code>prog[pid]:</code> 就判定"发送方省略了主机名"，改按 <code>&lt;时间戳&gt; prog[pid]: msg</code> 解析：<b>hostname = 来源 IP，program = 真实 tag</b>；RFC 5424 的 nil 主机名 <code>-</code> 同样回退为来源 IP</li>
+                    <li><b>修复 ②　归组加固</b>：新增 <code>_looks_like_program_tag()</code>，程序名（<code>xxx[pid]:</code>）<b>不再参与设备命名、也不再单独出现在 All Hosts 下拉框</b>（它们的日志已按来源 IP 归组）；<code>host:ipname</code> 映射改为<b>权威重写</b>，旧的错误标签会被真正清掉</li>
+                    <li><b>修复 ③　存量自愈</b>：新增 <code>repair_misparsed_hosts()</code> 并接入每小时清理任务——把历史错位日志的 hostname 改回来源 IP、program 改回真实 tag、message 补回前缀，索引从 <code>logs:host:connmand[350]:</code> 搬到 <code>logs:host:&lt;来源IP&gt;</code>，并删除假索引；本次一次性修复 <b>17 个假主机 / 332 条日志</b>，日志总条数不变，且以后自动保持干净</li>
+                    <li><b>验证</b>：332/332 条可疑条目全部纠正；<b>200 条正常 RFC 3164 日志 + 206 条 RFC 5424（ESXi/vmkernel）日志输出 100% 不变（零回归）</b>；线上实发一条无主机名的 <code>connmand[351]: ntp: …</code> → 正确存为 <code>hostname=来源IP / program=connmand / pid=351</code></li>
+                    <li><b>附带收益</b>：Telegram 通知冷却 key 是「主机名 + 规则」，此前这台设备被拆成 17 个冷却桶（等于冷却失效），现在恢复按设备维度计算</li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2E7D32;">💾 磁盘规则正则细化 + 过滤器「任意级别通知」（2026-09-25）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>背景</b>：ESXi 主机日志里 <code>vmkernel</code> 的严重磁盘错误（SCSI 命令失败 <code>failed H:0x0 D:0x8 P:0x0</code>、<code>NMP throttle</code> 路径抖动）上报的 syslog 级别是 <b>info</b>，而 Telegram 通知有<b>全局级别门限</b>（只发 critical/emergency/alert/error），导致这类真问题虽然命中了规则却不会推送</li>

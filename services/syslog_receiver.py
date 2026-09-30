@@ -427,6 +427,20 @@ class SyslogReceiver:
                 continue
         return data.decode('utf-8', errors='replace')
 
+    @staticmethod
+    def _plausible_hostname(token: str) -> bool:
+        """True when ``token`` really looks like a hostname / IP.
+
+        A program tag such as ``connmand[351]:`` or ``rngd:`` is never a
+        hostname: real names carry no ':' and no '[' ']'. Rejecting those keeps
+        sender-side field shifts from inventing fake hosts.
+        """
+        if not token:
+            return False
+        if ':' in token or '[' in token or ']' in token:
+            return False
+        return re.match(r'^[A-Za-z0-9][A-Za-z0-9._-]*$', token) is not None
+
     def parse_syslog_message(self, data: bytes, source_ip: str) -> dict:
         """Parse a syslog message (RFC 3164 and RFC 5424)"""
         try:
@@ -459,14 +473,37 @@ class SyslogReceiver:
             message = message[pri_match.end():]
         
         # Try to parse RFC 3164 format: Mmm dd hh:mm:ss hostname program[pid]: message
-        rfc3164_match = re.match(
-            r'^(\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})\s+(\S+)\s+(\S+?)(?:\[(\d+)\])?:\s*(.*)',
+        #
+        # Some forwarders relay the line with the HOSTNAME FIELD STRIPPED
+        # ("Sep 25 07:22:59 connmand[351]: ntp: adjust ...", seen from the
+        # LANSCAN-SYSLOG relay at 192.168.50.37). The old single regex treated
+        # the second token as the hostname no matter what, so the program tag
+        # ("connmand[351]:", "rngd:") was stored AS the hostname and program /
+        # message shifted one field left - which polluted the All Hosts list
+        # with ~17 fake devices and split that device's Telegram cooldown key.
+        #
+        # Fix: only accept the hostname slot when the token actually looks like
+        # a hostname (no ':' / brackets), otherwise re-parse as "ts prog[pid]: msg"
+        # and keep the source IP as the hostname.
+        _ts = r'\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}'
+        rfc3164_host = re.match(
+            rf'^({_ts})\s+(\S+)\s+(\S+?)(?:\[(\d+)\])?:\s*(.*)',
             message
         )
-        
-        if rfc3164_match:
-            timestamp_str, hostname, program, pid, msg = rfc3164_match.groups()
+        rfc3164_nohost = re.match(
+            rf'^({_ts})\s+(\S+?)(?:\[(\d+)\])?:\s*(.*)',
+            message
+        )
+
+        if rfc3164_host and self._plausible_hostname(rfc3164_host.group(2)):
+            timestamp_str, hostname, program, pid, msg = rfc3164_host.groups()
             log_entry['hostname'] = hostname
+            log_entry['program'] = program
+            if pid:
+                log_entry['pid'] = pid
+            log_entry['message'] = msg
+        elif rfc3164_nohost:
+            program, pid, msg = rfc3164_nohost.group(2), rfc3164_nohost.group(3), rfc3164_nohost.group(4)
             log_entry['program'] = program
             if pid:
                 log_entry['pid'] = pid
@@ -485,7 +522,8 @@ class SyslogReceiver:
             if rfc5424_match:
                 timestamp_str, hostname, app_name, proc_id, msg_id, structured_data, msg = rfc5424_match.groups()
                 log_entry['timestamp'] = timestamp_str
-                log_entry['hostname'] = hostname
+                # RFC 5424 uses "-" for a nil hostname; keep the sender IP then.
+                log_entry['hostname'] = hostname if self._plausible_hostname(hostname) else source_ip
                 log_entry['program'] = app_name.rstrip(':')
                 log_entry['proc_id'] = proc_id
                 log_entry['msg_id'] = msg_id

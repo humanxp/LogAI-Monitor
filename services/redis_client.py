@@ -4,6 +4,7 @@
 import redis
 import hashlib
 import json
+import re
 import time
 import os
 import threading
@@ -459,6 +460,17 @@ class RedisClient:
     # ------------------------------------------------------------------
     _HOST_IPNAME = 'host:ipname'     # hash: ip -> dominant hostname
 
+    # A sender that omits the RFC 3164 hostname field makes the PROGRAM TAG land
+    # in the hostname slot ("connmand[350]:", "rngd:", "avahi-daemon[891]:").
+    # Those tokens are parser artifacts, never devices: they must not name a
+    # device and must not show up in the All Hosts list. A real hostname never
+    # ends with ':', and the bracketed form only matches name[pid]:.
+    _PROGRAM_TAG_RE = re.compile(r'^[^\[\]:]+(?:\[\d+\])?:$')
+
+    @classmethod
+    def _looks_like_program_tag(cls, name: str) -> bool:
+        return bool(name) and cls._PROGRAM_TAG_RE.match(name.strip()) is not None
+
     @staticmethod
     def _looks_like_ip(value: str) -> bool:
         if not value:
@@ -481,7 +493,7 @@ class RedisClient:
             hosts = []
         votes = {}   # ip -> {name: count}
         for name in hosts:
-            if self._looks_like_ip(name):
+            if self._looks_like_ip(name) or self._looks_like_program_tag(name):
                 continue
             try:
                 ids = self.client.zrevrange(f'logs:host:{name}', 0, max(0, sample_limit - 1))
@@ -502,10 +514,92 @@ class RedisClient:
             best = max(names.items(), key=lambda kv: kv[1])
             if best[1] >= 2:       # ignore one-off noise
                 mapping[ip] = best[0]
-        if mapping:
+        # Rewrite authoritatively: dropping the old hash is what removes a stale
+        # label (e.g. "connmand[350]:" picked before the parser was fixed) once
+        # that name no longer qualifies. Only skip the rewrite when nothing could
+        # be sampled at all, to avoid wiping the map on a transient error.
+        if votes or not hosts:
             self.client.delete(self._HOST_IPNAME)
-            self.client.hset(self._HOST_IPNAME, mapping=mapping)
+            if mapping:
+                self.client.hset(self._HOST_IPNAME, mapping=mapping)
         return mapping
+
+    def repair_misparsed_hosts(self, max_logs_per_host: int = 20000) -> Dict:
+        """Re-home logs whose stored HOSTNAME is really a program tag.
+
+        Before the parser was fixed, a sender that omitted the RFC 3164 hostname
+        field produced entries like ``hostname="connmand[350]:"`` with program
+        and message shifted one field left. This walks those bogus host indexes,
+        rewrites each log hash (hostname = sender IP, program = the real tag,
+        message = ``"<old program>: <old message>"``), moves the ids into
+        ``logs:host:<sender ip>`` and deletes the artifact index.
+
+        Idempotent: after it runs the bogus indexes are gone, so the next call
+        does nothing. Returns ``{fixed_hosts, fixed_logs, errors}``.
+        """
+        report = {'fixed_hosts': 0, 'fixed_logs': 0, 'errors': 0}
+        try:
+            names = self._index_names('logs:host:')
+        except Exception:
+            return report
+
+        for name in names:
+            if not self._looks_like_program_tag(name):
+                continue
+            key = f'logs:host:{name}'
+            try:
+                entries = self.client.zrange(key, 0, max_logs_per_host - 1, withscores=True)
+            except Exception:
+                report['errors'] += 1
+                continue
+
+            tag = name.rstrip(':')
+            pid = None
+            m = re.match(r'^(.*?)\[(\d+)\]$', tag)
+            if m:
+                tag, pid = m.group(1), m.group(2)
+
+            fixed = 0
+            try:
+                pipe = self.client.pipeline()
+                for log_id, score in entries:
+                    data = self.client.hgetall(log_id)
+                    if not data:
+                        pipe.zrem(key, log_id)
+                        continue
+                    source = data.get('source') or ''
+                    old_program = (data.get('program') or '').strip()
+                    old_message = data.get('message') or ''
+                    # The old regex demanded ':' right after the shifted program
+                    # token, so the true message still carries "<program>: ".
+                    new_message = old_message
+                    if old_program and old_program != 'unknown':
+                        new_message = f'{old_program}: {old_message}'
+
+                    updates = {
+                        'hostname': source or name,
+                        'program': tag,
+                        'message': new_message,
+                    }
+                    if pid and not data.get('pid'):
+                        updates['pid'] = pid
+                    pipe.hset(log_id, mapping=self._jsonify(updates))
+                    pipe.zrem(key, log_id)
+                    if source and self._looks_like_ip(source):
+                        pipe.zadd(f'logs:host:{source}', {log_id: score})
+                        pipe.sadd(self._REGISTRY_HOSTS, source)
+                    fixed += 1
+                pipe.delete(key)
+                pipe.srem(self._REGISTRY_HOSTS, name)
+                pipe.execute()
+            except Exception:
+                report['errors'] += 1
+                continue
+
+            report['fixed_hosts'] += 1
+            report['fixed_logs'] += fixed
+
+        return report
 
     # Long hostnames (RT-AC86U-1D30-17360F1-C, ...) made the filter dropdown
     # extremely wide, so the closed-state label is a shortened hostname and the
@@ -567,6 +661,11 @@ class RedisClient:
         # 2) Names that are not represented by a sender IP (docker-host, ...)
         for name in sorted(host_names):
             if self._looks_like_ip(name) or name in absorbed:
+                continue
+            # Skip parser artifacts ("connmand[350]:"): their logs already show
+            # up under the sender IP, so listing them as separate "hosts" only
+            # pollutes the dropdown.
+            if self._looks_like_program_tag(name):
                 continue
             try:
                 count = int(self.client.zcard(f'logs:host:{name}'))

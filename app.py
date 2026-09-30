@@ -674,6 +674,16 @@ def cleanup_task():
             redis_client.purge_stale_failed_history()
         except Exception as _e:
             print(f"[Scheduler] purge_stale_failed_history error: {_e}")
+        # Re-home historical logs whose hostname is really a program tag
+        # ("connmand[350]:") - a parser artifact from senders that omitted the
+        # RFC 3164 hostname field. Then refresh the grouping so the display
+        # label re-derives from clean data.
+        try:
+            _rep = redis_client.repair_misparsed_hosts()
+            if _rep.get('fixed_hosts'):
+                print(f"[Scheduler] repaired misparsed hostnames: {_rep}")
+        except Exception as _e:
+            print(f"[Scheduler] misparsed hostname repair error: {_e}")
         # Refresh the IP -> hostname grouping used by the Logs host filter, so
         # devices that changed name/address are merged correctly.
         try:
