@@ -15,6 +15,7 @@ COPY services/redis_client.py /app/services/redis_client.py
 COPY services/syslog_receiver.py /app/services/syslog_receiver.py
 COPY services/telegram_notifier.py /app/services/telegram_notifier.py
 COPY app.py /app/app.py
+COPY VERSION /app/VERSION
 COPY static/js/app.js /app/static/js/app.js
 COPY static/css/style.css /app/static/css/style.css
 COPY templates/settings.html /app/templates/settings.html
