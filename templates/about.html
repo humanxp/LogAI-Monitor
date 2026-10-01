@@ -38,17 +38,20 @@
         </div>
         <div class="card-body">
             <ul style="line-height: 1.9;">
-                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Real-time syslog over UDP/TCP (RFC3164 / RFC5424) with UTF-8 → GB18030 Chinese decoding</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Real-time syslog over UDP/TCP (RFC3164 / RFC5424) with a guard that never mistakes a program tag for a hostname, and UTF-8 → GB18030 → Latin-1 decoding</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Docker container log streaming with exclusion rules</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> AI batch analysis: every 2 min or 500 pending, oldest-first, severity-ranked sampling</li>
-                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> OpenAI-compatible endpoints (vLLM / SGLang) & native Ollama</li>
-                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Analysis history with one-click re-analysis of failed runs</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> OpenAI-compatible endpoints (vLLM / SGLang) &amp; native Ollama</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Analysis history with one-click re-analysis; failed batches are retried and then retired after 3 attempts, so the pending queue can never jam</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Custom filters → UI alerts + graded / cooldown-aware Telegram alerts</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Per-rule "ignore level gate" option, for rules whose real problems devices log at <code>info</code> level</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Critical-only Telegram summaries with AI fix suggestions</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Realtime dashboard via Socket.IO (logs / alerts / analysis / stats pushed)</li>
                 <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> AI Chat assistant grounded in live logs</li>
-                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Duplicate log grouping & hostname/FQDN tracking</li>
-                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Retention-based auto cleanup (TTL + hourly purge), 240h default</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Duplicate log grouping, hostname / FQDN tracking, and a connected-clients view with protocol and message counters</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Retention-based auto cleanup (TTL + hourly purge), 720h in this deployment, editable from Settings without a restart</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Login required for every mutating action: three access tiers (public read / operator / admin) plus an <code>X-API-Token</code> channel for automation</li>
+                <li><i class="fas fa-check" style="color: #4CAF50; margin-right: 0.5rem;"></i> Optional <b>C syslog collector</b> (<code>csyslog/</code>): a standalone implementation of the same ingest → filter → alert → Telegram pipeline, sharing the Redis key layout</li>
             </ul>
         </div>
     </div>
@@ -63,12 +66,14 @@
                 <li><i class="fas fa-database" style="color: #DC382D; margin-right: 0.5rem;"></i> Redis 7 (hashes + zset/set indexes, pipelined writes, unanalyzed-log index)</li>
                 <li><i class="fas fa-brain" style="color: #FF6F00; margin-right: 0.5rem;"></i> OpenAI-compatible REST (requests) → vLLM / SGLang / Ollama</li>
                 <li><i class="fas fa-clock" style="color: #1565C0; margin-right: 0.5rem;"></i> APScheduler: 2-min analysis · hourly cleanup · 30s Redis health check</li>
-                <li><i class="fas fa-server" style="color: #6D4C41; margin-right: 0.5rem;"></i> Gunicorn (gthread × 40 threads) in Docker Compose</li>
+                <li><i class="fas fa-server" style="color: #6D4C41; margin-right: 0.5rem;"></i> Gunicorn (gthread, 1 worker × 40 threads so receivers and scheduler start once) in Docker Compose</li>
                 <li><i class="fab fa-docker" style="color: #2496ED; margin-right: 0.5rem;"></i> Docker SDK (ro socket) for container log collection</li>
                 <li><i class="fas fa-plug" style="color: #009688; margin-right: 0.5rem;"></i> python-socketio / Socket.IO realtime (threading mode, auth-gated)</li>
                 <li><i class="fab fa-telegram" style="color: #0088CC; margin-right: 0.5rem;"></i> python-telegram-bot (async loop thread)</li>
-                <li><i class="fas fa-network-wired" style="color: #7B1FA2; margin-right: 0.5rem;"></i> Native socket syslog receiver (dedicated UDP/TCP threads)</li>
-                <li><i class="fas fa-shield-alt" style="color: #c62828; margin-right: 0.5rem;"></i> Hardened ops: log rotation · Redis maxmemory cap · bounded worker pool</li>
+                <li><i class="fas fa-network-wired" style="color: #7B1FA2; margin-right: 0.5rem;"></i> Native socket syslog receiver (dedicated UDP/TCP threads) with a bounded queue and worker pool</li>
+                <li><i class="fas fa-key" style="color: #F9A825; margin-right: 0.5rem;"></i> Werkzeug scrypt password hashing + HMAC-SHA256 signed session cookie</li>
+                <li><i class="fas fa-microchip" style="color: #455A64; margin-right: 0.5rem;"></i> Optional C collector: GCC · epoll · hiredis · PCRE2 · libcurl (single static binary, runs beside the Python app on a shared Redis layout)</li>
+                <li><i class="fas fa-shield-alt" style="color: #c62828; margin-right: 0.5rem;"></i> Hardened ops: log rotation · Redis maxmemory cap · bounded worker pool · batch dead-letter retirement</li>
             </ul>
         </div>
     </div>
