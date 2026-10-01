@@ -28,4 +28,6 @@ COPY templates/alerts.html /app/templates/alerts.html
 COPY templates/filters.html /app/templates/filters.html
 COPY templates/clients.html /app/templates/clients.html
 COPY templates/base.html /app/templates/base.html
+COPY templates/login.html /app/templates/login.html
+COPY templates/error.html /app/templates/error.html
 COPY static/logaimonitor-architecture.html /app/static/logaimonitor-architecture.html

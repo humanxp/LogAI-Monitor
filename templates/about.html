@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}About - LogRadarAI{% endblock %}
+{% block title %}About - LogAI Monitor{% endblock %}
 {% block header_title %}About{% endblock %}
 
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-shield-alt"></i> LogRadarAI</h3>
+        <h3><i class="fas fa-shield-alt"></i> LogAI Monitor</h3>
     </div>
     <div class="card-body">
         <div style="text-align: center; margin-bottom: 2rem;">
             <i class="fas fa-shield-alt" style="font-size: 4rem; color: #2196F3; margin-bottom: 1rem;"></i>
-            <h2 style="margin: 0; color: #333;">LogRadarAI</h2>
+            <h2 style="margin: 0; color: #333;">LogAI Monitor</h2>
             <p style="color: #999; margin-top: 0.25rem; font-weight: 600;">Version {{ version or VERSION }}</p>
             <p style="color: #666; margin-top: 0.5rem;">AI-Powered Log Monitoring & Analysis</p>
         </div>
         
         <p style="font-size: 1.1rem; line-height: 1.6;">
-            LogRadarAI is an intelligent log monitoring and analysis platform that combines traditional 
+            LogAI Monitor is an intelligent log monitoring and analysis platform that combines traditional 
             syslog collection with cutting-edge AI capabilities. It provides real-time log aggregation, 
             smart filtering, and AI-powered analysis to help system administrators identify and resolve 
             issues faster.
@@ -79,26 +79,14 @@
         <h3><i class="fas fa-users"></i> Developers</h3>
     </div>
     <div class="card-body" style="display: flex; flex-direction: column; gap: 1.5rem;">
-        <div style="display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;">
-            <div style="text-align: center;">
-                <i class="fas fa-user-circle" style="font-size: 4rem; color: #2196F3;"></i>
-            </div>
-            <div>
-                <h3 style="margin: 0 0 0.25rem 0;">Fotios Tsiadimos</h3>
-                <p style="color: #666; margin: 0 0 0.75rem 0;">Original Developer · Software Developer &amp; System Administrator</p>
-                <a href="https://github.com/ftsiadimos/LogRadarAI" target="_blank" class="btn btn-primary" style="display: inline-flex; align-items: center; gap: 0.5rem;">
-                    <i class="fab fa-github"></i> View on GitHub
-                </a>
-            </div>
-        </div>
-        <div style="display: flex; align-items: flex-start; gap: 2rem; border-top: 1px solid #e0e0e0; padding-top: 1.5rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
             <div style="text-align: center;">
                 <i class="fas fa-user-cog" style="font-size: 4rem; color: #e65100;"></i>
             </div>
             <div style="flex: 1; min-width: 280px;">
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
-                <p style="margin: 0 0 0.5rem 0; font-weight: 600;">相对原版 LogRadarAI 的全部修改：</p>
+                <p style="margin: 0 0 0.5rem 0; font-weight: 600;">本机定制记录：</p>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #6A1B9A;">🧹 主机列表「假主机」修复：syslog 主机名缺失（2026-10-01）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>现象</b>：All Hosts 里混进 <code>avahi-daemon[891]:</code>、<code>connmand[350]:</code>、<code>getty[936]:</code>、<code>lircd-0.10.1[637]:</code>、<code>ntpd[1025]:</code>、<code>rngd:</code> 这类条目，而且设备 <code>192.168.50.37</code> 的显示名被劫持成 <code>connmand[350]:</code></li>
@@ -318,14 +306,9 @@
     </div>
     <div class="card-body">
         <p>
-            LogRadarAI is open source software. Feel free to use, modify, and distribute it according to the license terms.
+            本机私有部署，按随附的许可证条款使用与修改。
         </p>
-        <p style="margin-top: 1rem;">
-            <strong>Repository:</strong> 
-            <a href="https://github.com/ftsiadimos/LogRadarAI" target="_blank" style="color: #2196F3;">
-                https://github.com/ftsiadimos/LogRadarAI
-            </a>
-        </p>
+        
     </div>
 </div>
 {% endblock %}
