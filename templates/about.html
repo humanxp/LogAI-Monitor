@@ -87,6 +87,14 @@
                 <h3 style="margin: 0 0 0.25rem 0;">MinG</h3>
                 <p style="color: #666; margin: 0 0 0.75rem 0;">本机部署与深度定制 (Local Deployment &amp; Customization)</p>
                 <p style="margin: 0 0 0.5rem 0; font-weight: 600;">本机定制记录：</p>
+                <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #C62828;">🐛 死信保护修复 + 界面去品牌化 + C 版 syslog 采集器（2026-10-01）</div>
+                <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
+                    <li><b>修复死信保护失效（严重）</b>：<code>app.py</code> 调用了 <code>json.dumps()</code>，但整个文件<b>没有 <code>import json</code></b>，死信退役每次都抛 <code>NameError</code> 并被外层 <code>except</code> 吞成一行日志 → 解析失败的批次<b>永远重试、永不退役</b>，AI 分析积压从数百条一路涨到 <b>4.1 万条</b>，健康检查转为 <code>ok:false</code>。补上 import 后日志立刻出现 <code>Dead-lettered 500 logs after N consecutive failures</code>，积压开始回落（已回升 4 个 AI 批次/10 分钟）</li>
+                    <li><b>界面去品牌化</b>：产品名与页面标题统一为 <b>LogAI Monitor</b>（登录页 / 错误页 / 用户页 / 关于页），关于页移除原作者信息卡片与其 GitHub 仓库链接，定制记录改称「本机定制记录」；<code>Dockerfile</code> 补上 <code>login.html</code> 与 <code>error.html</code> 的 <code>COPY</code>——此前这两个模板一直取自基础镜像，因此品牌一直改不动</li>
+                    <li><b>新增 C 版 syslog 采集器</b>（<code>csyslog/</code>，约 1,550 行 C）：epoll 收 UDP/TCP、RFC 3164 / RFC 5424 解析（含「发送方省略主机名时不把程序名当主机」的保护）、GB18030/Latin-1 解码回退、hiredis 管道落库（哈希 + 五个索引 + 注册表 + TTL）、客户端统计，并在 C 内实现<b>过滤器匹配（PCRE2 正则）、告警落库、级别门限与单规则「任意级别」旁路、每主机+规则冷却、Telegram 推送</b>（libcurl，独立线程不阻塞采集）。已在隔离库逐项验证：解析字段、告警字段、3 条测试消息恰好产生 1 个冷却键（门限与冷却都生效）、Telegram HTTP 通道。附 <code>--selftest</code> 解析自测 11 项全通过。<b>尚未切换到生产</b>，Python 版仍占用 514/515</li>
+                    <li><b>运维注意：不要在 Redis 上使用 <code>MIGRATE</code></b>。批量复制日志时曾用 <code>MIGRATE ... COPY</code>，该命令会<b>阻塞整个 Redis 实例</b>（实测每次 <b>5.003 秒</b>），期间所有页面请求都要干等，表现为「页面打开很卡」；改用管道化 <code>HGETALL</code>/<code>HSET</code> 后 500 条不到 1 秒</li>
+                    <li><b>宿主机环境整理</b>：清理 Docker 构建缓存（632 条）、buildkit 缓存、apt 下载缓存、systemd journal 与过期备份，<b>释放 2.1GB</b>（9.5G → 7.4G）；保留当前内核与上一版内核作为启动兜底；为编译 C 采集器安装了 <code>gcc</code> / <code>libhiredis-dev</code> / <code>libpcre2-dev</code> / <code>libcurl4-openssl-dev</code></li>
+                </ul>
                 <div style="margin: 0 0 0.5rem 0; font-weight: 600; color: #6A1B9A;">🧹 主机列表「假主机」修复：syslog 主机名缺失（2026-10-01）</div>
                 <ul style="margin: 0; padding-left: 1.25rem; line-height: 1.8; color: #555;">
                     <li><b>现象</b>：All Hosts 里混进 <code>avahi-daemon[891]:</code>、<code>connmand[350]:</code>、<code>getty[936]:</code>、<code>lircd-0.10.1[637]:</code>、<code>ntpd[1025]:</code>、<code>rngd:</code> 这类条目，而且设备 <code>192.168.50.37</code> 的显示名被劫持成 <code>connmand[350]:</code></li>

@@ -1,8 +1,10 @@
-# LogAI Monitor（LogRadarAI 定制版）
+# LogAI Monitor
 
 智能日志监控与 AI 分析平台。采集 Linux 主机 syslog（UDP/TCP）与 Docker 容器日志，实时存入 Redis，由 AI 按批自动分析（OpenAI 兼容端点 / Ollama），并通过 Telegram 推送关键告警。
 
-本项目基于开源项目 [LogRadarAI](https://github.com/ftsiadimos/LogRadarAI)（GPL-3.0），由 **MinG** 在本机完成深度定制与生产化改造。
+代码基于开源项目 [LogRadarAI](https://github.com/ftsiadimos/LogRadarAI)（GPL-3.0）定制，许可证与源码中的版权声明按 GPL-3.0 保留；界面品牌、定制功能与运维配置属于本机部署方。
+
+补充：`csyslog/` 目录下另有一套**独立实现的 C 版 syslog 采集器**（接收 + 解析 + 落库 + 过滤器告警 + Telegram），与本 Python 应用共用同一套 Redis 键布局，可单独编译运行（`make && ./csyslog --selftest`）。
 
 > 原项目由 Fotios Tsiadimos 开发；本仓库在其基础上进行了大量功能增强与修复，详见 [与上游的差异](#与上游的差异)。
 
@@ -107,6 +109,8 @@
 ## 更新记录（2026-09-04 ~ 2026-10-01）
 
 > 与 About 页"开发者定制说明"同步；完整逐条清单见 About → Developers。
+
+- **死信保护修复 + 界面去品牌化 + C 版 syslog 采集器（2026-10-01）**：① **严重缺陷修复**——`app.py` 调用了 `json.dumps()` 但整个文件没有 `import json`，死信退役每次都抛 `NameError` 并被外层 `except` 吞掉，导致解析失败的批次**永远重试、永不退役**，AI 分析积压从数百条涨到 **4.1 万条**、健康检查转为 `ok:false`；补上 import 后日志立刻出现 `Dead-lettered 500 logs after N consecutive failures`，积压开始回落。② **界面去品牌化**——产品名与页面标题统一为 **LogAI Monitor**（登录/错误/用户/关于页），关于页移除原作者信息卡片与其仓库链接，定制记录改称「本机定制记录」；`Dockerfile` 补上 `login.html` / `error.html` 的 COPY（此前这两个模板一直取自基础镜像，改不动）。③ **新增 C 版 syslog 采集器**（`csyslog/`，约 1,550 行 C）——epoll 收 UDP/TCP、RFC 3164 / RFC 5424 解析（含"发送方省略主机名时不把程序名当主机"的保护）、hiredis 管道落库、客户端统计，并在 C 内实现**过滤器匹配（PCRE2 正则）、告警落库、级别门限与冷却、Telegram 推送**（libcurl，独立线程不阻塞采集）；已在隔离库逐项验证（3 条测试消息 → 3 条告警、恰好 1 个冷却键、Telegram HTTP 通道 401 验证），**尚未切换到生产**。④ **运维注意**——不要在 Redis 上使用 `MIGRATE`：它会阻塞整个实例（实测 5.003 秒/次），期间所有页面请求干等，表现为"页面很卡"；批量复制请用管道化 `HGETALL`/`HSET`（500 条 < 1 秒）。⑤ **宿主机整理**——清理 Docker 构建缓存（632 条）、buildkit 缓存、apt 缓存与 systemd journal，释放 **2.1GB**（9.5G → 7.4G），保留当前与上一版内核作为启动兜底。
 
 - **分页与网页化配置**：Log Entries / AI History 均 100 条/页 + 翻页；AI 历史保留期与 Log Retention 同步并自动清扫过期记录；General Settings 可直接改 保留期 / 分析间隔 / 每批条数 / AI 采样上限（保存即生效、调度实时重排，无需重建容器）
 - **AI 解析与稳定性**：JSON 提取重写（字符串感知 + schema 评分 + 纠正性重试）；prompt 输入消毒（引号/换行/反斜杠）；输出预算与 temperature/frequency_penalty 调优，防小模型重复循环；失败批次自动重试自愈并自动清理残留失败记录
