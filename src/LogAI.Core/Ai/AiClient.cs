@@ -1,0 +1,116 @@
+// Chat client for the two providers this deployment supports.
+//
+//   openai  POST {base}/chat/completions   {"model","messages","max_tokens","temperature"}
+//   ollama  POST {base}/api/chat           {"model","messages","stream":false}
+//
+// Both return the reply text, which the caller then runs through JsonExtractor:
+// keeping transport and parsing separate is what lets the extractor be tested
+// against recorded replies without a live model.
+
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
+namespace LogAI.Core.Ai;
+
+public sealed class AiClient(HttpClient? http = null)
+{
+    private readonly HttpClient _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+
+    public string Provider { get; init; } = "openai";
+    public string BaseUrl { get; init; } = "";
+    public string Model { get; init; } = "";
+    public string ApiKey { get; init; } = "";
+    public int MaxTokens { get; init; } = 2048;
+    public double Temperature { get; init; } = 0.1;
+
+    public async Task<string> CompleteAsync(string prompt, string? system = null,
+                                            CancellationToken cancellationToken = default)
+    {
+        var messages = new JsonArray();
+        if (!string.IsNullOrEmpty(system))
+            messages.Add(new JsonObject { ["role"] = "system", ["content"] = system });
+        messages.Add(new JsonObject { ["role"] = "user", ["content"] = prompt });
+
+        bool ollama = string.Equals(Provider, "ollama", StringComparison.OrdinalIgnoreCase);
+        string url = ollama
+            ? NormalizeBaseUrl(BaseUrl, Provider) + "/api/chat"
+            : NormalizeBaseUrl(BaseUrl, Provider) + "/chat/completions";
+
+        var payload = new JsonObject { ["model"] = Model, ["messages"] = messages };
+        if (ollama)
+        {
+            payload["stream"] = false;
+            payload["options"] = new JsonObject { ["temperature"] = Temperature, ["num_predict"] = MaxTokens };
+        }
+        else
+        {
+            payload["max_tokens"] = MaxTokens;
+            payload["temperature"] = Temperature;
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json"),
+        };
+        if (!string.IsNullOrEmpty(ApiKey))
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        string body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"AI endpoint returned {(int)response.StatusCode}: {Trim(body)}");
+
+        using var document = JsonDocument.Parse(body);
+        var root = document.RootElement;
+
+        // OpenAI-compatible: choices[0].message.content — Ollama: message.content
+        if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0 &&
+            choices[0].TryGetProperty("message", out var message) &&
+            message.TryGetProperty("content", out var content))
+            return content.GetString() ?? "";
+
+        if (root.TryGetProperty("message", out var ollamaMessage) &&
+            ollamaMessage.TryGetProperty("content", out var ollamaContent))
+            return ollamaContent.GetString() ?? "";
+
+        throw new HttpRequestException("AI endpoint reply had no message content");
+    }
+
+    /// <summary>
+    /// The configured host often lacks the /v1 suffix (the deployment stores
+    /// http://192.168.50.23:8000 while the OpenAI-compatible route lives under
+    /// /v1), which produced a 404 until this normalisation was added.
+    /// </summary>
+    public static string NormalizeBaseUrl(string baseUrl, string provider)
+    {
+        string url = (baseUrl ?? "").TrimEnd((char)47);
+        if (!string.Equals(provider, "ollama", StringComparison.OrdinalIgnoreCase)
+            && !url.EndsWith("/v1", StringComparison.OrdinalIgnoreCase))
+            url += "/v1";
+        return url;
+    }
+
+    /// <summary>True when the endpoint answers, used by the availability flag.</summary>
+    public async Task<bool> IsAvailableAsync(CancellationToken cancellationToken = default)
+    {
+        // An unconfigured endpoint is simply not available. Without this guard the
+        // probe threw InvalidOperationException ("invalid request URI"), which the
+        // health job turned into a silent failure.
+        if (string.IsNullOrWhiteSpace(BaseUrl)) return false;
+
+        try
+        {
+            await CompleteAsync("ping", cancellationToken: cancellationToken);
+            return true;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException
+                                      or InvalidOperationException or UriFormatException)
+        {
+            return false;
+        }
+    }
+
+    private static string Trim(string body) => body.Length <= 200 ? body : body[..200];
+}

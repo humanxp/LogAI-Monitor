@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% block title %}Logs - LogAI Monitor{% endblock %}
+{% block header_title %}Logs{% endblock %}
+
+{% block content %}
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <!-- Device filter: a custom dropdown instead of a native <select>, because
+         the native popup cannot show per-row hints. Rows show the full
+         "name (ip)" and hover shows the larger bubble. -->
+    <div class="host-combo" id="hostCombo">
+        <button type="button" class="form-control form-select host-combo-toggle" id="filterHostBtn"
+                onclick="toggleHostCombo(event)" aria-haspopup="listbox" aria-expanded="false">
+            <span id="filterHostText">All Hosts</span>
+            <i class="fas fa-caret-down" style="opacity: 0.6;"></i>
+        </button>
+        <div class="host-combo-list" id="hostComboList" role="listbox"></div>
+    </div>
+    <input type="hidden" id="filterHost" value="" data-kind="host" data-full="">
+    <!-- Custom hover bubble for the (shortened) device label: the native title
+         tooltip cannot be styled, and this one uses a larger font. -->
+    <div id="hostTooltip" class="host-tooltip" role="tooltip"></div>
+    
+    <select class="form-control form-select" id="filterSeveritySelect" onchange="applyLogFilters()">
+        <option value="">All Severities</option>
+        <option value="emergency">Emergency</option>
+        <option value="alert">Alert</option>
+        <option value="critical">Critical</option>
+        <option value="error">Error</option>
+        <option value="warning">Warning</option>
+        <option value="notice">Notice</option>
+        <option value="info">Info</option>
+        <option value="debug">Debug</option>
+    </select>
+    
+    <input type="text" class="form-control" id="filterSearch" placeholder="Search logs..." 
+           onkeyup="if(event.key === 'Enter') applyLogFilters()">
+
+    <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;"
+          title="按日期查看日志（本地日期，含起止当天）">
+        <i class="fas fa-calendar-day" style="color: #666;"></i>
+        <input type="date" class="form-control date-filter-input" id="filterStartDate"
+               onchange="applyLogFilters()" title="起始日期（当天 00:00 起）">
+        <span style="color: #666;">~</span>
+        <input type="date" class="form-control date-filter-input" id="filterEndDate"
+               onchange="applyLogFilters()" title="结束日期（当天 23:59 止）">
+    </span>
+    
+    <button class="btn btn-primary" onclick="applyLogFilters()">
+        <i class="fas fa-search"></i> Search
+    </button>
+    
+    <button class="btn btn-outline" id="refreshLogsBtn" onclick="refreshLogs()">
+        <i class="fas fa-sync"></i> Refresh
+    </button>
+    
+    <button class="btn btn-outline" id="clearFiltersBtn" onclick="clearFilters()">
+        <i class="fas fa-times"></i> Clear
+    </button>
+</div>
+
+<div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; font-size: 0.85rem; color: #1565c0;">
+    <i class="fas fa-calendar-day"></i> 日期过滤：<b id="timeFilterRange"></b>
+    <button type="button" class="btn btn-sm btn-outline" style="margin-left: 0.5rem;" onclick="clearTimeFilter()">清除</button>
+</div>
+
+<!-- Logs Table -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-file-alt"></i> Log Entries</h3>
+        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+            <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
+                <span style="font-size: 0.9rem;">Hide repeated</span>
+            </label>
+            <span><span id="logCount">0</span> logs shown</span>
+            <div style="display: flex; align-items: center; gap: 0.4rem; margin-left: auto; flex-wrap: wrap;">
+                <button type="button" class="btn btn-sm btn-outline" id="firstLogPageBtn" onclick="logPageFirst()" disabled title="First page">
+                    <i class="fas fa-angles-left"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="prevLogPageBtn" onclick="logPagePrev()" disabled title="Previous page">
+                    <i class="fas fa-chevron-left"></i> Prev
+                </button>
+                <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem;">
+                    Page
+                    <input type="number" class="form-control" id="logPageInput" min="1" step="1" value="1"
+                           style="width: 5rem; padding: 0.15rem 0.35rem; text-align: center;"
+                           onkeydown="if (event.key === 'Enter') { event.preventDefault(); logPageGo(); }"
+                           title="输入页码后回车或点 Go 跳转到指定页">
+                    / <span id="logMaxPage">1</span>
+                </span>
+                <button type="button" class="btn btn-sm btn-outline" id="goLogPageBtn" onclick="logPageGo()" title="跳转到输入的页码">Go</button>
+                <button type="button" class="btn btn-sm btn-outline" id="nextLogPageBtn" onclick="logPageNext()" disabled title="Next page">
+                    Next <i class="fas fa-chevron-right"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="lastLogPageBtn" onclick="logPageLast()" disabled title="Last page">
+                    <i class="fas fa-angles-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="hideRepeatsHint" style="display: none; padding: 0.25rem 0.75rem; background: #fff8e1; color: #8d6e63; font-size: 0.75rem; border-bottom: 1px solid #f0e6c8;">
+            <i class="fas fa-info-circle"></i> “Hide repeated” 开启中，重复消息已合并；如需每页查看原始 100 条，请取消勾选。
+        </div>
+        <div id="logsContainer" style="max-height: 70vh; overflow-y: auto;">
+            <div class="empty-state">
+                <i class="fas fa-file-alt"></i>
+                <h4>Loading logs...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Log Detail Modal -->
+<div class="modal-overlay" id="logDetailModal">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>Log Details</h3>
+            <button class="modal-close" onclick="closeModal('logDetailModal')">&times;</button>
+        </div>
+        <div class="modal-body" id="logDetailContent">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
+                <i class="fas fa-brain"></i> AI 分析
+            </button>
+            <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetchLogs();
+    loadSources();
+});
+</script>
+{% endblock %}

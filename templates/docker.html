@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Docker - LogAI Monitor{% endblock %}
+{% block header_title %}Docker Containers{% endblock %}
+
+{% block content %}
+<!-- Actions Bar -->
+<div style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+    <button class="btn btn-outline" id="refreshContainersBtn" onclick="refreshContainers()">
+        <i class="fas fa-sync"></i> Refresh
+    </button>
+    <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+        <input type="checkbox" class="form-check-input" id="dockerEnabledToggle" checked onchange="toggleDockerCollection(this.checked)">
+        <span>Enable Docker Log Collection</span>
+    </label>
+</div>
+
+<!-- Containers List -->
+<div class="card">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <h3><i class="fab fa-docker"></i> Containers</h3>
+        <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+            <input type="checkbox" class="form-check-input" id="excludeAllCheckbox" onchange="toggleExcludeAll(this.checked)">
+            <span style="font-size: 0.9rem;">Exclude All from Logging</span>
+        </label>
+    </div>
+    <div class="card-body" style="padding: 0;">
+        <div id="containersContainer" class="table-container">
+            <div class="empty-state">
+                <i class="fab fa-docker"></i>
+                <h4>Loading containers...</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Info Card -->
+<div class="card">
+    <div class="card-header">
+        <h3><i class="fas fa-info-circle"></i> Docker Log Collection</h3>
+    </div>
+    <div class="card-body">
+        <p>LogAI Monitor automatically collects logs from all running Docker containers. Features:</p>
+        <ul>
+            <li><strong>Auto-discovery:</strong> New containers are automatically detected and monitored</li>
+            <li><strong>Real-time streaming:</strong> Logs are collected in real-time as they're generated</li>
+            <li><strong>Severity detection:</strong> Log severity is automatically detected from message content</li>
+            <li><strong>Filter support:</strong> Create filters to alert on specific container events</li>
+        </ul>
+        <p>Make sure the Docker socket is mounted for log collection to work.</p>
+    </div>
+</div>
+
+<!-- Container Logs Modal -->
+<div class="modal-overlay" id="containerLogsModal">
+    <div class="modal" style="max-width: 900px;">
+        <div class="modal-header">
+            <h3 id="containerLogsTitle">Container Logs</h3>
+            <button class="modal-close" onclick="closeModal('containerLogsModal')">&times;</button>
+        </div>
+        <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+            <div id="containerLogsContent">
+                <div class="empty-state">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <h4>Loading logs...</h4>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeModal('containerLogsModal')">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    fetchContainers();
+});
+</script>
+{% endblock %}

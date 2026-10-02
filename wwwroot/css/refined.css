@@ -1,0 +1,406 @@
+/* ==========================================================================
+ * LogAI Monitor — 原版精修（叠加层）
+ *
+ * 加载顺序：本文件在 style.css 之后引入，因此只做"覆盖式"提升，不改动原版
+ * 的任何布局、类名或交互逻辑。目标是在保持原有信息架构（深色侧栏 + 顶栏 +
+ * 卡片 + 表格）的前提下提升排版、间距、圆角、阴影、配色与状态反馈的质感。
+ *
+ * 设计约定
+ *   间距梯度  4 / 8 / 12 / 16 / 24 / 32
+ *   圆角      卡片 10px · 控件 6px · 徽标 999px
+ *   阴影      极淡双层（1px 描边 + 柔和投影），避免"浮起来"的塑料感
+ *   数字      表格与统计值统一 tabular-nums，纵向对齐
+ * ========================================================================== */
+
+:root {
+  --lm-space-1: 4px;
+  --lm-space-2: 8px;
+  --lm-space-3: 12px;
+  --lm-space-4: 16px;
+  --lm-space-5: 24px;
+  --lm-radius-card: 10px;
+  --lm-radius-control: 6px;
+  --lm-line: rgba(0, 0, 0, 0.08);
+  --lm-line-strong: rgba(0, 0, 0, 0.14);
+  --lm-ink: #1d1d1f;
+  --lm-ink-2: #5f6368;
+  --lm-ink-3: #8a8f98;
+  --lm-accent: #0066cc;
+  --lm-accent-soft: rgba(0, 102, 204, 0.1);
+  --lm-surface: #ffffff;
+  --lm-surface-2: #f7f8fa;
+  --lm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 0 0 1px var(--lm-line);
+  --lm-shadow-hover: 0 4px 12px rgba(16, 24, 40, 0.08), 0 0 0 1px var(--lm-line-strong);
+  --lm-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ---------------------------------------------------------------- 排版 */
+body {
+  font-family: var(--lm-font);
+  color: var(--lm-ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 { letter-spacing: -0.01em; }
+h1 { font-size: 1.5rem; font-weight: 650; }
+h2 { font-size: 1.2rem; font-weight: 620; }
+h3 { font-size: 1rem; font-weight: 600; }
+
+a { color: var(--lm-accent); text-underline-offset: 2px; }
+
+/* ---------------------------------------------------------------- 卡片 */
+.card,
+.stat-card,
+.panel {
+  border-radius: var(--lm-radius-card);
+  border: 1px solid var(--lm-line);
+  background: var(--lm-surface);
+  box-shadow: var(--lm-shadow);
+  transition: box-shadow 0.16s ease, transform 0.16s ease;
+}
+.card:hover,
+.stat-card:hover { box-shadow: var(--lm-shadow-hover); }
+
+.card-header {
+  padding: var(--lm-space-3) var(--lm-space-4);
+  border-bottom: 1px solid var(--lm-line);
+  background: transparent;
+  font-weight: 600;
+}
+.card-body { padding: var(--lm-space-4); }
+
+/* 统计卡：数值更醒目、标签更克制 */
+.stat-card .stat-value,
+.stat-value {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.stat-card .stat-label,
+.stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lm-ink-3);
+}
+
+/* ---------------------------------------------------------------- 表格 */
+table { font-variant-numeric: tabular-nums; }
+
+table thead th {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--lm-ink-3);
+  border-bottom: 1px solid var(--lm-line-strong);
+  padding: var(--lm-space-2) var(--lm-space-3);
+  white-space: nowrap;
+}
+
+table tbody td {
+  padding: var(--lm-space-2) var(--lm-space-3);
+  border-bottom: 1px solid var(--lm-line);
+  vertical-align: middle;
+}
+
+table tbody tr:hover td { background: var(--lm-surface-2); }
+table tbody tr:last-child td { border-bottom: none; }
+
+/* 日志正文：等宽 + 单行截断，避免长行把表格撑破 */
+table tbody td.message,
+table tbody td.raw-message {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  max-width: 46rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 控件 */
+button, .btn, input, select, textarea { font-family: var(--lm-font); }
+
+button, .btn {
+  border-radius: var(--lm-radius-control);
+  border: 1px solid var(--lm-line-strong);
+  min-height: 30px;
+  padding: 0 var(--lm-space-3);
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+/* 通用 hover 只改边框与阴影，绝不替换背景色。
+   本应用的按钮形态差异很大（彩色变体、无边框图标按钮、标签/分页按钮…），
+   一旦在这里统一改背景，就会与按钮自身的文字颜色冲突（深色底白字 → 白底白字）。
+   背景变化交给各按钮变体自己负责。 */
+button:hover:not(:disabled), .btn:hover {
+  border-color: var(--lm-accent);
+  box-shadow: 0 1px 6px rgba(16, 24, 40, 0.13);
+}
+
+.btn-primary, button.btn-primary, .primary {
+  background: var(--lm-accent);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 102, 204, 0.3);
+}
+.btn-primary:hover, button.btn-primary:hover, .primary:hover { filter: brightness(1.07); }
+
+input, select, textarea {
+  border-radius: var(--lm-radius-control);
+  border: 1px solid var(--lm-line-strong);
+  min-height: 30px;
+  padding: 0 var(--lm-space-2);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--lm-accent);
+  box-shadow: 0 0 0 3px var(--lm-accent-soft);
+}
+
+/* ---------------------------------------------------------------- 徽标 */
+.badge, .pill, .label, .status-badge {
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border: 1px solid transparent;
+}
+
+/* 级别配色：统一色相，深色文字保证对比度 */
+.badge-critical, .badge-emergency, .badge-alert, .severity-critical {
+  background: #fdeceb; color: #a5251c; border-color: #f7cfcb;
+}
+.badge-error, .severity-error { background: #fef0e6; color: #9a4a12; border-color: #f8d9c2; }
+.badge-warning, .severity-warning { background: #fdf6e3; color: #8a6100; border-color: #f5e3b3; }
+.badge-notice, .severity-notice { background: #eaf5fb; color: #16566f; border-color: #cbe6f2; }
+.badge-info, .severity-info { background: #eef1f5; color: #495057; border-color: #dde2e8; }
+.badge-debug, .severity-debug { background: #f2f3f5; color: #6c757d; border-color: #e3e6ea; }
+
+/* ---------------------------------------------------------------- 侧栏 */
+.sidebar-nav a {
+  border-radius: var(--lm-radius-control);
+  transition: background 0.14s ease, color 0.14s ease, padding-left 0.14s ease;
+}
+.sidebar-nav a:hover { background: rgba(255, 255, 255, 0.08); }
+.sidebar-nav a.active {
+  background: var(--lm-accent);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* ---------------------------------------------------------------- 反馈 */
+.alert, .flash, .toast { border-radius: var(--lm-radius-card); border: 1px solid var(--lm-line); }
+.empty-state, .no-data { color: var(--lm-ink-3); }
+.muted, .text-muted { color: var(--lm-ink-2); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); background-clip: content-box; }
+
+/* ==========================================================================
+ * 第二层：顶栏 / 弹窗 / 提示 / 空状态 / 分页
+ *
+ * 这里刻意使用属性子串选择器（[class*="..."]）而不是精确类名：原版 49KB 的
+ * style.css 里命名并不完全统一（modal / modal-dialog / filter-modal 混用），
+ * 子串匹配可以覆盖到实际使用的名字，匹配不到也不会产生任何副作用。
+ * ========================================================================== */
+
+/* ---------------------------------------------------------------- 顶栏 */
+[class*="header"]:not(thead):not(tr),
+[class*="topbar"] {
+  font-weight: 600;
+}
+
+[class*="header"] h1, [class*="header"] h2,
+[class*="topbar"] h1, [class*="topbar"] h2 {
+  font-size: 1.15rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+/* 顶栏右侧的用户区：弱化、不抢视线 */
+[class*="user-menu"], [class*="user-info"] {
+  font-size: 0.85rem;
+  color: var(--lm-ink-2);
+}
+
+/* ---------------------------------------------------------------- 弹窗 */
+/* 遮罩只负责压暗与模糊；不要再把对话框的圆角/边框/阴影套到全屏遮罩上 */
+.modal-overlay {
+  background-color: rgba(16, 24, 40, 0.5);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+
+/* 对话框本体（保留 style.css 的 overflow-y 与 transform 过渡，避免长内容无法滚动） */
+.modal {
+  border-radius: 14px;
+  border: 1px solid var(--lm-line);
+  box-shadow: 0 24px 64px rgba(16, 24, 40, 0.3);
+}
+
+/* 标题区：浅渐变底 + 左侧强调条 + 更清晰的字号字重 */
+.modal-header {
+  padding: 1rem 1.4rem;
+  border-bottom: 1px solid var(--lm-line);
+  background: linear-gradient(180deg, #fcfdff 0%, #f3f6fb 100%);
+}
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 650;
+  color: #1f2733;
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.modal-header h3::before {
+  content: "";
+  width: 3px;
+  height: 1.05em;
+  border-radius: 2px;
+  background: var(--lm-accent);
+  flex: 0 0 auto;
+}
+.modal-close {
+  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #7a8699;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+.modal-close:hover { background: rgba(16, 24, 40, 0.07); color: #1f2733; }
+.modal-body { padding: 1.25rem 1.4rem; }
+.modal-footer {
+  padding: 0.9rem 1.4rem;
+  border-top: 1px solid var(--lm-line);
+  background: #fafbfd;
+  gap: 0.6rem;
+}
+
+[class*="overlay"], [class*="backdrop"] {
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* ---------------------------------------------------------------- 提示 */
+[class*="alert"], [class*="flash"] {
+  border-radius: var(--lm-radius-card);
+  border: 1px solid var(--lm-line);
+  padding: var(--lm-space-3) var(--lm-space-4);
+  font-size: 0.88rem;
+}
+
+[class*="toast"] {
+  border-radius: var(--lm-radius-card);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.16);
+}
+
+/* ---------------------------------------------------------- 空状态 / 分页 */
+[class*="empty"], [class*="no-data"], [class*="no-logs"] {
+  color: var(--lm-ink-3);
+  font-size: 0.9rem;
+  padding: var(--lm-space-5) var(--lm-space-4);
+  text-align: center;
+}
+
+[class*="pagination"], [class*="pager"] {
+  gap: var(--lm-space-1);
+  align-items: center;
+}
+
+[class*="pagination"] button, [class*="pager"] button {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 0 var(--lm-space-2);
+}
+
+/* 当前页 */
+[class*="pagination"] .active, [class*="pager"] .active,
+[class*="page-item"].active > * {
+  background: var(--lm-accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+/* ------------------------------------------------------------ 过滤/工具条 */
+[class*="filter-bar"], [class*="toolbar"], [class*="controls"] {
+  gap: var(--lm-space-2);
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+[class*="filter-bar"] label, [class*="toolbar"] label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--lm-ink-3);
+}
+
+/* ------------------------------------------------------------ 代码/详情 */
+code, pre, .mono, [class*="raw"] {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+pre, [class*="code-block"] {
+  background: var(--lm-surface-2);
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-control);
+  padding: var(--lm-space-3);
+  overflow: auto;
+}
+
+/* ---------------------------------------------------------------- 分析结果区
+ * style.css 给 .analysis-result-body 设了 max-height: 45vh + overflow-y: auto。
+ * 精修后字号/行高/内边距都变大，同样的 45vh 能显示的内容变少，导致"处理建议"
+ * 与"受影响主机"落到滚动线以下，看起来像内容缺失。这里做两件事：
+ *   1) 放宽上限，让一屏能看到更多结果；
+ *   2) 明确提示"这里可以滚动"——常驻滚动条 + 上下渐隐阴影。
+ */
+.analysis-result-body {
+  max-height: 62vh;
+  overflow-y: scroll;                    /* 常驻滚动条：明确指出还有内容 */
+  padding: var(--lm-space-3) var(--lm-space-4);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 24, 40, 0.32) transparent;
+  background:
+    linear-gradient(var(--lm-surface) 30%, rgba(255, 255, 255, 0)),
+    linear-gradient(rgba(255, 255, 255, 0), var(--lm-surface) 70%) 0 100%,
+    radial-gradient(farthest-side at 50% 0, rgba(16, 24, 40, 0.14), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 50% 100%, rgba(16, 24, 40, 0.14), rgba(0, 0, 0, 0)) 0 100%;
+  background-repeat: no-repeat;
+  background-size: 100% 22px, 100% 22px, 100% 7px, 100% 7px;
+  background-attachment: local, local, scroll, scroll;
+}
+.analysis-result-body::-webkit-scrollbar { width: 11px; }
+.analysis-result-body::-webkit-scrollbar-track { background: rgba(16, 24, 40, 0.05); border-radius: 6px; }
+.analysis-result-body::-webkit-scrollbar-thumb {
+  background: rgba(16, 24, 40, 0.3);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.analysis-result-body::-webkit-scrollbar-thumb:hover { background: rgba(16, 24, 40, 0.45); background-clip: content-box; }
+
+/* 结果里的列表更紧凑一点，同样的高度能多显示几条 */
+#analysisResult ul { margin: 0.35rem 0 0.75rem 1.15rem; padding: 0; }
+#analysisResult li { margin-bottom: 0.3rem; line-height: 1.5; }
+#analysisResult h4 { margin: 0.9rem 0 0.25rem 0; font-size: 0.95rem; }
