@@ -41,30 +41,51 @@ internal static class StatsApi
             string token = RedisStore.ToText(settings.GetValueOrDefault("telegram_bot_token"));
             string chat = RedisStore.ToText(settings.GetValueOrDefault("telegram_chat_id"));
 
-            // Cached availability, refreshed at most every few seconds so the
-            // dashboard's polling does not hammer the inference endpoint.
+            // Never block the response on the inference endpoint. A cold availability
+            // probe measured ~4s, and every page fetches /api/stats, so it stalled the
+            // whole UI. Serve the last known value and refresh in the background - the
+            // same shape the Python version documents ("trigger a background refresh so
+            // UI updates quickly"). age is -1 while nothing has been checked yet.
             bool available;
             double age;
+            bool needRefresh;
             await Gate.WaitAsync();
             try
             {
-                if (_lastCheck is null || (DateTimeOffset.UtcNow - _lastCheck.Value).TotalSeconds > 5)
-                {
-                    _available = await new AiClient
-                    {
-                        Provider = provider,
-                        BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
-                        Model = model,
-                        ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
-                    }.IsAvailableAsync();
-                    _lastCheck = DateTimeOffset.UtcNow;
-                }
+                needRefresh = _lastCheck is null
+                    || (DateTimeOffset.UtcNow - _lastCheck.Value).TotalSeconds > 5;
                 available = _available;
-                age = (DateTimeOffset.UtcNow - _lastCheck!.Value).TotalSeconds;
+                age = _lastCheck is null
+                    ? -1
+                    : (DateTimeOffset.UtcNow - _lastCheck!.Value).TotalSeconds;
+                if (needRefresh) _lastCheck = DateTimeOffset.UtcNow;   // one refresh at a time
             }
             finally
             {
                 Gate.Release();
+            }
+
+            if (needRefresh)
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        bool ok = await new AiClient
+                        {
+                            Provider = provider,
+                            BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
+                            Model = model,
+                            ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+                        }.IsAvailableAsync();
+                        await Gate.WaitAsync();
+                        try { _available = ok; } finally { Gate.Release(); }
+                    }
+                    catch
+                    {
+                        // Availability is best-effort; the next payload triggers another try.
+                    }
+                });
             }
 
             long lastDay = await db.SortedSetLengthAsync(Keys.Timeline, now - 86400, now);
@@ -78,11 +99,20 @@ internal static class StatsApi
             var sources = (await db.SetMembersAsync(Keys.SourcesIndex))
                 .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
 
+            // One round trip instead of one per alert: the previous shape was N+1 and
+            // grew with the alert count, on a payload both main pages request.
             long unacknowledged = 0;
-            var alerts = await db.SortedSetRangeByRankAsync(Keys.AlertsTimeline, 0, -1);
-            foreach (var alert in alerts)
-                if ((await db.HashGetAsync(alert.ToString(), "acknowledged")).ToString() != "true")
-                    unacknowledged++;
+            var alertIds = await db.SortedSetRangeByRankAsync(Keys.AlertsTimeline, 0, -1);
+            if (alertIds.Length > 0)
+            {
+                var batch = db.CreateBatch();
+                var reads = new Task<StackExchange.Redis.RedisValue>[alertIds.Length];
+                for (int i = 0; i < alertIds.Length; i++)
+                    reads[i] = batch.HashGetAsync(alertIds[i].ToString(), "acknowledged");
+                batch.Execute();
+                foreach (var value in await Task.WhenAll(reads))
+                    if (value.ToString() != "true") unacknowledged++;
+            }
 
             bool telegramEnabled = await LogAI.Core.Notify.TelegramState.EnsureAsync(store);
 

@@ -190,6 +190,7 @@ internal static class AppHost
                         // (Python emitted exactly those two keys). Sending count/history_id
                         // alone made the toast read "Analyzed undefined logs" and left an
                         // automatic analysis invisible on the page.
+                        string? analysisRaw = null;
                         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["logs_analyzed"] = outcome.Count,
@@ -202,6 +203,7 @@ internal static class AppHost
                                 if (field.Name != "analysis") continue;
                                 string raw = field.Value.ToString();
                                 if (raw.Length == 0) break;
+                                analysisRaw = raw;
                                 try
                                 {
                                     payload["analysis"] = System.Text.Json.JsonSerializer
@@ -215,6 +217,51 @@ internal static class AppHost
                             }
                         }
                         LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete", payload);
+
+                        // Python sent the summary to Telegram whenever an analysis came
+                        // back critical ("Send Telegram summary if critical issues found");
+                        // that path was missing here. It has no throttle upstream, so an
+                        // independent cooldown keeps a critical-every-few-minutes stream
+                        // from flooding the chat. 0 disables the throttle.
+                        if (analysisRaw is not null)
+                        {
+                            try
+                            {
+                                var analysisNode = System.Text.Json.Nodes.JsonNode.Parse(analysisRaw);
+                                if (analysisNode?["overall_status"]?.ToString() == "critical"
+                                    && await LogAI.Core.Notify.TelegramState.EnsureAsync(store, ct))
+                                {
+                                    int summaryCooldown = IntSetting(
+                                        await store.GetSettingsAsync(), "analysis_summary_cooldown_min", 30);
+                                    bool maySend = summaryCooldown <= 0
+                                        || await store.Db.StringSetAsync("notify:cooldown:analysis_summary",
+                                               "1", TimeSpan.FromMinutes(summaryCooldown),
+                                               StackExchange.Redis.When.NotExists);
+                                    if (!maySend)
+                                    {
+                                        Console.WriteLine("[Telegram] critical summary skipped (cooldown "
+                                            + summaryCooldown + "m)");
+                                    }
+                                    else
+                                    {
+                                        var statsNode = System.Text.Json.Nodes.JsonNode.Parse(
+                                            ReadApi.SerializeLikeFlask(
+                                                await LogAI.Web.Api.StatsApi.BuildPayloadAsync(store)));
+                                        string text = LogAI.Core.Notify.TelegramNotifier
+                                            .BuildSummaryText(statsNode, analysisRaw);
+                                        bool sent = await notifier.SendAsync(
+                                            LogAI.Core.Notify.TelegramState.BotToken,
+                                            LogAI.Core.Notify.TelegramState.ChatId, text, ct);
+                                        if (sent) Console.WriteLine("[Telegram] critical analysis summary sent");
+                                    }
+                                }
+                            }
+                            catch (Exception ex) when (ex is not OperationCanceledException)
+                            {
+                                // A notification failure must never break the scheduler.
+                                Console.Error.WriteLine("[Telegram] critical summary failed: " + ex.Message);
+                            }
+                        }
                     }
                 }
                 finally { lastAnalysis = DateTimeOffset.UtcNow; }

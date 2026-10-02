@@ -53,14 +53,24 @@ internal static class AiHistoryApi
     /// <summary>Newest-first page of analysis records.</summary>
     public static void MapList(WebApplication app, RedisStore store)
     {
+        // The Analysis History page has a date filter. This endpoint used to read only
+        // limit/offset, so choosing a range changed nothing. The timeline is scored by
+        // write time, so the window becomes a plain score range.
         app.MapGet("/api/ai-history", async (HttpRequest request) =>
         {
             int limit = int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100;
             int offset = int.TryParse(request.Query["offset"], out int o) && o > 0 ? o : 0;
+            var (startTime, endTime) = ParseWindow(request, out bool hasWindow);
 
-            long total = await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline);
-            var ids = await store.Db.SortedSetRangeByRankAsync(
-                Keys.AiHistoryTimeline, offset, offset + limit - 1, Order.Descending);
+            long total = hasWindow
+                ? await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline, startTime, endTime, Exclude.None)
+                : await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline);
+
+            RedisValue[] ids = hasWindow
+                ? await store.Db.SortedSetRangeByScoreAsync(
+                      Keys.AiHistoryTimeline, startTime, endTime, Exclude.None, Order.Descending, offset, limit)
+                : await store.Db.SortedSetRangeByRankAsync(
+                      Keys.AiHistoryTimeline, offset, offset + limit - 1, Order.Descending);
 
             var history = new List<Dictionary<string, object?>>(ids.Length);
             foreach (var id in ids)
@@ -83,6 +93,32 @@ internal static class AiHistoryApi
 
             return ReadApi.JsonBody(new { history, limit, offset, total });
         });
+
+        // Same contract as the logs endpoint: epoch seconds or ISO-8601, both ends must
+        // parse, and an inverted pair is swapped rather than rejected.
+        static (double Start, double End) ParseWindow(HttpRequest req, out bool hasWindow)
+        {
+            hasWindow = false;
+            double? a = ParseOne(req.Query["start"]);
+            double? b = ParseOne(req.Query["end"]);
+            if (a is null || b is null) return (0, 0);
+            hasWindow = true;
+            return (Math.Min(a.Value, b.Value), Math.Max(a.Value, b.Value));
+
+            static double? ParseOne(string? raw)
+            {
+                raw = (raw ?? "").Trim();
+                if (raw.Length == 0) return null;
+                if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double epoch))
+                    return epoch;
+                if (DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal
+                        | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt))
+                    return dt.ToUnixTimeMilliseconds() / 1000.0;
+                return null;
+            }
+        }
     }
 
     private static async Task<string> OverallStatusAsync(RedisStore store, string historyId)
