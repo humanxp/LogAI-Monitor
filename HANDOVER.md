@@ -184,8 +184,49 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
   （如白字在 `#28a745` 上 3.13:1），属既有问题，不算主题回归。
 - 白天主题逐页核对无变化（body 令牌值就是原来的 `#f4f5f7`）。
 
-**仍可做（收益低，先不做）**：`style.css` 里 141 处 `.theme-terminal` 规则、
-实心按钮的白字对比度（`--lm-btn-primary-bg` 已把主按钮修到 4.75:1，其余变体未动）。
+**仍可做（收益低，先不做）**：实心按钮的白字对比度（`--lm-btn-primary-bg`
+已把主按钮修到 4.75:1，其余变体未动）。
+`.theme-terminal` 死代码已在 3.5 清理完毕。
+
+### 3.5 可选清理 —— ✅ 已完成（2026-10-03）
+**a) `style.css` 里 130 条 `.theme-terminal` 规则（死代码）**
+主题只提供 默认/晚上，`applyTheme` 把非 `night` 的值一律回落到默认，
+所以 `.theme-terminal` 永远不会被挂上。做法是**按大括号配平解析成 375 个顶层规则块**，
+只删除"选择器列表里每一个选择器都含 `theme-terminal`"的块——
+解析结果里**混合块为 0**，因此不存在误伤共用规则的可能。
+`49554 → 32353` 字节（-17.2KB / -699 行）。
+
+验证（两条独立判据）：
+1. 选择器集合 diff：删除 130 个，逐个确认为 terminal-only；新增 0 个；
+2. **像素级 A/B**：同一批静态页、同视口、**冻结动画后**逐像素比较新旧样式表，
+   26 个「页面 x 主题」组合里 24~25 个逐像素完全相同，剩余 1~2 处的差值是
+   2 个像素、最大通道差 19/255，且**在"同一样式表自己比自己"时同样出现**，
+   属渲染/字体光栅噪声，与本次改动无关。
+
+> 做这个 A/B 时踩到一个坑，值得记下：about 页有一张 **SVG 流程图**，既用 CSS
+> 动画（`lmFlow`/`lmPulse`）也用 **SMIL `<animate>`**（移动的小圆点）。
+> 只设 `prefers-reduced-motion: reduce` 拦不住 SMIL，第一轮 A/B 因此测到
+> "610 像素差异"，其实是动画相位不同。要 `document.getAnimations()` **加上
+> `svg.pauseAnimations()`** 才能真正冻结；冻结后噪声为 0。
+
+**b) `logradarai:local`（旧 Python 镜像）**
+- 先确认它不是 `hardened` 的别名：两者 image id 不同（`6aa104bf5abb` 33 小时前
+  36 层、`python:3.11-slim` + app，属**未打加固补丁**的那版；`8287acc325fb`
+  19 小时前），回退容器 `logaimonitor-py-backup2` 引用的是 `hardened`，
+  `docker inspect` 确认其 `Config.Image=logradarai:hardened` 且状态 `exited`。
+- 删除前把完整 `docker image inspect` 存到 `.handover-evidence/logradarai-local-inspect.json`；
+  加固补丁本身在仓库里（`python-hardening.patch`），需要时可复现。
+- **实际只回收了约 1MB**：`logradarai:local` 与 `hardened` 共享同一套基础层，
+  `docker images` 里显示的 499MB 是含共享层的"名义大小"，
+  `docker system df` 显示删除前后 5.238GB → 5.237GB。**"删了 499MB 镜像"
+  ≠ "省了 499MB 磁盘"**，以 `docker system df` 为准。
+
+**c) 顺带清理真正占空间的东西（本轮验证产生的）**
+宿主机上最占地的其实是验证工具（各 3.38GB）：`logai-preview:latest`、
+`logai-ab:latest`，加上 8.19GB 构建缓存。验证做完后已删除这两个镜像并
+`docker buildx prune`，需要时按 `.preview/README.md` 重建（约 1 分钟）。
+`mcr.microsoft.com/dotnet/sdk:8.0`（1.23GB）**必须保留**——Dockerfile 的构建阶段要用，
+删了就没法再构建 .NET 镜像。
 
 ### 3.6 部署方式的一个隐患（本次踩到，已缓解）
 - **`logaimonitor` 容器不是 compose 建的**：它挂在 `logradarai_logaimonitor-net` 上，
