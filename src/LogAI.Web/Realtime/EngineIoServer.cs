@@ -51,14 +51,55 @@ public sealed class EngineIoServer
     }
 
     /// <summary>Queues an application event for every connected client.</summary>
+    /// <summary>
+    /// A session that nobody polls keeps accumulating packets. The original code had
+    /// no removal path at all, so every page refresh leaked a queue that grew with the
+    /// log stream (measured ~40MB/hour in production) and kept the ConnectedClients
+    /// count inflated. An active client drains its queue on every poll, so a queue
+    /// that reaches the cap belongs to a session that is gone.
+    /// </summary>
+    private const int MaxOutboxPackets = 256;
+
+    private void RetireSession(string sid, Session session)
+    {
+        session.NamespaceConnected = false;
+        while (session.Outbox.TryDequeue(out _)) { }
+        _sessions.TryRemove(sid, out _);
+    }
+
     public void Broadcast(string eventName, object? payload)
     {
         string packet = "42" + ReadApi.SerializeLikeFlask(new object?[] { eventName, payload });
-        foreach (var session in _sessions.Values)
-            if (session.NamespaceConnected) session.Outbox.Enqueue(packet);
+        foreach (var kv in _sessions)
+        {
+            var session = kv.Value;
+            if (!session.NamespaceConnected) continue;
+            if (session.Outbox.Count >= MaxOutboxPackets)
+            {
+                RetireSession(kv.Key, session);
+                continue;
+            }
+            session.Outbox.Enqueue(packet);
+        }
     }
 
     public int ConnectedClients => _sessions.Values.Count(s => s.NamespaceConnected);
+
+    /// <summary>Total sessions, including ones that stopped polling but have not
+    /// yet been retired. Watched together with QueuedPackets: if sessions stay flat
+    /// while memory still climbs, the growth comes from somewhere else.</summary>
+    public int SessionCount => _sessions.Count;
+
+    /// <summary>Packets waiting to be delivered across all sessions.</summary>
+    public int QueuedPackets
+    {
+        get
+        {
+            int total = 0;
+            foreach (var s in _sessions.Values) total += s.Outbox.Count;
+            return total;
+        }
+    }
 
     private async Task<IResult> PollAsync(HttpContext http)
     {

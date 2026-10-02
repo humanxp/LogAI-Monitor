@@ -239,6 +239,10 @@ internal static class AppHost
                     + " backlog=" + backlog + " total=" + total
                     + " ai=" + aiAvailable + " age=" + age
                     + " warn=" + warnThreshold;
+                if (LogAI.Web.Realtime.EngineIoServer.Current is { } eio)
+                    heartbeat += " | realtime sessions=" + eio.SessionCount
+                        + " connected=" + eio.ConnectedClients
+                        + " queued=" + eio.QueuedPackets;
                 if (LogAI.Web.Api.ReceiverState.Receiver is { } rcv)
                     heartbeat += " | [Receiver] udp=" + rcv.UdpReceived + " tcp=" + rcv.TcpReceived
                         + " stored=" + rcv.Stored + " dropped=" + rcv.Dropped
