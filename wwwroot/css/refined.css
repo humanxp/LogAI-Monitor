@@ -404,3 +404,35 @@ pre, [class*="code-block"] {
 #analysisResult ul { margin: 0.35rem 0 0.75rem 1.15rem; padding: 0; }
 #analysisResult li { margin-bottom: 0.3rem; line-height: 1.5; }
 #analysisResult h4 { margin: 0.9rem 0 0.25rem 0; font-size: 0.95rem; }
+
+/* ---------------------------------------------------------------- 晚上模式
+ * 主题切换只提供 默认 / 晚上 两套；原项目的终端主题（style.css 里 141 处
+ * .theme-terminal 规则）不再从界面可达。refined.css 的卡片/表格/表单都基于
+ * --lm-* 变量，因此这里覆盖变量后大部分样式自动跟随。
+ */
+.theme-night {
+  --lm-ink: #e7eaf0;
+  --lm-ink-2: #b3bac6;
+  --lm-ink-3: #868e9c;
+  --lm-surface: #14181e;
+  --lm-surface-2: #1b2028;
+  --lm-line: #262c36;
+  --lm-line-strong: #333a46;
+}
+body:has(.theme-night) { background-color: #0e1116; }
+.theme-night .card,
+.theme-night .stat-card,
+.theme-night .panel { background: var(--lm-surface); border-color: var(--lm-line); }
+.theme-night .card-header { border-bottom-color: var(--lm-line); color: var(--lm-ink); }
+.theme-night table th { background: #1b2028; color: var(--lm-ink-2); border-color: var(--lm-line); }
+.theme-night table td { border-top-color: var(--lm-line); color: var(--lm-ink); }
+.theme-night table tbody tr:hover td { background: #1b2028; }
+.theme-night input, .theme-night select, .theme-night textarea {
+  background: #1b2028; color: var(--lm-ink); border-color: var(--lm-line-strong);
+}
+.theme-night .modal { background: var(--lm-surface); border-color: var(--lm-line); }
+.theme-night .modal-header { background: linear-gradient(180deg, #1a1f27, #171b22); }
+.theme-night .modal-footer { background: #171b22; border-top-color: var(--lm-line); }
+.theme-night .modal-close { color: var(--lm-ink-3); }
+.theme-night .modal-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--lm-ink); }
+.theme-night .empty-state, .theme-night .text-muted { color: var(--lm-ink-3); }

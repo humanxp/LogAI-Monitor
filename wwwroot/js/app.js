@@ -17,10 +17,12 @@ const state = {
 
 // Theme Management
 function applyTheme(theme) {
+    // 只保留 默认 / 晚上 两套：历史值（如 terminal）一律回落到默认。
+    if (theme !== 'night') theme = 'default';
     const mainContent = document.querySelector('.main-content');
     if (mainContent) {
         // Remove all theme classes
-        mainContent.classList.remove('theme-default', 'theme-terminal');
+        mainContent.classList.remove('theme-default', 'theme-night', 'theme-terminal');
         // Add the selected theme class
         mainContent.classList.add(`theme-${theme || 'default'}`);
     }
@@ -37,10 +39,10 @@ function applyTheme(theme) {
 }
 
 // Available themes cycle order
-const THEMES = ['default', 'terminal'];
+const THEMES = ['default', 'night'];
 const THEME_META = {
-    default:  { icon: 'fa-moon',      label: 'Default',  title: 'Switch to Terminal theme' },
-    terminal: { icon: 'fa-terminal',  label: 'Terminal', title: 'Switch to Default theme'  }
+    default: { icon: 'fa-moon', label: '默认', title: '切换到晚上模式' },
+    night:   { icon: 'fa-sun',  label: '晚上', title: '切换到默认模式' }
 };
 
 function toggleTheme() {
@@ -1849,6 +1851,7 @@ async function loadSettings() {
         document.getElementById('telegramBotToken').value = settings.telegram_bot_token || '';
         document.getElementById('telegramChatId').value = settings.telegram_chat_id || '';
         document.getElementById('telegramCooldown').value = settings.telegram_cooldown_minutes ?? 60;
+        document.getElementById('analysisSummaryCooldown').value = settings.analysis_summary_cooldown_min ?? 30;
         document.getElementById('ollamaEnabled').checked = settings.ollama_enabled !== false;
         document.getElementById('ollamaHost').value = settings.ollama_host || 'http://localhost:11434';
         document.getElementById('ollamaModel').value = settings.ollama_model || 'llama3.2';
@@ -1908,6 +1911,7 @@ async function saveSettings() {
         telegram_enabled: document.getElementById('telegramEnabled').checked,
         telegram_bot_token: document.getElementById('telegramBotToken').value,
         telegram_chat_id: document.getElementById('telegramChatId').value,
+        analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
         telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,
         ollama_enabled: document.getElementById('ollamaEnabled').checked,
         ollama_host: document.getElementById('ollamaHost').value,

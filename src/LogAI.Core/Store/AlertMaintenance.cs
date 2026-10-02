@@ -31,6 +31,8 @@ public static class AlertMaintenance
             await store.Db.HashSetAsync(id.ToString(), "acknowledged", "true");
             count++;
         }
+        if (count > 0)
+            Console.WriteLine("[Alerts] cleared " + count + " acknowledged alert(s)");
         return count;
     }
 

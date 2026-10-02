@@ -134,13 +134,35 @@ internal static class AppHost
                         ["source"] = entry.Source,
                     });
 
-                if (!FilterMatcher.TelegramAllowed(rule, entry.Severity, alertOnCritical, alertOnError)) continue;
-                if (!await alerts.AcquireCooldownAsync(entry.Hostname, rule.Id, cooldownMinutes)) continue;
-                if (!await TelegramState.EnsureAsync(store, cancellationToken)) continue;
-
-                await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId,
+                // Every outcome is logged with its reason. The previous shape only had
+                // silent `continue`s, so "blocked by the level gate", "suppressed by
+                // cooldown" and "Telegram not configured" were indistinguishable - which
+                // is why alert pushes could quietly stop with nothing in the log.
+                string gate = "filter=" + rule.Id + " notify=" + rule.NotifyTelegram
+                    + " any_severity=" + rule.NotifyAnySeverity + " severity=" + entry.Severity
+                    + " host=" + entry.Hostname;
+                if (!FilterMatcher.TelegramAllowed(rule, entry.Severity, alertOnCritical, alertOnError))
+                {
+                    Console.WriteLine("[Telegram] alert blocked by level gate (" + gate
+                        + " alert_on_critical=" + alertOnCritical + " alert_on_error=" + alertOnError + ")");
+                    continue;
+                }
+                if (!await alerts.AcquireCooldownAsync(entry.Hostname, rule.Id, cooldownMinutes))
+                {
+                    Console.WriteLine("[Telegram] alert suppressed by cooldown " + cooldownMinutes
+                        + "m (" + gate + ")");
+                    continue;
+                }
+                if (!await TelegramState.EnsureAsync(store, cancellationToken))
+                {
+                    Console.WriteLine("[Telegram] alert not sent, Telegram not configured (" + gate + ")");
+                    continue;
+                }
+                bool alertDelivered = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId,
                     TelegramNotifier.BuildAlertText(entry.Severity, entry.Source, entry.Message, entry.Hostname),
                     cancellationToken);
+                Console.WriteLine("[Telegram] alert " + (alertDelivered ? "sent" : "FAILED")
+                    + " (" + gate + ")");
             }
         }
 
@@ -324,7 +346,18 @@ internal static class AppHost
         }, firstDelay: TimeSpan.FromSeconds(15));
 
         scheduler.Add("cleanup", () => TimeSpan.FromHours(1),
-            ct => CleanupJob.RunAsync(store, retentionHours, cancellationToken: ct),
+            async ct =>
+            {
+                var cleanup = await LogAI.Core.Scheduler.CleanupJob.RunAsync(
+                    store, retentionHours, cancellationToken: ct);
+                // Log the outcome even when nothing was removed: without a positive
+                // line, "the job ran and found nothing" and "the job never ran" look
+                // identical in the log, which is exactly how a data deletion can go
+                // unexplained.
+                Console.WriteLine("[Cleanup] removed " + cleanup.Removed + " expired logs, purged "
+                    + cleanup.DeadPurged + " dead ids");
+
+            },
             firstDelay: TimeSpan.FromMinutes(1));
 
         if (Environment.GetEnvironmentVariable("DOCKER_COLLECTION") != "off")
