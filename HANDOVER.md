@@ -72,24 +72,73 @@
 **验收边界**：`ClearAllAsync` 的那一行没有在 DB 0 上做过真实调用——它会清空 269 万条
 生产日志。它由第 1 层（同一镜像、同一条代码路径、命中 DB 9）覆盖。
 
-### 3.2 过滤器告警的 Telegram 推送（卡在"通知链未进入"）
-- 现象：过滤器命中并**生成告警** ✓，但**没有任何通知日志** ✗（连"被门限拦截"都没打）。
-- 已做：给通知链每一步加了诊断日志（门限/冷却/未配置/已发送/失败，含上下文），**已部署但未触发**。
-- 下一步：**回读 `AppHost.cs` 确认那段代码的实际位置**（是否真在 `foreach (var rule in LoadFiltersAsync(...))` 内）。
-  本项目已多次发生"整块替换配平但**放错位置**"，编译通过不代表位置正确。
-  随后在**循环入口**加一行"匹配到 N 条规则"，即可区分"没进循环"与"进了但没匹配"。
-- 相关配置（已改为正确值）：`filter:1790028200664`（网络抖动）`notify_telegram=true`、`notify_any_severity=true`。
+### 3.2 过滤器告警的 Telegram 推送 —— ✅ 已完成（2026-10-03）
+**结论：通知链本身是通的，"链路没进去"是误判。** 真正的问题是
+**诊断日志当时根本没被部署**——上一轮只改了源码，镜像没重建过，
+所以"什么日志都没有"被解读成"没进通知链"。
 
-### 3.3 参数驱动行为集中排查
-对"带参数会改变行为"的端点各测一次，断言**返回集合 ⊆ 参数值**且 `total` 与索引基数一致：
+本次实测（合成来源，`登录爆破` 规则）：
 ```
-/api/alerts?severity=   ?acknowledged=   （库中现有 12+ 条告警，正是好时机）
-/api/syslog/clients?…   /api/docker/containers?…   /api/ai-history/stats?…
+[Telegram] alert sent (filter=filter:1790028200663 notify=True any_severity=True severity=info host=172.18.0.1)
 ```
-**方法必须正确**（上次因此误判）：
-1. 先单独确认会话有效（打印登录返回码，不假设成功）；
-2. 把每个响应**存成文件**；
-3. 在**文件上**提取（不要把带引号的复杂 grep 塞进 ssh 命令）。
+告警数 +1、`notif_cooldown:…` 键出现、`[Filters] loaded=1 matched=1`，链路端到端成立。
+
+**代码位置已核对**：那段诊断确实在 `foreach (var rule in rules)` 内
+（`AppHost.cs` 的 `OnStored`），不是"配平但放错位置"。
+
+**本次新增/修复**
+1. 循环入口的区分用日志（HANDOVER 要求的"匹配到 N 条规则"）：
+   由 `FILTER_TRACE=1` 打开，输出 `[Filters] loaded=N matched=M severity=… source=…`。
+   **默认关闭**——按每条日志打一行在生产是 ~100 行/秒的噪音，
+   "加了噪声导致没法看"和"没有日志"一样糟。
+   实测：不匹配→`matched=0`；匹配→`matched=1`；未设变量→一行都不打。
+2. **冷却顺序 bug（真 bug）**：原来是"先占冷却，再检查 Telegram 是否配置"，
+   于是 Telegram 未配置时也会把冷却窗口消耗掉；等凭据补齐后，
+   该 `主机+规则` 的告警在冷却期内被判 `suppressed` 而**静默丢弃**。
+   现改为"确认能发 → 再占冷却 → 发送"。
+   实测（DB 9、无 bot token）：告警写入成功、`[Telegram] … not configured` 有日志、
+   **`notif_cooldown:*` 为空**——顺序修复生效。
+3. 生产环境未设 `FILTER_TRACE`，确认无 trace 噪音；重排后 Telegram 仍 `alert sent`。
+
+### 3.3 参数驱动行为集中排查 —— ✅ 已完成（2026-10-03）
+方法按要求执行：先用 `--mint-session` 单独确认会话有效（打印返回码，不假设），
+每个响应存成文件，判定用脚本在**文件**上做。最终 18 项断言全 PASS。
+
+**发现并修掉的真 bug：`/api/ai-history/stats` 完全忽略 `start/end`。**
+- 现象：`?start=2001-01-01&end=2001-01-02`（空窗）返回**全量** 15427 条。
+- 根因：该端点既不读参数，也不做 `ZRANGEBYSCORE`；Python 版是带时间窗的。
+- 修复：与 `/api/ai-history` 共用同一套 `ParseWindow`（epoch 秒或 ISO-8601、
+  两端都要能解析、颠倒则交换），并按分数区间取 id；顺带把
+  "每个 id 一次 HGET"改成 500 条一批（原来每次页面加载 1.5 万次往返）。
+- 实测（新旧同库同时刻对比）：
+
+  | 用例 | 旧（线上） | 新 | 期望 |
+  |---|---|---|---|
+  | 无参 | 15425 | 15425 | 基数 ✓ |
+  | start=min&end=mid | **15425**（错） | **7592** | ZCOUNT 7592 ✓ |
+  | start=mid&end=max | **15425**（错） | **7832** | ZCOUNT 7832 ✓ |
+  | 空窗 | **15425**（错） | **0** | 0 ✓ |
+  | 颠倒两端 | 15425 | 15425 | 交换后全量 ✓ |
+
+**其余端点结论（无需改代码）**
+- `/api/alerts`：`acknowledged=true|false` 正确（`true` 当前 0 条因为全部未确认；
+  两者之和 == 全量，不重不漏）；非法值退化为无过滤（与 Python 一致）；
+  `limit/offset` 正确且不重叠；每条 10 个字段。
+- `/api/alerts?severity=`：**Python 也没有这个参数**，UI 只发 `?limit=100`。
+  属交接文档里的臆测，保持"无害忽略"，不新增参数。
+- `/api/syslog/clients`：**不是 GET 端点，只是文档写错了**。C# 侧只有
+  `DELETE /api/syslog/clients/{ip}`，客户端列表在 `/api/syslog/diagnostics`
+  （无参数，11 个顶层字段 + 13 个每客户端字段）；Python 同样只有 DELETE。
+- `/api/docker/containers`：无参数端点，多余参数被忽略；每容器 6 个字段。
+- `/api/logs`：不存在的 severity / 空时间窗都返回 `{"count":0,"logs":[],"total":0}`，无 500。
+
+**方法学教训（本轮又踩一次）**：验证脚本把 `1.7884096750999029e+9` 直接拼进 URL，
+HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量，**差点误判成"修复无效"**。
+凡是用 Redis 取来的分数/时间进 URL，先用 `awk` 转定点小数再拼。
+
+**另一处踩坑**：核对时把一次性实例的 `REDIS_DB` 设成 9（隔离库）却去读生产数据，
+所有端点都返回空集合，看似"全挂"。正确姿势是把 `REDIS_DB=0` 且**不设**
+`ALLOW_DB0_WRITES`——那就是应用自带的只读模式，正好用于这种比对。
 
 ### 3.4 安全事项（优先级最高）
 - **撤销 Telegram 令牌**：它曾明文出现在对话中 → BotFather → `/mybots` → API Token → Revoke，

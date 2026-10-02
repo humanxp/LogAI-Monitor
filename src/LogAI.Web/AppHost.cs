@@ -115,9 +115,17 @@ internal static class AppHost
             await tracker.TrackAsync(entry.Source, protocol, entry.Hostname ?? entry.Source,
                                      cancellationToken: cancellationToken);
 
-            foreach (var rule in await LoadFiltersAsync(store))
+            // 过滤器在每条日志上重新读取（规则很少，代价可接受），但这意味着
+            // "一条都没匹配" 与 "根本没加载到规则" 在日志里无法区分。默认只在
+            // 有匹配时打点；需要排查时设 FILTER_TRACE=1，则每一条日志都记录
+            // 本轮的规则数与命中数，用来区分"没进循环""进了但没匹配""匹配了"。
+            bool filterTrace = Environment.GetEnvironmentVariable("FILTER_TRACE") == "1";
+            var rules = await LoadFiltersAsync(store);
+            int matched = 0;
+            foreach (var rule in rules)
             {
                 if (!FilterMatcher.Matches(rule, entry.Source, entry.Severity, entry.Message)) continue;
+                matched++;
 
                 string alertId = await alerts.WriteAsync(rule, entry, logId, cancellationToken);
                 LogAI.Web.Api.StatsApi.PushIfNeeded(store);
@@ -147,15 +155,18 @@ internal static class AppHost
                         + " alert_on_critical=" + alertOnCritical + " alert_on_error=" + alertOnError + ")");
                     continue;
                 }
+                if (!await TelegramState.EnsureAsync(store, cancellationToken))
+                {
+                    Console.WriteLine("[Telegram] alert not sent, Telegram not configured (" + gate + ")");
+                    continue;
+                }
+                // 冷却必须在"确认能发"之后再占用：原顺序是 先占冷却 再检查配置，
+                // 于是 Telegram 未配置时也会把冷却窗口消耗掉，等配置补齐后
+                // 该主机+规则的告警会在冷却期内被判为 "suppressed" 而静默丢弃。
                 if (!await alerts.AcquireCooldownAsync(entry.Hostname, rule.Id, cooldownMinutes))
                 {
                     Console.WriteLine("[Telegram] alert suppressed by cooldown " + cooldownMinutes
                         + "m (" + gate + ")");
-                    continue;
-                }
-                if (!await TelegramState.EnsureAsync(store, cancellationToken))
-                {
-                    Console.WriteLine("[Telegram] alert not sent, Telegram not configured (" + gate + ")");
                     continue;
                 }
                 bool alertDelivered = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId,
@@ -164,6 +175,10 @@ internal static class AppHost
                 Console.WriteLine("[Telegram] alert " + (alertDelivered ? "sent" : "FAILED")
                     + " (" + gate + ")");
             }
+
+            if (filterTrace)
+                Console.WriteLine("[Filters] loaded=" + rules.Count + " matched=" + matched
+                    + " severity=" + entry.Severity + " source=" + entry.Source);
         }
 
         // Publish the receiver facts the diagnostics endpoint reports.

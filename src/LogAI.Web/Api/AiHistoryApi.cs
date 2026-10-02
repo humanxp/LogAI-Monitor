@@ -23,19 +23,44 @@ internal static class AiHistoryApi
     /// <summary>Buckets every stored analysis by its overall_status.</summary>
     public static void Map(WebApplication app, RedisStore store)
     {
-        app.MapGet("/api/ai-history/stats", async () =>
+        // 这是带参数会改变行为的端点：Python 的 /api/ai-history/stats 接受
+        // start/end（AI 历史页的日期筛选要让汇总卡片跟着范围走），
+        // 之前这里把参数完全忽略，选任何时间范围返回的都是全量统计。
+        app.MapGet("/api/ai-history/stats", async (HttpRequest request) =>
         {
-            var ids = await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1);
+            var (startTime, endTime) = ParseWindow(request, out bool hasWindow);
+
+            RedisValue[] ids = hasWindow
+                ? await store.Db.SortedSetRangeByScoreAsync(Keys.AiHistoryTimeline, startTime, endTime)
+                : await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1);
 
             int critical = 0, healthy = 0, warning = 0, other = 0;
-            foreach (var id in ids)
+
+            // 一批取回 type + analysis：原来每个 id 一次 HGET，全量 1.5 万条
+            // 就是 1.5 万次往返（页面每次加载都跑一遍）。
+            const int Chunk = 500;
+            for (int offset = 0; offset < ids.Length; offset += Chunk)
             {
-                switch (await OverallStatusAsync(store, id.ToString()))
+                int size = Math.Min(Chunk, ids.Length - offset);
+                var batch = store.Db.CreateBatch();
+                var tasks = new Task<RedisValue[]>[size];
+                for (int i = 0; i < size; i++)
                 {
-                    case "critical": critical++; break;
-                    case "warning": warning++; break;
-                    case "healthy": healthy++; break;
-                    default: other++; break;
+                    var id = ids[offset + i];
+                    tasks[i] = batch.HashGetAsync(id.ToString(), ["type", "analysis"]);
+                }
+                batch.Execute();
+
+                foreach (var task in tasks)
+                {
+                    RedisValue[] fields = await task;
+                    switch (Classify(fields[0].ToString(), fields[1].ToString()))
+                    {
+                        case "critical": critical++; break;
+                        case "warning": warning++; break;
+                        case "healthy": healthy++; break;
+                        default: other++; break;
+                    }
                 }
             }
 
@@ -49,6 +74,54 @@ internal static class AiHistoryApi
             });
         });
     }
+
+    /// <summary>
+    /// Python 的分类：single 记录看 is_critical，否则看 category；
+    /// batch 记录看 overall_status，退回 category。healthy 与 info 同桶，
+    /// critical 与 error 同桶——只看 overall_status 会把 single/info/error
+    /// 全部算进 other，汇总卡片因此与列表内容对不上。
+    /// </summary>
+    private static string Classify(string type, string analysisRaw)
+    {
+        if (analysisRaw.Length == 0) return "other";
+        try
+        {
+            using var document = JsonDocument.Parse(analysisRaw);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return "other";
+            var root = document.RootElement;
+
+            string status;
+            if (string.Equals(type, "single", StringComparison.Ordinal))
+            {
+                status = root.TryGetProperty("is_critical", out var isCritical)
+                         && isCritical.ValueKind == JsonValueKind.True
+                    ? "critical"
+                    : Text(root, "category");
+            }
+            else
+            {
+                status = Text(root, "overall_status");
+                if (status.Length == 0) status = Text(root, "category");
+            }
+
+            return status.ToLowerInvariant() switch
+            {
+                "healthy" or "info" => "healthy",
+                "warning" => "warning",
+                "critical" or "error" => "critical",
+                _ => "other",
+            };
+        }
+        catch (JsonException)
+        {
+            return "other";
+        }
+    }
+
+    private static string Text(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : "";
 
     /// <summary>Newest-first page of analysis records.</summary>
     public static void MapList(WebApplication app, RedisStore store)
@@ -93,48 +166,34 @@ internal static class AiHistoryApi
 
             return ReadApi.JsonBody(new { history, limit, offset, total });
         });
-
-        // Same contract as the logs endpoint: epoch seconds or ISO-8601, both ends must
-        // parse, and an inverted pair is swapped rather than rejected.
-        static (double Start, double End) ParseWindow(HttpRequest req, out bool hasWindow)
-        {
-            hasWindow = false;
-            double? a = ParseOne(req.Query["start"]);
-            double? b = ParseOne(req.Query["end"]);
-            if (a is null || b is null) return (0, 0);
-            hasWindow = true;
-            return (Math.Min(a.Value, b.Value), Math.Max(a.Value, b.Value));
-
-            static double? ParseOne(string? raw)
-            {
-                raw = (raw ?? "").Trim();
-                if (raw.Length == 0) return null;
-                if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double epoch))
-                    return epoch;
-                if (DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
-                        System.Globalization.DateTimeStyles.AssumeUniversal
-                        | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt))
-                    return dt.ToUnixTimeMilliseconds() / 1000.0;
-                return null;
-            }
-        }
     }
 
-    private static async Task<string> OverallStatusAsync(RedisStore store, string historyId)
+    /// <summary>
+    /// Same contract as the logs endpoint: epoch seconds or ISO-8601, both ends must
+    /// parse, and an inverted pair is swapped rather than rejected. A partial or
+    /// unparsable pair means "no window" rather than an empty result.
+    /// </summary>
+    private static (double Start, double End) ParseWindow(HttpRequest req, out bool hasWindow)
     {
-        var analysis = await store.Db.HashGetAsync(historyId, "analysis");
-        if (!analysis.HasValue) return "";
-        try
+        hasWindow = false;
+        double? a = ParseOne(req.Query["start"]);
+        double? b = ParseOne(req.Query["end"]);
+        if (a is null || b is null) return (0, 0);
+        hasWindow = true;
+        return (Math.Min(a.Value, b.Value), Math.Max(a.Value, b.Value));
+
+        static double? ParseOne(string? raw)
         {
-            using var document = JsonDocument.Parse(analysis.ToString());
-            return document.RootElement.TryGetProperty("overall_status", out var status)
-                ? status.GetString() ?? ""
-                : "";
-        }
-        catch (JsonException)
-        {
-            return "";
+            raw = (raw ?? "").Trim();
+            if (raw.Length == 0) return null;
+            if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double epoch))
+                return epoch;
+            if (DateTimeOffset.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal
+                    | System.Globalization.DateTimeStyles.AdjustToUniversal, out var dt))
+                return dt.ToUnixTimeMilliseconds() / 1000.0;
+            return null;
         }
     }
 }
