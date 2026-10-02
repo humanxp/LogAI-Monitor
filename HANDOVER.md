@@ -98,7 +98,45 @@
 
 ### 3.5 可选清理
 - `logradarai:local`（499MB）：已无容器使用（回退容器用的是 `hardened`）→ 可删。
-- `style.css` 里 141 处 `.theme-terminal` 规则：**已不可达**（主题只提供默认/晚上）→ 可删但收益低。
+- `style.css` 里 141 处 `.theme-terminal` 规则：**已不可达** → 可删（本次已删掉
+  base.html 里那份 212 行的内联终端样式，style.css 里的仍在，见 3.8）。
+
+### 3.8 晚上主题重做（2026-10-03 完成，已部署）
+背景：界面上"晚上"几乎不可用——页面底色仍是白的，卡片是深灰，正文是浅灰，
+等于"白底浅灰字"；筛选条、表头、分页、输入框也还是白天配色。
+
+**根因（两个，都修了）**
+1. `app.js` 的 `applyTheme()` 把 `theme-night` 挂在 `.main-content` 上，而
+   `style.css` 把浅色写死在 `body`、`.main-header` 等**该元素之外**的地方。
+   于是**带刷新的加载**（base.html 会设 `data-theme`）看着还行，
+   **点按钮切换**（只改 `.main-content`）就只换一半。
+   现在主题标记只挂在 `<html>` 上，加载与切换走同一条路径。
+2. `refined.css` 只覆盖了 `.card/table/input` 等少数选择器，样式表里还有
+   27 处写死的浅底和 20 多处写死的深色文字不在覆盖范围内。
+   现在收敛成一套语义令牌（`--lm-canvas/-subtle/-hover/-line/-ink*`＋状态色），
+   `:root` 是白天、`html.theme-night` 是晚上，两边都保证对比度。
+
+**顺带修掉的问题**
+- 设置页主题下拉里是 `terminal`（深绿终端风），而 JS 只认 `default/night`
+  → 选"Terminal"实际落到默认。现改为 `默认（白天）/ 晚上（深色）`。
+- **登录页完全无视主题设置**（独立页面，不加载 app.js，也没有主题标记）：
+  现补上同样的内联标记并加载主题层；同时修掉"卡片永远白底 + 晚上深色文字
+  => 1.19:1 看不见"的问题。
+- 模板与 `app.js` 里 110+ 处内联 `#666/#333/浅底` 改为令牌；`#e74c3c/#3498db`
+  角色徽标、`#512BD4/#DC382D/#2496ED` 品牌色保持字面量（白字在深色上本就够）。
+- 删除 base.html 里 212 行**不可达**的 `.theme-terminal` 内联样式与其初始化脚本。
+
+**验证方式（可复现，见 `.preview/README.md`）**
+浏览器跑在部署主机上（沙箱缺 Chromium 的系统库），对**线上真实页面**截图 +
+逐元素计算对比度（正文阈值 4.5:1）。结果：
+- 晚上缺陷元素从 **48 → 1**；
+- 剩下的 1 处是 about 页色块内文字 4.26:1（阈值 4.5，接近，可接受）；
+- 另有 16 处是"深色底 + 白字"的实心按钮/徽标，**白天同样不达标**
+  （如白字在 `#28a745` 上 3.13:1），属既有问题，不算主题回归。
+- 白天主题逐页核对无变化（body 令牌值就是原来的 `#f4f5f7`）。
+
+**仍可做（收益低，先不做）**：`style.css` 里 141 处 `.theme-terminal` 规则、
+实心按钮的白字对比度（`--lm-btn-primary-bg` 已把主按钮修到 4.75:1，其余变体未动）。
 
 ### 3.6 部署方式的一个隐患（本次踩到，已缓解）
 - **`logaimonitor` 容器不是 compose 建的**：它挂在 `logradarai_logaimonitor-net` 上，
@@ -150,11 +188,11 @@
 ## 5. 常用命令
 
 ```bash
-# 构建并部署（本仓库 → 主机构建树 → 镜像 → 容器）
-tar czf - --exclude=bin --exclude=obj src templates wwwroot Dockerfile README.md DEPLOY.md \
-  docker-compose.yml .env.example | ssh root@192.168.50.6 \
-  'rm -rf /root/logai-cs/src /root/logai-cs/templates /root/logai-cs/wwwroot && mkdir -p /root/logai-cs && tar xzf - -C /root/logai-cs'
-ssh root@192.168.50.6 'cd /root/logai-cs && docker build -t logaimonitor-cs:latest .'
+# 构建并部署 —— 用脚本，不要手敲下面那两行（会漏掉"重建容器"这一步，见 3.6）
+#   KEY=~/.ssh/logai_deploy sh scripts/deploy-cs.sh
+# 脚本做四件事：同步 → 构建 → 从旧容器读回 4 个机密 → 同参数重建容器 → 健康检查。
+# 前置：ssh-keygen -t ed25519 -N "" -f ~/.ssh/logai_deploy && ssh-copy-id -i ~/.ssh/logai_deploy.pub root@192.168.50.6
+# （脚本内部要二次 ssh 读旧容器环境变量，交互式密码在那里答不了。）
 
 # 健康与心跳
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.50.6:5059/api/health
@@ -162,4 +200,7 @@ ssh root@192.168.50.6 "docker logs logaimonitor 2>&1 | grep '\[Health\]' | tail 
 
 # 回退到 Python 版（保留数据）
 ssh root@192.168.50.6 'docker rm -f logaimonitor && docker rename logaimonitor-py-backup2 logaimonitor && docker start logaimonitor'
+
+# 主题/界面改动的视觉验证（截线上页面 + 逐元素对比度审计）
+#   见 ../.preview/README.md
 ```
