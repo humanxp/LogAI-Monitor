@@ -1,0 +1,82 @@
+# LogAI Monitor —— 一键部署（应用 + Redis）
+#
+#   1) cp .env.example .env      并按需修改（至少设置 SECRET_KEY）
+#   2) docker compose up -d
+#   3) 浏览器打开 http://<本机IP>:5059   默认账号 admin / admin（登录后立即改密码！）
+#
+# 所有名字与端口都可用环境变量覆盖，便于在同一台机器上并行跑多套实例。
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${REDIS_CONTAINER:-logaimonitor-redis}
+    restart: unless-stopped
+    # volatile-lru 只淘汰"带 TTL"的键（日志/告警/AI 历史），
+    # settings、users 与索引集合没有 TTL，永不会被淘汰。
+    command: >
+      redis-server --appendonly yes
+      --maxmemory ${REDIS_MAXMEMORY:-9216mb}
+      --maxmemory-policy volatile-lru
+      --maxmemory-samples 5
+      --maxmemory-clients 5%
+      --lazyfree-lazy-eviction yes
+    volumes:
+      - redis-data:/data
+    networks: [logai]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ${APP_IMAGE:-logaimonitor-cs:latest}
+    # 想在新机器上从源码构建而不是导入镜像时，取消下面两行注释：
+    # build: .
+    # image: logaimonitor-cs:latest
+    container_name: ${APP_CONTAINER:-logaimonitor}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      # 冒号右边是容器内端口（应用固定监听 5059 / 514 / 515），左边可改
+      - "${WEB_PORT:-5059}:5059"
+      - "${SYSLOG_UDP_PORT:-514}:514/udp"
+      - "${SYSLOG_TCP_PORT:-515}:515/tcp"
+    environment:
+      # 用容器名当主机名：compose 网络内的 DNS 能解析
+      REDIS_HOST: ${REDIS_CONTAINER:-logaimonitor-redis}
+      REDIS_PORT: "6379"
+      REDIS_DB: "${REDIS_DB:-0}"
+      # 必须显式放行：否则采集/分析/清理等后台写入组件会拒绝启动
+      # （页面能打开但没有新日志，日志里会打印 background writers DISABLED）
+      ALLOW_DB0_WRITES: "1"
+      SECRET_KEY: ${SECRET_KEY:?请先在 .env 里设置 SECRET_KEY（openssl rand -hex 32）}
+      TZ: ${TZ:-Asia/Shanghai}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      DOCKER_COLLECTION: ${DOCKER_COLLECTION:-on}
+      # 容器内端口保持默认，这样只改上面左边就能换对外端口
+      SYSLOG_UDP_PORT: "514"
+      SYSLOG_TCP_PORT: "515"
+    volumes:
+      # 只读挂载，用于采集其它容器的日志
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [logai]
+    healthcheck:
+      # 镜像里没有 curl/wget，用 bash 内建的 /dev/tcp 做存活探测。
+      # 更深的健康判据看应用日志里每分钟一行的 [Health] ok ... 心跳。
+      test: ["CMD-SHELL", "timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/5059' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  logai:
+    name: ${NETWORK_NAME:-logai-net}
+    driver: bridge
+
+volumes:
+  redis-data:

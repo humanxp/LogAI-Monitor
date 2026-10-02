@@ -32,6 +32,11 @@ COPY wwwroot/ ./wwwroot/
 ENV ASPNETCORE_URLS=http://0.0.0.0:5059
 ENV DOTNET_EnableDiagnostics=0
 EXPOSE 5059
+
+# 存活探测：镜像里没有 curl/wget，用 bash 内建的 /dev/tcp。
+# 更深的健康判据看应用日志里每分钟一行的 [Health] ok ... 心跳。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/5059' || exit 1
 EXPOSE 514/udp
 EXPOSE 515/tcp
 ENTRYPOINT ["dotnet", "LogAI.Web.dll"]

@@ -23,15 +23,87 @@
             面向中小规模基础设施与边缘现场：只要能发 syslog，或跑在 Docker 里，就能被纳入监控；
             全部数据落在自有 Redis 中，界面、AI 与告警服务一体部署，不依赖外部 SaaS。
         </p>
-        <div style="margin-top: 1.25rem; padding: 0.9rem 1rem; background: #f6f8fa; border-left: 3px solid #2196F3; border-radius: 4px;">
-            <div style="font-weight: 600; color: #1565C0; margin-bottom: 0.35rem;">
+        <div style="margin-top: 1.25rem; padding: 1rem 1.1rem; background: linear-gradient(180deg, #f8fbff, #f1f6fd); border: 1px solid #dbe7f5; border-radius: 10px;">
+            <div style="font-weight: 600; color: #1565C0; margin-bottom: 0.6rem;">
                 <i class="fas fa-route"></i> 数据流一览
             </div>
-            <div style="color: #555; font-size: 0.92rem; line-height: 1.9;">
-                <b>syslog / Docker 容器</b> → 接收器（UDP·TCP）→ 协议解析与编码规范化 → Redis（时间线 + 多维索引）<br>
-                → <b>过滤器</b>逐条匹配 → 命中则写入<b>告警</b>并按级别/冷却规则<b>推送 Telegram</b><br>
-                → <b>调度器</b>定期把未分析日志成批交给 <b>AI</b> → 分析结果入库并展示在分析页与仪表盘<br>
-                → 浏览器通过<b>实时推送</b>即时看到新日志、新告警与统计变化
+            <style>
+                @keyframes lmFlow { to { stroke-dashoffset: -26; } }
+                @keyframes lmPulse { 0%, 100% { opacity: 0.30; } 50% { opacity: 1; } }
+                @keyframes lmGlow { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+                .lm-edge { stroke: #7fb2e5; stroke-width: 1.6; fill: none; stroke-dasharray: 7 6; animation: lmFlow 1.1s linear infinite; }
+                .lm-edge-slow { animation-duration: 1.8s; stroke: #9ac0e8; }
+                .lm-box { fill: #ffffff; stroke: #cfe0f3; stroke-width: 1.1; }
+                .lm-box-hi { fill: #f2f8ff; stroke: #9dc4ea; stroke-width: 1.3; }
+                .lm-t { font: 600 11px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #33475b; }
+                .lm-s { font: 10px -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; fill: #8a99ab; }
+                .lm-dot { fill: #2196F3; animation: lmPulse 1.5s ease-in-out infinite; }
+                @media (prefers-reduced-motion: reduce) { .lm-edge, .lm-edge-slow, .lm-dot { animation: none; } }
+            </style>
+            <svg viewBox="0 0 860 214" width="100%" style="display: block;" role="img"
+                 aria-label="数据流：syslog 与容器日志经接收器解析后存入 Redis，过滤器匹配产生告警并推送 Telegram；调度器取未分析日志交给 AI，结果入库并通过实时推送到达浏览器">
+                <!-- 第一行：采集 → 存储 -->
+                <rect class="lm-box" x="8" y="30" width="112" height="42" rx="8"/>
+                <text class="lm-t" x="64" y="48" text-anchor="middle">syslog / 容器</text>
+                <text class="lm-s" x="64" y="62" text-anchor="middle">UDP · TCP · Docker</text>
+
+                <rect class="lm-box" x="148" y="30" width="104" height="42" rx="8"/>
+                <text class="lm-t" x="200" y="48" text-anchor="middle">接收器</text>
+                <text class="lm-s" x="200" y="62" text-anchor="middle">双协议监听</text>
+
+                <rect class="lm-box" x="280" y="30" width="104" height="42" rx="8"/>
+                <text class="lm-t" x="332" y="48" text-anchor="middle">解析与规范化</text>
+                <text class="lm-s" x="332" y="62" text-anchor="middle">RFC3164 / 5424</text>
+
+                <rect class="lm-box-hi" x="412" y="30" width="120" height="42" rx="8"/>
+                <text class="lm-t" x="472" y="48" text-anchor="middle">Redis</text>
+                <text class="lm-s" x="472" y="62" text-anchor="middle">时间线 + 多维索引</text>
+
+                <rect class="lm-box" x="560" y="30" width="88" height="42" rx="8"/>
+                <text class="lm-t" x="604" y="48" text-anchor="middle">过滤器匹配</text>
+                <text class="lm-s" x="604" y="62" text-anchor="middle">四条件 AND</text>
+
+                <rect class="lm-box" x="676" y="30" width="112" height="42" rx="8"/>
+                <text class="lm-t" x="732" y="48" text-anchor="middle">告警 · Telegram</text>
+                <text class="lm-s" x="732" y="62" text-anchor="middle">级别门限 · 冷却</text>
+
+                <!-- 第二行：AI 与实时 -->
+                <rect class="lm-box" x="280" y="150" width="104" height="42" rx="8"/>
+                <text class="lm-t" x="332" y="168" text-anchor="middle">调度器</text>
+                <text class="lm-s" x="332" y="182" text-anchor="middle">定时间隔</text>
+
+                <rect class="lm-box" x="412" y="150" width="120" height="42" rx="8"/>
+                <text class="lm-t" x="472" y="168" text-anchor="middle">AI 分析</text>
+                <text class="lm-s" x="472" y="182" text-anchor="middle">批次 / 单条 / 对话</text>
+
+                <rect class="lm-box" x="560" y="150" width="88" height="42" rx="8"/>
+                <text class="lm-t" x="604" y="168" text-anchor="middle">分析历史</text>
+                <text class="lm-s" x="604" y="182" text-anchor="middle">可检索重分析</text>
+
+                <rect class="lm-box" x="676" y="150" width="112" height="42" rx="8"/>
+                <text class="lm-t" x="732" y="168" text-anchor="middle">实时推送</text>
+                <text class="lm-s" x="732" y="182" text-anchor="middle">浏览器免刷新</text>
+
+                <!-- 流动的连线 -->
+                <path class="lm-edge" d="M120 51 H148"/>
+                <path class="lm-edge" d="M252 51 H280"/>
+                <path class="lm-edge" d="M384 51 H412"/>
+                <path class="lm-edge" d="M532 51 H560"/>
+                <path class="lm-edge" d="M648 51 H676"/>
+                <path class="lm-edge lm-edge-slow" d="M472 72 V112 Q472 128 456 128 H348 Q332 128 332 144 V150"/>
+                <path class="lm-edge" d="M384 171 H412"/>
+                <path class="lm-edge" d="M532 171 H560"/>
+                <path class="lm-edge" d="M648 171 H676"/>
+
+                <!-- 流动的光点：标出数据行进方向 -->
+                <circle class="lm-dot" r="2.6" cx="126" cy="51"><animate attributeName="cx" values="120;148" dur="1.1s" repeatCount="indefinite"/></circle>
+                <circle class="lm-dot" r="2.6" cx="384" cy="51" style="animation-delay:.35s"><animate attributeName="cx" values="384;412" dur="1.1s" repeatCount="indefinite"/></circle>
+                <circle class="lm-dot" r="2.6" cx="534" cy="51" style="animation-delay:.7s"><animate attributeName="cx" values="532;560" dur="1.1s" repeatCount="indefinite"/></circle>
+                <circle class="lm-dot" r="2.6" cx="384" cy="171" style="animation-delay:.2s"><animate attributeName="cx" values="384;412" dur="1.1s" repeatCount="indefinite"/></circle>
+                <circle class="lm-dot" r="2.6" cx="648" cy="171" style="animation-delay:.55s"><animate attributeName="cx" values="648;676" dur="1.1s" repeatCount="indefinite"/></circle>
+            </svg>
+            <div style="color: #6b7a8c; font-size: 0.85rem; line-height: 1.7; margin-top: 0.6rem;">
+                采集 → 解析 → 存储 → 检索 → 过滤告警 → AI 分析 → 推送；有事件时由实时通道立即送达页面。
             </div>
         </div>
     </div>

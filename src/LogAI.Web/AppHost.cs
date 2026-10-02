@@ -47,6 +47,38 @@ internal static class AppHost
             return;
         }
 
+        // First-run bootstrap, mirroring the Python ensure_admin_exists(): a fresh
+        // deployment has no user at all, so without this nobody could ever sign in.
+        // Idempotent: it only acts when no account with role=admin exists.
+        bool hasAdmin = false;
+        foreach (var value in await store.Db.SetMembersAsync("users:all"))
+        {
+            var fields = await store.Db.HashGetAllAsync(value.ToString());
+            foreach (var f in fields)
+                if (f.Name == "role" && f.Value == "admin") { hasAdmin = true; break; }
+            if (hasAdmin) break;
+        }
+        if (!hasAdmin)
+        {
+            string adminId = "user:" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                .ToString(System.Globalization.CultureInfo.InvariantCulture);
+            await store.Db.HashSetAsync(adminId,
+            [
+                new StackExchange.Redis.HashEntry("username", "admin"),
+                new StackExchange.Redis.HashEntry("password_hash",
+                    LogAI.Core.Auth.WerkzeugPasswordGenerator.Generate("admin")),
+                new StackExchange.Redis.HashEntry("email", ""),
+                new StackExchange.Redis.HashEntry("role", "admin"),
+                new StackExchange.Redis.HashEntry("id", adminId),
+                new StackExchange.Redis.HashEntry("created_at", DateTimeOffset.UtcNow.ToString(
+                    "yyyy-MM-ddTHH:mm:ss.ffffff+00:00",
+                    System.Globalization.CultureInfo.InvariantCulture)),
+            ]);
+            await store.Db.SetAddAsync("users:all", adminId);
+            await store.Db.StringSetAsync("users:username:admin", adminId);
+            Console.WriteLine("[Redis] Created default admin user (username: admin, password: admin)");
+        }
+
         var writer = new LogWriter(store, retentionHours);
         var tracker = new ClientTracker(store);
         var alerts = new AlertWriter(store);
@@ -194,17 +226,24 @@ internal static class AppHost
                 Console.WriteLine("[Health] not ok: backlog=" + backlog + " total=" + total
                     + " ai=" + aiAvailable + " age=" + age + " warn=" + warnThreshold);
 
-            // Receiver counters. These are NOT part of the diagnostics payload -
-            // the Python endpoint does not expose them - so they are logged rather
-            // than added to the API, which has to stay byte identical. Throttled to
-            // one line a minute so a busy receiver does not flood the log.
+            // Positive heartbeat. The health job used to log only when something was
+            // wrong, so "everything is fine" and "this job died" looked identical in
+            // the log. One throttled line a minute carries the health verdict plus the
+            // receiver counters, which makes that distinction obvious at a glance.
+            // The counters are deliberately NOT added to the diagnostics payload: the
+            // Python endpoint does not expose them and that payload stays byte identical.
             if (DateTimeOffset.UtcNow - lastReceiverReport > TimeSpan.FromMinutes(1))
             {
                 lastReceiverReport = DateTimeOffset.UtcNow;
+                string heartbeat = "[Health] " + (ok ? "ok" : "NOT OK")
+                    + " backlog=" + backlog + " total=" + total
+                    + " ai=" + aiAvailable + " age=" + age
+                    + " warn=" + warnThreshold;
                 if (LogAI.Web.Api.ReceiverState.Receiver is { } rcv)
-                    Console.WriteLine("[Receiver] udp=" + rcv.UdpReceived + " tcp=" + rcv.TcpReceived
+                    heartbeat += " | [Receiver] udp=" + rcv.UdpReceived + " tcp=" + rcv.TcpReceived
                         + " stored=" + rcv.Stored + " dropped=" + rcv.Dropped
-                        + " udp_bound=" + rcv.UdpBound + " tcp_bound=" + rcv.TcpBound);
+                        + " udp_bound=" + rcv.UdpBound + " tcp_bound=" + rcv.TcpBound;
+                Console.WriteLine(heartbeat);
             }
         }, firstDelay: TimeSpan.FromSeconds(15));
 
