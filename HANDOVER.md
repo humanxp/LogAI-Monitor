@@ -46,14 +46,31 @@
 
 ## 3. 未完成项与确切下一步
 
-### 3.1 补两个静默删除入口的日志（各 1 行，建议先做）
+> 现状：3.1 已完成并部署；接下来按 3.2 → 3.3 的顺序做，3.4 与代码无关但优先级最高。
+### 3.1 补两个静默删除入口的日志 —— ✅ 已完成（2026-10-03）
 ```csharp
-// LogMaintenance.ClearAllAsync    → 清空全部日志
-// LogMaintenance.DeleteBySourceAsync → 按来源删除
+// LogMaintenance.ClearAllAsync       → [Logs] cleared all N log(s)
+// LogMaintenance.DeleteBySourceAsync → [Logs] deleted N log(s) from source <source>
 ```
 背景：手动清空告警原本不留痕迹，导致一次"37 条告警去哪了"无法自查（后确认是用户手动删除）。
 `/api/alerts/clear` 已补日志，这两个入口同样静默。
-**验收**：调用后日志出现删除条数。
+
+**已部署**：镜像 `sha256:51f800680e6f…`（旧镜像 `50008ecd1734`），容器已用同一份
+环境变量重建（见 3.6）。日志行与 `AlertMaintenance` 的 `[Alerts]` 风格一致，无条件输出
+（被删 0 条时也输出，因为"删了 0 条"同样是审计信息）。
+
+**验证（三层，均为正面判据）**
+1. 隔离库自测 `--maintenance-selftest`（DB 9）：
+   `[Logs] deleted 2 log(s) from source 10.0.0.1` / `[Logs] cleared all 2 log(s)`，
+   与断言期望的条数一致，`ALL PASSED (0 failures)`。
+2. 端到端走 `POST /api/logs/delete-source`：注入 1 条合成日志 →
+   响应 `{"client_deleted":true,"deleted":5,"status":"ok"}` →
+   容器日志出现 `[Logs] deleted 5 log(s) from source 127.0.0.1`；
+   删除后 `logs:source:127.0.0.1` 不存在，告警数不变。
+3. 不存在的来源：`{"deleted":0,...}` → `[Logs] deleted 0 log(s) from source zzz-nonexistent`。
+
+**验收边界**：`ClearAllAsync` 的那一行没有在 DB 0 上做过真实调用——它会清空 269 万条
+生产日志。它由第 1 层（同一镜像、同一条代码路径、命中 DB 9）覆盖。
 
 ### 3.2 过滤器告警的 Telegram 推送（卡在"通知链未进入"）
 - 现象：过滤器命中并**生成告警** ✓，但**没有任何通知日志** ✗（连"被门限拦截"都没打）。
@@ -82,6 +99,34 @@
 ### 3.5 可选清理
 - `logradarai:local`（499MB）：已无容器使用（回退容器用的是 `hardened`）→ 可删。
 - `style.css` 里 141 处 `.theme-terminal` 规则：**已不可达**（主题只提供默认/晚上）→ 可删但收益低。
+
+### 3.6 部署方式的一个隐患（本次踩到，已缓解）
+- **`logaimonitor` 容器不是 compose 建的**：它挂在 `logradarai_logaimonitor-net` 上，
+  宿主机上已经没有对应的 compose 工程，所以 `docker compose up -d` 管不了它；
+  它的全部参数只存在于容器自身。`REDIS_HOST=redis`（不是 `logaimonitor-redis`）——
+  该网络上 `redis` 是个能解析的别名。
+- **`docker build -t logaimonitor-cs:latest` 会把旧镜像的 tag 摘掉**。本次构建后
+  运行中容器的镜像 `50008ecd1734` 在宿主机上已经不存在（只剩容器引用），
+  此时容器一旦重启就起不来。**因此构建与重建容器必须一次做完**。
+- 为此新增 `CSharpExport/scripts/deploy-cs.sh`：同步 → 构建 → 用 `docker inspect`
+  从旧容器读回 4 个机密（`SECRET_KEY`/`AI_API_KEY`/`TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID`，
+  不写进脚本文件）→ 以完全相同的参数重建容器 → 健康检查。
+  抽取/拼装逻辑已在宿主机上空跑验证过（`sh -n` 通过、生成的片段语法正确）。
+- 重建后已核对：容器内 32 个应用环境变量与旧容器**逐一相同**（差异仅为基础镜像自带的
+  `PATH`/`LANG`/`GPG_KEY`/`PYTHON_VERSION`/`PYTHON_SHA256`——见 3.7）；数据不受影响
+  （Redis 卷未动，`logs:timeline` 仍在增长，告警 13 条保留）。
+
+### 3.7 待确认：旧容器为何带着 Python 基础镜像的环境变量
+- `docker inspect` 显示**正在跑的 .NET 容器**里带着 `PYTHON_VERSION=3.11.16`、
+  `PYTHON_SHA256=…`、`GPG_KEY=…`、`LANG=C.UTF-8` 以及 Python 镜像的 `PATH`。
+  当前 `Dockerfile` 的 `FROM mcr.microsoft.com/dotnet/aspnet:8.0` 不可能带这些变量，
+  所以旧容器应当是被人为带上（或从 Python 镜像继承）后启动的，来源尚不明确。
+- 重建后的容器只保留 .NET 基础镜像自带的变量，**应用自身 32 个变量一项没少**，
+  启动日志确认是 .NET 版（`Now listening on: http://0.0.0.0:5059`、`[Health]` 心跳、
+  `[Receiver] udp=… dropped=0`）。这个差异对功能无影响，仅作记录。
+- 顺带修正一处过时说明：**`admin/admin` 已经登不上了**（返回"无效用户名或密码"），
+  说明管理员密码早已改过。本次验证改用应用自带的 `dotnet LogAI.Web.dll --mint-session`
+  （需传入生产 `SECRET_KEY`）签发的临时管理员会话，没有改库里的任何账号。
 
 ---
 

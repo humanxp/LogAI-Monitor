@@ -34,6 +34,7 @@ public static class LogMaintenance
         foreach (var host in hosts) await db.KeyDeleteAsync(Keys.LogHost(host.ToString()));
         foreach (var severity in severities) await db.KeyDeleteAsync(Keys.LogSeverity(severity.ToString()));
 
+        Console.WriteLine("[Logs] cleared all " + count + " log(s)");
         return count;
     }
 
@@ -75,6 +76,7 @@ public static class LogMaintenance
         // The source itself disappears once its last log is gone.
         await db.KeyDeleteAsync(Keys.LogSource(source));
         await db.SetRemoveAsync(Keys.SourcesIndex, source);
+        Console.WriteLine("[Logs] deleted " + removed + " log(s) from source " + source);
         return removed;
     }
 

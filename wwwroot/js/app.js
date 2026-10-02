@@ -16,24 +16,26 @@ const state = {
 };
 
 // Theme Management
+//
+// The theme marker lives on <html> (`data-theme` for the pre-CSS inline script in
+// base.html, `.theme-night` for CSS). It used to be put on `.main-content`, which
+// meant toggling WITHOUT a reload left the page half-themed (that single element
+// changed class while the body, the sticky header and everything outside
+// .main-content — modals, toasts — kept the old theme). One place, one switch.
 function applyTheme(theme) {
     // 只保留 默认 / 晚上 两套：历史值（如 terminal）一律回落到默认。
     if (theme !== 'night') theme = 'default';
+    const root = document.documentElement;
+    root.classList.remove('theme-default', 'theme-night', 'theme-terminal');
+    root.classList.add('theme-' + theme);
+    root.setAttribute('data-theme', theme);
+    // 也给内容区挂一份，保留对旧样式选择器（.main-content.theme-*）的兼容。
     const mainContent = document.querySelector('.main-content');
     if (mainContent) {
-        // Remove all theme classes
         mainContent.classList.remove('theme-default', 'theme-night', 'theme-terminal');
-        // Add the selected theme class
-        mainContent.classList.add(`theme-${theme || 'default'}`);
+        mainContent.classList.add('theme-' + theme);
     }
-    
-    // Also update the html element class for instant loading styles
-    if (theme === 'terminal') {
-        document.documentElement.classList.add('terminal-theme-active');
-    } else {
-        document.documentElement.classList.remove('terminal-theme-active');
-    }
-    
+
     // Store in localStorage for immediate application on page load
     localStorage.setItem('ui_theme', theme || 'default');
 }
@@ -65,11 +67,12 @@ function updateThemeToggleBtn(theme) {
     }
     if (label) label.textContent = meta.label;
     btn.title = meta.title;
-    // Style button to match terminal theme
-    if (theme === 'terminal') {
-        btn.style.borderColor = '#00aa00';
-        btn.style.color = '#00ff00';
-        btn.style.backgroundColor = '#001a00';
+    // 按钮自身跟着主题走：晚上用暗底亮字，白天保持中性描边。
+    // （原来这里判的是已废弃的 'terminal'，所以按钮永远停在白天配色。）
+    if (theme === 'night') {
+        btn.style.borderColor = 'rgba(255,255,255,0.22)';
+        btn.style.color = '#dfe5ee';
+        btn.style.backgroundColor = 'rgba(255,255,255,0.06)';
     } else {
         btn.style.borderColor = 'rgba(0,0,0,0.15)';
         btn.style.color = '#555';
@@ -81,24 +84,26 @@ function previewTheme(theme) {
     const preview = document.getElementById('themePreview');
     if (preview) {
         preview.style.display = 'block';
-        if (theme === 'terminal') {
-            preview.style.backgroundColor = '#0a0a0a';
-            preview.style.color = '#00ff00';
-            preview.style.border = '1px solid #00ff00';
-            preview.innerHTML = '<strong style="color: #00ff00;">$ Preview:</strong> <span style="color: #33ff33;">Terminal theme will be applied after saving.</span>';
+        if (theme === 'night') {
+            preview.style.backgroundColor = '#161b23';
+            preview.style.color = '#e8ecf2';
+            preview.style.border = '1px solid #2a313d';
+            preview.innerHTML = '<strong>Preview:</strong> 晚上模式（深色底 + 亮色文字），保存后生效。';
         } else {
-            preview.style.backgroundColor = '#f4f5f7';
-            preview.style.color = '#333';
-            preview.style.border = '1px solid #dee2e6';
-            preview.innerHTML = '<strong>Preview:</strong> Default theme will be applied after saving.';
+            preview.style.backgroundColor = '#f7f8fa';
+            preview.style.color = '#1d1d1f';
+            preview.style.border = '1px solid rgba(0,0,0,0.14)';
+            preview.innerHTML = '<strong>Preview:</strong> 默认（白天）主题将在保存后生效。';
         }
     }
 }
 
-// Load theme on page load (before DOM fully loaded to prevent flash)
+// 主题标记同样由 base.html 的内联脚本尽早挂上（这里兜底一次，二者规则一致：
+// 只有 'night' 会离开默认主题）。
 (function() {
-    const savedTheme = localStorage.getItem('ui_theme') || 'default';
+    const savedTheme = localStorage.getItem('ui_theme') === 'night' ? 'night' : 'default';
     document.documentElement.setAttribute('data-theme', savedTheme);
+    document.documentElement.classList.add('theme-' + savedTheme);
 })();
 
 // Initialize Socket.IO
@@ -664,7 +669,7 @@ function updateLogCount(count, hiddenDuplicates = 0) {
     const countEl = document.getElementById('logCount');
     if (countEl) {
         if (hiddenDuplicates > 0) {
-            countEl.innerHTML = `${count} <span style="color: #666; font-size: 0.85rem;">(${hiddenDuplicates} duplicates hidden)</span>`;
+            countEl.innerHTML = `${count} <span style="color: var(--lm-ink-2); font-size: 0.85rem;">(${hiddenDuplicates} duplicates hidden)</span>`;
         } else {
             countEl.textContent = count;
         }
@@ -1111,7 +1116,7 @@ async function analyzeAlertFromDetail(alertId) {
             : '<i class="fas fa-robot"></i> AI 分析';
     };
     setBusy(true);
-    box.innerHTML = '<div style="margin-top:.6rem; color:#666; font-size:.9rem;">'
+    box.innerHTML = '<div style="margin-top:.6rem; color:var(--lm-ink-2); font-size:.9rem;">'
         + '<i class="fas fa-spinner fa-spin"></i> 正在调用 AI 分析该日志，请稍候…</div>';
 
     const post = (payload) => fetch('/api/ollama/analyze', {
@@ -1793,7 +1798,7 @@ function updateAnalysisDisplay(analysis) {
         <div style="margin-top: 1rem;">
             <h4><i class="fas fa-server"></i> 受影响主机</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                ${analysis.affected_hosts.map(host => `<span class="badge" style="background: #2196F3; color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
+                ${analysis.affected_hosts.map(host => `<span class="badge" style="background: var(--lm-accent); color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
             </div>
         </div>
         ` : ''}
@@ -2078,7 +2083,7 @@ async function loadSyslogDiagnostics() {
                 
                 return `
                     <tr>
-                        <td style="text-align: center; color: #666;">${idx + 1}</td>
+                        <td style="text-align: center; color: var(--lm-ink-2);">${idx + 1}</td>
                         <td>
                             <span class="status-indicator ${statusClass}">
                                 <i class="fas fa-${statusIcon}"></i> ${client.status}
@@ -2086,7 +2091,7 @@ async function loadSyslogDiagnostics() {
                         </td>
                         <td>
                             <strong>${escapeHtml(client.hostname)}</strong>
-                            ${client.hostname !== client.ip ? `<br><small style="color: #666;">${escapeHtml(client.ip)}</small>` : ''}
+                            ${client.hostname !== client.ip ? `<br><small style="color: var(--lm-ink-2);">${escapeHtml(client.ip)}</small>` : ''}
                         </td>
                         <td><span class="badge">${protocols}</span></td>
                         <td>${client.message_count.toLocaleString()}</td>
@@ -2801,7 +2806,7 @@ async function loadHosts() {
 
         const list = document.getElementById('hostComboList');
         if (!list) return;
-        const rows = [`<div class="host-combo-item" data-value="" data-kind="host" data-full="" data-label="All Hosts" style="color:#666;">All Hosts</div>`]
+        const rows = [`<div class="host-combo-item" data-value="" data-kind="host" data-full="" data-label="All Hosts" style="color:var(--lm-ink-2);">All Hosts</div>`]
             .concat(items.map((h) => (
                 `<div class="host-combo-item" data-value="${escapeHtml(h.value)}" data-kind="${escapeHtml(h.kind)}"` +
                 ` data-full="${escapeHtml(h.full)}" data-label="${escapeHtml(h.label)}">${escapeHtml(h.full)}</div>`

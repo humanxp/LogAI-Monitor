@@ -23,48 +23,48 @@
         </div>
         <div id="syslogDiagnosticsContent" style="display: none;">
             <!-- Port Conflict Warning -->
-            <div id="portConflictWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem; padding: 1rem; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;">
-                <i class="fas fa-exclamation-triangle" style="color: #856404;"></i>
+            <div id="portConflictWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem; padding: 1rem;">
+                <i class="fas fa-exclamation-triangle" style="color: var(--lm-warn-ink);"></i>
                 <strong>Port Conflict Detected!</strong>
                 <span id="portConflictMessage"></span>
                 <br><small>请检查是否有其它进程占用 514/UDP 或 515/TCP（可用 <code>ss -lunp</code> 查看）</small>
             </div>
             
             <!-- Receiver Status -->
-            <div class="diagnostics-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: #f8f9fa; border-radius: 8px;">
+            <div class="diagnostics-summary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; padding: 1rem; background: var(--lm-subtle); border-radius: 8px;">
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Receiver Status</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">Receiver Status</span>
                     <span class="stat-value" id="receiverStatus" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Uptime</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">Uptime</span>
                     <span class="stat-value" id="receiverUptime" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">UDP Port</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">UDP Port</span>
                     <span class="stat-value" id="udpPort" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">TCP Port</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">TCP Port</span>
                     <span class="stat-value" id="tcpPort" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Total Clients</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">Total Clients</span>
                     <span class="stat-value" id="totalClients" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">Active Now</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">Active Now</span>
                     <span class="stat-value" id="activeClients" style="font-weight: 600;">--</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label" style="color: #666; font-size: 0.85rem;">With Issues</span>
-                    <span class="stat-value" id="clientsWithIssues" style="font-weight: 600; color: #dc3545;">--</span>
+                    <span class="stat-label" style="color: var(--lm-ink-2); font-size: 0.85rem;">With Issues</span>
+                    <span class="stat-value" id="clientsWithIssues" style="font-weight: 600; color: var(--lm-danger-ink);">--</span>
                 </div>
             </div>
             
             <!-- Client List -->
             <h4 style="margin-bottom: 1rem;"><i class="fas fa-server"></i> Connected Clients</h4>
-            <div id="noClientsMessage" style="display: none; text-align: center; padding: 2rem; color: #666;">
+            <div id="noClientsMessage" style="display: none; text-align: center; padding: 2rem; color: var(--lm-ink-2);">
                 <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
                 <p>No syslog clients have connected yet.</p>
                 <small>Configure your servers to send syslogs to this instance.</small>
@@ -89,7 +89,7 @@
                 </table>
             </div>
         </div>
-        <div id="syslogDiagnosticsError" style="display: none; text-align: center; padding: 2rem; color: #dc3545;">
+        <div id="syslogDiagnosticsError" style="display: none; text-align: center; padding: 2rem; color: var(--lm-danger-ink);">
             <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
             <p id="syslogDiagnosticsErrorMsg">Failed to load diagnostics</p>
         </div>

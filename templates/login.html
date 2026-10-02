@@ -4,9 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - LogAI Monitor</title>
+    <script>
+        // 登录页是独立页面（不加载 app.js），但同样要遵守主题设置：
+        // 在任何 CSS 生效前把标记挂到 <html>，规则与 base.html 一致。
+        (function () {
+            var theme = localStorage.getItem('ui_theme') === 'night' ? 'night' : 'default';
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.classList.add('theme-' + theme);
+        })();
+    </script>
     <!-- local fontawesome copy for offline use -->
     <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 视觉叠加层：与其它页面一致地加载，令输入框/按钮继承同一套主题令牌 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/refined.css') }}">
+
     <style>
         body {
             background: linear-gradient(135deg, #0066cc 0%, #004c99 100%);
@@ -26,6 +38,21 @@
             max-width: 400px;
             padding: 2.5rem;
         }
+        
+        /* 晚上模式：登录卡片也跟着换底色，否则深色文字落在白卡片上读不了。
+           卡片是 login 页自己的类名，refined.css 里的 .card 规则覆盖不到。 */
+        html.theme-night .login-container {
+            background: var(--lm-surface);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.55);
+            color: var(--lm-ink);
+        }
+        html.theme-night .login-container h1,
+        html.theme-night .login-container label,
+        html.theme-night .login-container .remember-me { color: var(--lm-ink); }
+        html.theme-night .login-container p,
+        html.theme-night .login-container .subtitle { color: var(--lm-ink-2); }
+        html.theme-night .login-container .login-footer { border-top-color: var(--lm-line); }
+        html.theme-night .login-container input[type="checkbox"] { accent-color: var(--lm-accent); }
         
         .login-header {
             text-align: center;
@@ -50,12 +77,12 @@
         
         .login-header h1 {
             margin: 0;
-            color: #333;
+            color: var(--lm-ink);
             font-size: 1.75rem;
         }
         
         .login-header p {
-            color: #666;
+            color: var(--lm-ink-2);
             margin: 0.5rem 0 0;
         }
         
@@ -66,7 +93,7 @@
         .form-group label {
             display: block;
             margin-bottom: 0.5rem;
-            color: #333;
+            color: var(--lm-ink);
             font-weight: 500;
         }
         
@@ -95,7 +122,7 @@
             left: 1rem;
             top: 50%;
             transform: translateY(-50%);
-            color: #999;
+            color: var(--lm-ink-3);
         }
         
         .form-group .input-icon input {
@@ -115,7 +142,7 @@
         
         .remember-me label {
             margin: 0;
-            color: #666;
+            color: var(--lm-ink-2);
             font-weight: normal;
             cursor: pointer;
         }

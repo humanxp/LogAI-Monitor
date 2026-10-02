@@ -39,10 +39,10 @@
 
     <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;"
           title="按日期查看日志（本地日期，含起止当天）">
-        <i class="fas fa-calendar-day" style="color: #666;"></i>
+        <i class="fas fa-calendar-day" style="color: var(--lm-ink-2);"></i>
         <input type="date" class="form-control date-filter-input" id="filterStartDate"
                onchange="applyLogFilters()" title="起始日期（当天 00:00 起）">
-        <span style="color: #666;">~</span>
+        <span style="color: var(--lm-ink-2);">~</span>
         <input type="date" class="form-control date-filter-input" id="filterEndDate"
                onchange="applyLogFilters()" title="结束日期（当天 23:59 止）">
     </span>
@@ -60,7 +60,7 @@
     </button>
 </div>
 
-<div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: #e3f2fd; border: 1px solid #bbdefb; border-radius: 4px; font-size: 0.85rem; color: #1565c0;">
+<div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-accent-soft); border-radius: 4px; font-size: 0.85rem; color: var(--lm-accent);">
     <i class="fas fa-calendar-day"></i> 日期过滤：<b id="timeFilterRange"></b>
     <button type="button" class="btn btn-sm btn-outline" style="margin-left: 0.5rem;" onclick="clearTimeFilter()">清除</button>
 </div>
@@ -101,7 +101,7 @@
         </div>
     </div>
     <div class="card-body" style="padding: 0;">
-        <div id="hideRepeatsHint" style="display: none; padding: 0.25rem 0.75rem; background: #fff8e1; color: #8d6e63; font-size: 0.75rem; border-bottom: 1px solid #f0e6c8;">
+        <div id="hideRepeatsHint" style="display: none; padding: 0.25rem 0.75rem; background: var(--lm-warn-bg); color: var(--lm-warn-ink); font-size: 0.75rem; border-bottom: 1px solid var(--lm-warn-line);">
             <i class="fas fa-info-circle"></i> “Hide repeated” 开启中，重复消息已合并；如需每页查看原始 100 条，请取消勾选。
         </div>
         <div id="logsContainer" style="max-height: 70vh; overflow-y: auto;">

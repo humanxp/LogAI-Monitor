@@ -25,7 +25,7 @@
         .error-icon {
             font-size: 5rem;
             margin-bottom: 1.5rem;
-            color: {{ icon_color | default('#dc3545') }};
+            color: {{ icon_color | default('var(--lm-danger-ink)') }};
             animation: pulse 2s infinite;
         }
         @keyframes pulse {

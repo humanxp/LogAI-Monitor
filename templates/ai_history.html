@@ -7,8 +7,8 @@
 <!-- Stats Cards -->
 <div class="stats-grid" style="margin-bottom: 1.5rem;">
     <div class="stat-card">
-        <div class="stat-icon" style="background-color: #e3f2fd;">
-            <i class="fas fa-history" style="color: #1976d2;"></i>
+        <div class="stat-icon" style="background-color: var(--lm-accent-soft);">
+            <i class="fas fa-history" style="color: var(--lm-accent);"></i>
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
@@ -16,8 +16,8 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background-color: #e8f5e9;">
-            <i class="fas fa-check-circle" style="color: #388e3c;"></i>
+        <div class="stat-icon success">
+            <i class="fas fa-check-circle"></i>
         </div>
         <div class="stat-info">
             <h3 id="healthyCount">0</h3>
@@ -25,8 +25,8 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background-color: #fff3e0;">
-            <i class="fas fa-exclamation-triangle" style="color: #f57c00;"></i>
+        <div class="stat-icon warning">
+            <i class="fas fa-exclamation-triangle"></i>
         </div>
         <div class="stat-info">
             <h3 id="warningCount">0</h3>
@@ -34,8 +34,8 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon" style="background-color: #ffebee;">
-            <i class="fas fa-times-circle" style="color: #d32f2f;"></i>
+        <div class="stat-icon danger">
+            <i class="fas fa-times-circle"></i>
         </div>
         <div class="stat-info">
             <h3 id="criticalCount">0</h3>
@@ -57,16 +57,16 @@
         <h3><i class="fas fa-history"></i> Analysis History</h3>
         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
             <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; margin-right: 0.25rem;" title="按分析日期查看（本地日期，含起止当天）">
-                <i class="fas fa-calendar-day" style="color: #666;"></i>
+                <i class="fas fa-calendar-day" style="color: var(--lm-ink-2);"></i>
                 <input type="date" class="form-control" id="historyStartDate"
                        style="width: 8.4rem; min-width: 0; padding: 0.25rem 0.3rem;"
                        onchange="historyApplyTimeFilter()" title="起始日期（当天 00:00 起）">
-                <span style="color: #666;">~</span>
+                <span style="color: var(--lm-ink-2);">~</span>
                 <input type="date" class="form-control" id="historyEndDate"
                        style="width: 8.4rem; min-width: 0; padding: 0.25rem 0.3rem;"
                        onchange="historyApplyTimeFilter()" title="结束日期（当天 23:59 止）">
                 <button type="button" class="btn btn-sm btn-outline" onclick="historyClearTimeFilter()" title="清除日期过滤">清除</button>
-                <span id="historyTimeRange" style="display: none; color: #1565c0;"></span>
+                <span id="historyTimeRange" style="display: none; color: var(--lm-accent);"></span>
             </span>
             <div style="display: flex; align-items: center; gap: 0.4rem; margin-right: 0.25rem; flex-wrap: wrap;">
                 <button type="button" class="btn btn-sm btn-outline" id="historyFirstBtn" onclick="historyPageFirst()" disabled title="First page">

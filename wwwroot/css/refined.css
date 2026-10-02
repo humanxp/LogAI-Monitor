@@ -27,12 +27,41 @@
   --lm-ink-3: #8a8f98;
   --lm-accent: #0066cc;
   --lm-accent-soft: rgba(0, 102, 204, 0.1);
+  --lm-btn-primary-bg: #0b5ed7;   /* 主按钮底色：保证白字 ≥ 4.5:1 */
+  --lm-btn-primary-ink: #ffffff;
   --lm-surface: #ffffff;
   --lm-surface-2: #f7f8fa;
   --lm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 0 0 1px var(--lm-line);
   --lm-shadow-hover: 0 4px 12px rgba(16, 24, 40, 0.08), 0 0 0 1px var(--lm-line-strong);
   --lm-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+
+  /* ---- 主题令牌（默认＝白天）--------------------------------------------
+   * style.css 里大量颜色是写死的浅色（白底、#f4f5f7、#333…），白天没问题，
+   * 一到晚上就会出现"白底 + 浅灰字"这种读不了的状态。这里把每个会随主题变化
+   * 的角色都收敛成一个令牌，晚上只需覆盖令牌，元件不必各写一遍。
+   * 同名令牌同时存在时以本文件的 :root 为准（style.css 没有定义这些名字）。
+   */
+  --lm-canvas: #f4f5f7;        /* 页面底色 */
+  --lm-subtle: #f8f9fa;        /* 次级面：表头、筛选条、代码块 */
+  --lm-hover: #f1f3f5;         /* 悬停面 */
+  --lm-chip: #e9ecef;          /* 中性徽标底 */
+  --lm-btn-hover: #f8f9fa;     /* 描边按钮悬停底 */
+  --lm-header-bg: var(--lm-surface);  /* 顶栏 */
+  --lm-overlay: rgba(16, 24, 40, 0.5);
+  --lm-shadow-color: rgba(16, 24, 40, 0.08);
+  --lm-scroll-thumb: rgba(16, 24, 40, 0.28);
+  --lm-scroll-track: rgba(16, 24, 40, 0.05);
+  --lm-selection: rgba(0, 102, 204, 0.22);
+
+  /* 状态色：每个状态给出"底/字/边"，深浅两套各自保证对比度 */
+  --lm-danger-bg: #fdeceb;  --lm-danger-ink: #a5251c;  --lm-danger-line: #f7cfcb;
+  --lm-warn-bg:   #fdf6e3;  --lm-warn-ink:   #8a6100;  --lm-warn-line:   #f5e3b3;
+  --lm-error-bg:  #fef0e6;  --lm-error-ink:  #9a4a12;  --lm-error-line:  #f8d9c2;
+  --lm-notice-bg: #eaf5fb;  --lm-notice-ink: #16566f;  --lm-notice-line: #cbe6f2;
+  --lm-info-bg:   #eef1f5;  --lm-info-ink:   #495057;  --lm-info-line:   #dde2e8;
+  --lm-debug-bg:  #f2f3f5;  --lm-debug-ink:  #6c757d;  --lm-debug-line:  #e3e6ea;
+  --lm-success-bg: #e8f5ec; --lm-success-ink: #1c6b34; --lm-success-line: #c9e7d3;
 }
 
 /* ---------------------------------------------------------------- 排版 */
@@ -42,6 +71,9 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* 应用壳底色：只作用于带侧栏的页面，独立页面（login/error）保留各自的背景 */
+body:has(.app-container) { background-color: var(--lm-canvas); }
 
 h1, h2, h3, h4 { letter-spacing: -0.01em; }
 h1 { font-size: 1.5rem; font-weight: 650; }
@@ -143,10 +175,10 @@ button:hover:not(:disabled), .btn:hover {
 }
 
 .btn-primary, button.btn-primary, .primary {
-  background: var(--lm-accent);
+  background: var(--lm-btn-primary-bg);
   border-color: transparent;
-  color: #fff;
-  box-shadow: 0 1px 2px rgba(0, 102, 204, 0.3);
+  color: var(--lm-btn-primary-ink);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.2);
 }
 .btn-primary:hover, button.btn-primary:hover, .primary:hover { filter: brightness(1.07); }
 
@@ -173,15 +205,15 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid transparent;
 }
 
-/* 级别配色：统一色相，深色文字保证对比度 */
+/* 级别配色：统一色相，深色文字保证对比度（令牌在 :root 与晚上模式各有一套） */
 .badge-critical, .badge-emergency, .badge-alert, .severity-critical {
-  background: #fdeceb; color: #a5251c; border-color: #f7cfcb;
+  background: var(--lm-danger-bg); color: var(--lm-danger-ink); border-color: var(--lm-danger-line);
 }
-.badge-error, .severity-error { background: #fef0e6; color: #9a4a12; border-color: #f8d9c2; }
-.badge-warning, .severity-warning { background: #fdf6e3; color: #8a6100; border-color: #f5e3b3; }
-.badge-notice, .severity-notice { background: #eaf5fb; color: #16566f; border-color: #cbe6f2; }
-.badge-info, .severity-info { background: #eef1f5; color: #495057; border-color: #dde2e8; }
-.badge-debug, .severity-debug { background: #f2f3f5; color: #6c757d; border-color: #e3e6ea; }
+.badge-error, .severity-error { background: var(--lm-error-bg); color: var(--lm-error-ink); border-color: var(--lm-error-line); }
+.badge-warning, .severity-warning { background: var(--lm-warn-bg); color: var(--lm-warn-ink); border-color: var(--lm-warn-line); }
+.badge-notice, .severity-notice { background: var(--lm-notice-bg); color: var(--lm-notice-ink); border-color: var(--lm-notice-line); }
+.badge-info, .severity-info { background: var(--lm-info-bg); color: var(--lm-info-ink); border-color: var(--lm-info-line); }
+.badge-debug, .severity-debug { background: var(--lm-debug-bg); color: var(--lm-debug-ink); border-color: var(--lm-debug-line); }
 
 /* ---------------------------------------------------------------- 侧栏 */
 .sidebar-nav a {
@@ -405,34 +437,363 @@ pre, [class*="code-block"] {
 #analysisResult li { margin-bottom: 0.3rem; line-height: 1.5; }
 #analysisResult h4 { margin: 0.9rem 0 0.25rem 0; font-size: 0.95rem; }
 
+/* ---------------------------------------------------------------- 语义类
+ * 模板里原本用内联 style 写死的几个色值收敛到这里，深浅两套各一份令牌，
+ * 这样"AI 历史统计卡的图标底"之类的元素不必在模板里判断主题。
+ */
+.stat-card .stat-icon.success { background-color: var(--lm-success-bg); color: var(--lm-success-ink); }
+.stat-card .stat-icon.warning { background-color: var(--lm-warn-bg);    color: var(--lm-warn-ink); }
+.stat-card .stat-icon.danger  { background-color: var(--lm-danger-bg);  color: var(--lm-danger-ink); }
+.stat-card .stat-icon.primary { background-color: var(--lm-accent-soft); color: var(--lm-accent); }
+
+.alert-warning {
+  background-color: var(--lm-warn-bg);
+  border: 1px solid var(--lm-warn-line);
+  color: var(--lm-warn-ink);
+}
+.alert-danger {
+  background-color: var(--lm-danger-bg);
+  border: 1px solid var(--lm-danger-line);
+  color: var(--lm-danger-ink);
+}
+.alert-success {
+  background-color: var(--lm-success-bg);
+  border: 1px solid var(--lm-success-line);
+  color: var(--lm-success-ink);
+}
+.alert-info {
+  background-color: var(--lm-notice-bg);
+  border: 1px solid var(--lm-notice-line);
+  color: var(--lm-notice-ink);
+}
+
+kbd, .kbd {
+  background: var(--lm-subtle) !important;
+  border: 1px solid var(--lm-line-strong);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--lm-ink);
+}
+
 /* ---------------------------------------------------------------- 晚上模式
  * 主题切换只提供 默认 / 晚上 两套；原项目的终端主题（style.css 里 141 处
- * .theme-terminal 规则）不再从界面可达。refined.css 的卡片/表格/表单都基于
- * --lm-* 变量，因此这里覆盖变量后大部分样式自动跟随。
+ * .theme-terminal 规则）不再从界面可达。
+ *
+ * 实现方式：把 <html data-theme="night">（app.js 在页面加载时设置）映射成
+ * .theme-night 的同一份令牌，然后**逐个**接管 style.css 里写死的浅色属性。
+ * 之所以不能只靠"卡片用 --lm-surface"自动跟随，是因为 style.css 里
+ * body/顶栏/表头/筛选条/分页/输入框/代码块等都直接写死了白色或 #f8f9fa，
+ * 这类"白底 + 浅灰字"的组合正是晚上看起来糟糕的根源。
+ *
+ * 令牌取值经过对比度核算（深底 #0f1319 上）：
+ *   正文 #e8ecf2  ≈ 15.1:1  次级 #b2bac6 ≈ 9.1:1  弱化 #8b93a1 ≈ 5.8:1
+ *   链接 #58a6ff  ≈ 7.3:1   状态字各 ≥ 4.5:1
  */
-.theme-night {
-  --lm-ink: #e7eaf0;
-  --lm-ink-2: #b3bac6;
-  --lm-ink-3: #868e9c;
-  --lm-surface: #14181e;
-  --lm-surface-2: #1b2028;
-  --lm-line: #262c36;
-  --lm-line-strong: #333a46;
+/* 令牌：同名变量在这里整体换成暗色版本。选择器与 :root 同级（都作用在 <html>），
+   靠"后出现"取胜，因此下面的 .card / table 等规则不用各自再写一遍暗色值。 */
+html.theme-night {
+  color-scheme: dark;
+  --lm-ink: #e8ecf2;
+  --lm-ink-2: #b2bac6;
+  --lm-ink-3: #8b93a1;
+  --lm-surface: #161b23;
+  --lm-surface-2: #1c222c;
+  --lm-line: #2a313d;
+  --lm-line-strong: #3a4350;
+  --lm-accent: #58a6ff;
+  --lm-accent-soft: rgba(88, 166, 255, 0.16);
+  --lm-btn-primary-bg: #2f6fd0;   /* 比链接蓝更深，白字 4.75:1 */
+  --lm-btn-primary-ink: #ffffff;
+  --lm-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--lm-line);
+  --lm-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--lm-line-strong);
+
+  --lm-canvas: #0f1319;
+  --lm-subtle: #1a202a;
+  --lm-hover: #212936;
+  --lm-chip: #262e3a;
+  --lm-btn-hover: #212936;
+  --lm-header-bg: #141a22;
+  --lm-overlay: rgba(4, 7, 11, 0.66);
+  --lm-shadow-color: rgba(0, 0, 0, 0.5);
+  --lm-scroll-thumb: rgba(255, 255, 255, 0.22);
+  --lm-scroll-track: rgba(255, 255, 255, 0.05);
+  --lm-selection: rgba(88, 166, 255, 0.3);
+
+  --lm-danger-bg: #3a1c1c;  --lm-danger-ink: #ff9c95;  --lm-danger-line: #5c2b29;
+  --lm-warn-bg:   #3a2f16;  --lm-warn-ink:   #f0c45a;  --lm-warn-line:   #57451f;
+  --lm-error-bg:  #3a2418;  --lm-error-ink:  #f0a878;  --lm-error-line:  #57371f;
+  --lm-notice-bg: #162f3b;  --lm-notice-ink: #7fc8e8;  --lm-notice-line: #204757;
+  --lm-info-bg:   #202834;  --lm-info-ink:   #aab6c6;  --lm-info-line:   #33404f;
+  --lm-debug-bg:  #1c222c;  --lm-debug-ink:  #98a2b1;  --lm-debug-line:  #2e3641;
+  --lm-success-bg: #16301f; --lm-success-ink: #79d193; --lm-success-line: #21492f;
 }
-body:has(.theme-night) { background-color: #0e1116; }
-.theme-night .card,
-.theme-night .stat-card,
-.theme-night .panel { background: var(--lm-surface); border-color: var(--lm-line); }
-.theme-night .card-header { border-bottom-color: var(--lm-line); color: var(--lm-ink); }
-.theme-night table th { background: #1b2028; color: var(--lm-ink-2); border-color: var(--lm-line); }
-.theme-night table td { border-top-color: var(--lm-line); color: var(--lm-ink); }
-.theme-night table tbody tr:hover td { background: #1b2028; }
-.theme-night input, .theme-night select, .theme-night textarea {
-  background: #1b2028; color: var(--lm-ink); border-color: var(--lm-line-strong);
+
+/* 页面底色：style.css 把浅灰写在 body 上，且 .main-content 本身不着色，
+   所以这里必须把 body / .main-content / .page-content 一起接管。 */
+html.theme-night body,
+html.theme-night .app-container,
+html.theme-night .main-content,
+html.theme-night .page-content {
+  background-color: var(--lm-canvas);
+  color: var(--lm-ink);
 }
-.theme-night .modal { background: var(--lm-surface); border-color: var(--lm-line); }
-.theme-night .modal-header { background: linear-gradient(180deg, #1a1f27, #171b22); }
-.theme-night .modal-footer { background: #171b22; border-top-color: var(--lm-line); }
-.theme-night .modal-close { color: var(--lm-ink-3); }
-.theme-night .modal-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--lm-ink); }
-.theme-night .empty-state, .theme-night .text-muted { color: var(--lm-ink-3); }
+
+html.theme-night .main-header {
+  background-color: var(--lm-header-bg);
+  border-bottom-color: var(--lm-line);
+  color: var(--lm-ink);
+}
+html.theme-night .header-title,
+html.theme-night .header-title h2 { color: var(--lm-ink); }
+
+html.theme-night .header-sidebar-toggle {
+  color: var(--lm-ink-2);
+  border-color: var(--lm-line-strong);
+}
+html.theme-night .header-sidebar-toggle:hover {
+  background: var(--lm-hover);
+  color: var(--lm-accent);
+  border-color: var(--lm-accent);
+}
+
+/* 卡片/面板/统计卡 */
+html.theme-night .card,
+html.theme-night .stat-card,
+html.theme-night .panel {
+  background: var(--lm-surface);
+  border-color: var(--lm-line);
+}
+html.theme-night .card-header {
+  background: var(--lm-surface-2);
+  border-bottom-color: var(--lm-line);
+  color: var(--lm-ink);
+}
+html.theme-night .card-body { color: var(--lm-ink); }
+html.theme-night .stat-card .stat-value { color: var(--lm-ink); }
+html.theme-night .stat-card .stat-label,
+html.theme-night .stat-card h3 { color: var(--lm-ink-3); }
+
+/* 表格：表头是 style.css 里的 #f8f9fa，别名 .data-table th 也要一起管 */
+html.theme-night table th,
+html.theme-night .data-table th {
+  background: var(--lm-subtle);
+  color: var(--lm-ink-2);
+  border-color: var(--lm-line);
+}
+html.theme-night table td { color: var(--lm-ink); border-color: var(--lm-line); }
+html.theme-night table tr:hover,
+html.theme-night table tbody tr:hover td,
+html.theme-night .data-table tbody tr:hover { background-color: var(--lm-hover); }
+html.theme-night table { border-color: var(--lm-line); }
+
+/* 筛选/工具条与下拉建议：这两处白天是浅底，晚上必须一起变，否则最刺眼 */
+html.theme-night .filter-bar {
+  background-color: var(--lm-subtle);
+  border-color: var(--lm-line);
+}
+html.theme-night .host-combo-list {
+  background: var(--lm-surface);
+  border-color: var(--lm-line-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+html.theme-night .host-combo-item:hover { background: var(--lm-hover); }
+
+/* 表单控件 */
+html.theme-night input,
+html.theme-night select,
+html.theme-night textarea,
+html.theme-night .form-control,
+html.theme-night .form-select {
+  background: var(--lm-surface-2);
+  color: var(--lm-ink);
+  border-color: var(--lm-line-strong);
+}
+html.theme-night input::placeholder,
+html.theme-night textarea::placeholder { color: var(--lm-ink-3); }
+html.theme-night select option { background: var(--lm-surface); color: var(--lm-ink); }
+/* 日期控件的日历图标默认是黑图，深色输入框上几乎看不见 */
+html.theme-night input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.85); }
+html.theme-night input:disabled,
+html.theme-night select:disabled,
+html.theme-night textarea:disabled {
+  background: var(--lm-subtle);
+  color: var(--lm-ink-3);
+}
+
+/* 按钮：描边按钮与各类工具按钮统一到暗色面 */
+html.theme-night .btn-outline {
+  color: var(--lm-ink-2);
+  border-color: var(--lm-line-strong);
+  background: transparent;
+}
+html.theme-night .btn-outline:hover {
+  background-color: var(--lm-btn-hover);
+  color: var(--lm-ink);
+  border-color: var(--lm-accent);
+}
+/* 侧栏页脚的"退出登录"是深底白色描边按钮，不属于内容区，保持原样 */
+html.theme-night .sidebar .btn-outline,
+html.theme-night .sidebar-footer .btn-outline { color: #fff; }
+html.theme-night button:not(.btn-primary):not(.primary):not(.danger):not(.logout-btn) {
+  color: var(--lm-ink);
+}
+html.theme-night button:disabled,
+html.theme-night .btn:disabled { color: var(--lm-ink-3); opacity: 0.6; }
+
+/* 日志条目：白天悬停是 #f8f9fa，正文/元信息是 #333/#666 */
+html.theme-night .log-entry { border-color: var(--lm-line); }
+html.theme-night .log-entry:hover { background-color: var(--lm-hover); }
+html.theme-night .log-entry .log-message { color: var(--lm-ink); }
+html.theme-night .log-entry .log-meta { color: var(--lm-ink-3); }
+
+/* 代码块与分析结果 */
+html.theme-night pre,
+html.theme-night code {
+  background-color: var(--lm-subtle);
+  color: var(--lm-ink);
+  border-color: var(--lm-line);
+}
+html.theme-night .analysis-result {
+  background-color: var(--lm-subtle);
+  border-color: var(--lm-line);
+  color: var(--lm-ink);
+}
+html.theme-night .analysis-result strong { color: var(--lm-ink); }
+
+/* 弹窗 */
+html.theme-night .modal-overlay { background-color: var(--lm-overlay); }
+html.theme-night .modal {
+  background-color: var(--lm-surface);
+  border-color: var(--lm-line);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+html.theme-night .modal-header {
+  background: linear-gradient(180deg, #1a212b, #161c24);
+  border-bottom-color: var(--lm-line);
+  color: var(--lm-ink);
+}
+html.theme-night .modal-footer {
+  background: #161c24;
+  border-top-color: var(--lm-line);
+}
+html.theme-night .modal-close { color: var(--lm-ink-3); }
+html.theme-night .modal-close:hover { background: rgba(255, 255, 255, 0.08); color: var(--lm-ink); }
+
+/* 快捷键面板 */
+html.theme-night .shortcuts-content {
+  background: var(--lm-surface);
+  border-color: var(--lm-line);
+}
+html.theme-night .shortcuts-header { border-bottom-color: var(--lm-line); }
+html.theme-night .shortcuts-header h3 { color: var(--lm-ink); }
+html.theme-night .shortcuts-header .close-btn { color: var(--lm-ink-3); }
+html.theme-night .shortcuts-header .close-btn:hover { color: var(--lm-ink); }
+html.theme-night .shortcut-section h4 { color: var(--lm-ink-2); }
+html.theme-night .shortcut-row { border-bottom-color: var(--lm-line); }
+html.theme-night .shortcut-row span { color: var(--lm-ink-2); }
+html.theme-night .shortcut-row kbd {
+  background: var(--lm-subtle);
+  border-color: var(--lm-line-strong);
+  color: var(--lm-ink);
+}
+
+/* 聊天（AI 对话） */
+html.theme-night .chat-container,
+html.theme-night .chat-messages-area,
+html.theme-night .chat-messages {
+  background-color: var(--lm-subtle);
+  border-color: var(--lm-line);
+}
+html.theme-night .chat-message.assistant .message-content {
+  background-color: var(--lm-surface);
+  color: var(--lm-ink);
+  border-color: var(--lm-line);
+}
+html.theme-night .chat-message.user .message-content { color: #fff; }
+html.theme-night .chat-input-container input { background: var(--lm-surface-2); color: var(--lm-ink); }
+
+/* 提示条与空状态 */
+html.theme-night .toast {
+  background-color: var(--lm-surface);
+  border-color: var(--lm-line);
+  color: var(--lm-ink);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+html.theme-night .empty-state { color: var(--lm-ink-3); }
+html.theme-night .empty-state h4 { color: var(--lm-ink-2); }
+html.theme-night .text-muted,
+html.theme-night .muted,
+html.theme-night small { color: var(--lm-ink-2); }
+html.theme-night small[style*="#a00"],
+html.theme-night .text-danger { color: var(--lm-danger-ink) !important; }
+html.theme-night b, html.theme-night strong { color: var(--lm-ink); }
+
+/* 平台/来源等带色链接在深底上统一提亮 */
+html.theme-night a { color: var(--lm-accent); }
+html.theme-night a:hover { color: #7cbaff; }
+
+/* 徽标：中性底与状态底都换成暗色版本 */
+html.theme-night .badge {
+  background: var(--lm-chip);
+  color: var(--lm-ink-2);
+  border-color: var(--lm-line);
+}
+html.theme-night .badge-critical,
+html.theme-night .badge-emergency,
+html.theme-night .badge-alert,
+html.theme-night .severity-critical {
+  background: var(--lm-danger-bg); color: var(--lm-danger-ink); border-color: var(--lm-danger-line);
+}
+html.theme-night .badge-error,
+html.theme-night .severity-error,
+html.theme-night .severity-badge.error {
+  background: var(--lm-error-bg); color: var(--lm-error-ink); border-color: var(--lm-error-line);
+}
+html.theme-night .badge-warning,
+html.theme-night .severity-warning,
+html.theme-night .severity-badge.warning {
+  background: var(--lm-warn-bg); color: var(--lm-warn-ink); border-color: var(--lm-warn-line);
+}
+html.theme-night .badge-notice,
+html.theme-night .severity-notice {
+  background: var(--lm-notice-bg); color: var(--lm-notice-ink); border-color: var(--lm-notice-line);
+}
+html.theme-night .badge-info,
+html.theme-night .severity-info {
+  background: var(--lm-info-bg); color: var(--lm-info-ink); border-color: var(--lm-info-line);
+}
+html.theme-night .badge-debug,
+html.theme-night .severity-debug {
+  background: var(--lm-debug-bg); color: var(--lm-debug-ink); border-color: var(--lm-debug-line);
+}
+html.theme-night .badge-success,
+html.theme-night .severity-success {
+  background: var(--lm-success-bg); color: var(--lm-success-ink); border-color: var(--lm-success-line);
+}
+
+/* 滚动条：浅色滑块在深底上很扎眼 */
+html.theme-night ::-webkit-scrollbar-track { background: var(--lm-scroll-track); }
+html.theme-night ::-webkit-scrollbar-thumb {
+  background: var(--lm-scroll-thumb);
+  background-clip: content-box;
+}
+html.theme-night ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.34);
+  background-clip: content-box;
+}
+html.theme-night { scrollbar-color: var(--lm-scroll-thumb) transparent; }
+html.theme-night .analysis-result-body { scrollbar-color: var(--lm-scroll-thumb) transparent; }
+
+/* 反选/焦点环在深色下的观感 */
+html.theme-night ::selection { background: var(--lm-selection); color: #fff; }
+html.theme-night input:focus,
+html.theme-night select:focus,
+html.theme-night textarea:focus { border-color: var(--lm-accent); }
+
+html.theme-night .status-indicator,
+html.theme-night .header-status { color: var(--lm-ink-2); }
+html.theme-night .user-menu,
+html.theme-night .user-menu span,
+html.theme-night [class*="user-info"] { color: var(--lm-ink-2); }

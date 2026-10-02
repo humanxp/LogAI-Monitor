@@ -10,21 +10,21 @@
     </div>
     <div style="padding: 1.5rem;">
         <div style="text-align: center; padding: 0.7rem 0 1.1rem 0;">
-            <h2 style="margin: 0; color: #333; font-size: 2.4rem; font-weight: 800; letter-spacing: 0.3px;">LogAI Monitor</h2>
-            <p style="color: #999; margin: 0.5rem 0 0 0; font-weight: 600; font-size: 1.15rem;">Version {{ version or VERSION }} &middot; .NET 8</p>
+            <h2 style="margin: 0; color: var(--lm-ink); font-size: 2.4rem; font-weight: 800; letter-spacing: 0.3px;">LogAI Monitor</h2>
+            <p style="color: var(--lm-ink-3); margin: 0.5rem 0 0 0; font-weight: 600; font-size: 1.15rem;">Version {{ version or VERSION }} &middot; .NET 8</p>
         </div>
-        <p style="color: #444; margin-top: 1rem; line-height: 1.85;">
+        <p style="color: var(--lm-ink-2); margin-top: 1rem; line-height: 1.85;">
             一套自托管的日志监控与智能分析系统。它把"设备各自发日志、出问题时没人看"这件事，
             收敛成一条完整的自动化链路：<b>采集 → 解析 → 存储 → 检索 → 过滤告警 → AI 分析 → 推送</b>。
             网络设备、服务器、容器产生的日志被统一接收与规范化，异常由规则实时捕获并推送，
             存量日志则由大模型成批解读成"整体状态、问题清单与处置建议"。
         </p>
-        <p style="color: #444; margin-top: 0.75rem; line-height: 1.85;">
+        <p style="color: var(--lm-ink-2); margin-top: 0.75rem; line-height: 1.85;">
             面向中小规模基础设施与边缘现场：只要能发 syslog，或跑在 Docker 里，就能被纳入监控；
             全部数据落在自有 Redis 中，界面、AI 与告警服务一体部署，不依赖外部 SaaS。
         </p>
-        <div style="margin-top: 1.25rem; padding: 1rem 1.1rem; background: linear-gradient(180deg, #f8fbff, #f1f6fd); border: 1px solid #dbe7f5; border-radius: 10px;">
-            <div style="font-weight: 600; color: #1565C0; margin-bottom: 0.6rem;">
+        <div style="margin-top: 1.25rem; padding: 1rem 1.1rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-notice-line); border-radius: 10px;">
+            <div style="font-weight: 600; color: var(--lm-accent); margin-bottom: 0.6rem;">
                 <i class="fas fa-route"></i> 数据流一览
             </div>
             <style>
@@ -102,7 +102,7 @@
                 <circle class="lm-dot" r="2.6" cx="384" cy="171" style="animation-delay:.2s"><animate attributeName="cx" values="384;412" dur="1.1s" repeatCount="indefinite"/></circle>
                 <circle class="lm-dot" r="2.6" cx="648" cy="171" style="animation-delay:.55s"><animate attributeName="cx" values="648;676" dur="1.1s" repeatCount="indefinite"/></circle>
             </svg>
-            <div style="color: #6b7a8c; font-size: 0.85rem; line-height: 1.7; margin-top: 0.6rem;">
+            <div style="color: var(--lm-ink-3); font-size: 0.85rem; line-height: 1.7; margin-top: 0.6rem;">
                 采集 → 解析 → 存储 → 检索 → 过滤告警 → AI 分析 → 推送；有事件时由实时通道立即送达页面。
             </div>
         </div>
@@ -115,14 +115,14 @@
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-satellite-dish" style="color:#1976D2;"></i> 1. 日志采集</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-satellite-dish" style="color:var(--lm-accent);"></i> 1. 日志采集</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>syslog 双协议</b>：UDP 与 TCP 同时监听，接收网络设备、服务器、嵌入式终端通过标准 syslog 发出的日志；对端断线重连、半包与粘包均按行边界正确处理</li>
             <li><b>容器日志</b>：通过 Docker 接口读取运行中容器的 stdout / stderr，无需在容器内安装任何采集代理；支持排除列表，避免把监控系统自身的日志反复采集进来</li>
             <li><b>外部投递</b>：提供带令牌鉴权的日志投递接口，脚本与自动化任务可安全地把日志送进来</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-code" style="color:#1976D2;"></i> 2. 协议解析与规范化</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-code" style="color:var(--lm-accent);"></i> 2. 协议解析与规范化</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>RFC 3164 与 RFC 5424</b> 两种格式，自动识别 PRI 优先级并换算为 facility 与 severity</li>
             <li>抽出<b>主机名、程序名、消息体</b>等字段；对"发送方省略主机名"的常见畸形格式做了保护，不会把程序名误当成主机名</li>
@@ -130,7 +130,7 @@
             <li>规范化后的记录带统一字段（来源 / 主机 / 级别 / 程序 / 时间戳 / 消息），使后续检索、过滤与 AI 分析口径一致</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-database" style="color:#1976D2;"></i> 3. 存储与检索</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>全部数据存放于 <b>Redis</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别），另有一条"待 AI 分析"队列</li>
             <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳</li>
@@ -138,7 +138,7 @@
             <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-bolt" style="color:#1976D2;"></i> 4. 实时观察</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-bolt" style="color:var(--lm-accent);"></i> 4. 实时观察</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>实时推送</b>：新日志、新告警、分析完成、统计变化会即时推送到已打开的页面，<b>无需手动刷新</b></li>
             <li><b>仪表盘</b>：日志总量与速率、级别分布、来源与主机排行、未分析积压、AI 后端与模型状态、最近告警</li>
@@ -146,7 +146,7 @@
             <li><b>异常可见</b>：客户端若出现错误级别日志或长时间静默，会在列表中标出原因</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-filter" style="color:#1976D2;"></i> 5. 过滤与告警</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-filter" style="color:var(--lm-accent);"></i> 5. 过滤与告警</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>四条件组合</b>（全部满足才命中）：级别、来源、消息关键字、<b>正则表达式</b>；过滤器可在页面上增删改，即时生效</li>
             <li>命中即写入<b>告警记录</b>（来源、主机、级别、消息、命中的规则、时间、确认状态等），可在告警页筛选、<b>单条确认 / 全部确认 / 清除已确认</b></li>
@@ -155,7 +155,7 @@
             <li>每条规则可独立决定是否推送 Telegram</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-brain" style="color:#1976D2;"></i> 6. AI 智能分析</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
@@ -165,21 +165,21 @@
             <li><b>分析历史</b>：可按时间与关键字检索、查看完整结果、对历史批次<b>重新分析</b></li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-paper-plane" style="color:#1976D2;"></i> 7. 通知推送</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>Telegram 告警</b>：命中规则且通过级别与冷却检查后即时推送，内容含级别、主机、程序与消息</li>
             <li><b>巡检日报</b>：每日汇总日志总量、未分析积压、AI 后端与模型状态、内存占用等健康信息</li>
             <li>推送失败只记录不影响采集与告警落库，通知通道异常不会拖累主链路</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-users-cog" style="color:#1976D2;"></i> 8. 用户、权限与接口</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-users-cog" style="color:var(--lm-accent);"></i> 8. 用户、权限与接口</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>三级权限</b>：管理员（含用户管理）、操作员（可改过滤器与设置）、只读（仅查看）</li>
             <li><b>认证</b>：口令以强哈希存储，支持在线改密；会话经签名保护，登录后按角色显示可用功能</li>
             <li><b>REST 接口</b>：查询与写入成对提供，便于接入外部系统；写入接口需登录，日志投递接口用独立令牌</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-heartbeat" style="color:#1976D2;"></i> 9. 运维与可靠性</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-heartbeat" style="color:var(--lm-accent);"></i> 9. 运维与可靠性</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>定时任务</b>：AI 分析、过期清理、健康巡检、容器日志轮询，各自独立，单个任务异常不影响其它任务，失败原因可在日志中看到</li>
             <li><b>健康巡检</b>：关注日志积压、AI 后端可用性与保留期设置是否合理，异常时给出提示</li>
@@ -187,7 +187,7 @@
             <li><b>写入护栏</b>：连接到生产库时默认禁止后台写入组件启动，避免误操作污染数据；确认接管时显式放行</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-desktop" style="color:#1976D2;"></i> 10. 界面</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
         <ul style="margin: 0;">
             <li>九个页面：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置、用户与关于</li>
             <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
@@ -197,25 +197,25 @@
 
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-cogs"></i> 开发技术 <span style="font-weight: 400; color: #999; font-size: 0.85rem;">Technology Stack</span></h3>
+        <h3><i class="fas fa-cogs"></i> 开发技术 <span style="font-weight: 400; color: var(--lm-ink-3); font-size: 0.85rem;">Technology Stack</span></h3>
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
-        <p style="color: #666; margin-top: 0;">这个项目用以下技术开发：</p>
+        <p style="color: var(--lm-ink-2); margin-top: 0;">这个项目用以下技术开发：</p>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: #333;"><i class="fas fa-code" style="color:#512BD4;"></i> 语言与框架</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-code" style="color:#512BD4;"></i> 语言与框架</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>C# / .NET 8</b> —— 后端服务、REST 接口与页面渲染，使用 ASP.NET Core minimal API</li>
             <li><b>模板渲染</b> —— 自实现的模板引擎，服务端渲染 HTML（extends / block / if / for），页面不依赖前端框架</li>
             <li><b>前端</b> —— 原生 JavaScript + CSS（无打包构建步骤），图标使用 Font Awesome</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: #333;"><i class="fas fa-database" style="color:#DC382D;"></i> 数据存储</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:#DC382D;"></i> 数据存储</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>Redis 7</b> —— 系统唯一的数据存储；.NET 客户端库为 <b>StackExchange.Redis</b></li>
             <li>数据结构选型：有序集合承载时间线与多维索引（分数=写入时间，便于范围检索与排序），哈希承载日志 / 告警 / 用户 / 客户端档案，集合承载各类注册表，日志按保留期设置 TTL</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: #333;"><i class="fas fa-plug" style="color:#1976D2;"></i> 采集与外部集成</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-plug" style="color:var(--lm-accent);"></i> 采集与外部集成</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>syslog UDP/TCP</b> —— 基于 .NET Socket 自行实现接收循环，内置 RFC 3164 / RFC 5424 解析与编码回退</li>
             <li><b>容器日志</b> —— 直接调用 <b>Docker Engine API</b>（只读挂载 unix socket，不引入 Docker SDK）</li>
@@ -224,13 +224,13 @@
             <li><b>实时推送</b> —— 自实现 <b>Engine.IO v4</b> 长轮询（含会话鉴权与多包帧封装）</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: #333;"><i class="fas fa-lock" style="color:#c62828;"></i> 安全</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-lock" style="color:#c62828;"></i> 安全</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li>口令 —— <b>scrypt</b> 强哈希，校验参数从存储值自身读取</li>
             <li>会话 —— <b>HMAC 签名 Cookie</b>；写类接口要求已登录，日志投递使用独立令牌</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: #333;"><i class="fas fa-cube" style="color:#2496ED;"></i> 部署与依赖</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-cube" style="color:#2496ED;"></i> 部署与依赖</h4>
         <ul style="margin: 0;">
             <li><b>Docker 多阶段构建</b> —— SDK 镜像编译，产物拷贝到 ASP.NET Core 运行时镜像</li>
             <li>对外端口 <b>5059</b>（HTTP）、<b>514/UDP</b> 与 <b>515/TCP</b>（syslog）；容器时区 Asia/Shanghai</li>
@@ -245,7 +245,7 @@
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-sitemap" style="color:#1976D2;"></i> 数据模型</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-sitemap" style="color:var(--lm-accent);"></i> 数据模型</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>时间线</b>用有序集合承载，分数取写入时间，因此"某时间段内最新的 N 条"由存储层直接定位，翻页不随数据量退化</li>
             <li><b>多维索引</b>（来源 / 主机 / 级别）同样以写入时间为分数，级别与时间范围可以天然叠加；三张索引与时间线在同一批写入中同步维护</li>
@@ -255,14 +255,14 @@
             <li><b>客户端档案</b>：每个发送方保留一份汇总记录（首见/末见、主机名、消息与错误计数、最近错误）另配两个附属结构——协议集合与<b>最近一分钟的滑动窗口</b>，因此"当前速率"与"是否停滞"都能即时算出，无需扫描历史</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-tachometer-alt" style="color:#1976D2;"></i> 写入路径</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-tachometer-alt" style="color:var(--lm-accent);"></i> 写入路径</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>单条日志的落库是<b>一次管道往返</b>：哈希本体 + 时间线 + 待分析队列 + 三张索引 + 客户端档案一并提交，避免逐键往返把接收线程拖住</li>
             <li>接收与存储解耦：接收循环只负责收包与解析，落库交由存储层；<b>落库变慢不会导致丢包</b>，但队列有界，溢出计数（dropped）会被记录下来而不是静默丢弃</li>
             <li>接收器对外暴露收发与丢弃计数，便于判断"是没收到"还是"收到了但没落库"——这是排查采集问题最常用的两个数字</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-broadcast-tower" style="color:#1976D2;"></i> 实时通道</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-broadcast-tower" style="color:var(--lm-accent);"></i> 实时通道</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>采用长轮询：客户端一次请求挂起等待，有事件立即返回，无事件则超时后重连；<b>连接建立时校验会话</b>，未登录的连接会被明确拒绝</li>
             <li>事件模型固定为四类：新日志、新告警、分析完成、统计变化；<b>统计推送做了节流</b>（每 2 秒最多一次），否则高日志量下会变成推送给客户端的主要负担</li>
@@ -270,7 +270,7 @@
             <li>运维动作（确认告警、删除日志、改设置）同样触发统计推送，使多个已打开页面的状态保持一致</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-gavel" style="color:#1976D2;"></i> 告警判定</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-gavel" style="color:var(--lm-accent);"></i> 告警判定</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>规则条件是<b>合取</b>且<b>短路求值</b>：级别、来源、关键字、正则依次判断，前面的条件不满足就不做后面的开销（正则是其中最贵的）</li>
             <li>正则<b>预编译并复用</b>；规则里的正则若非法，该条规则视为不匹配而<b>不抛异常</b>——一条写错的正则不应该让整条采集链路中断</li>
@@ -278,7 +278,7 @@
             <li>落库与推送分离：告警先落库（保证可追溯），推送结果不影响告警记录；单条规则可独立关闭推送，或设为"任意级别"以旁路级别门限</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-robot" style="color:#1976D2;"></i> AI 分析</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-robot" style="color:var(--lm-accent);"></i> AI 分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>批次大小<b>有界</b>，避免一次把过多日志塞进上下文；提示词明确要求模型输出固定键集的结构化结果，界面对这些键有确定的呈现方式</li>
             <li>模型返回要经过<b>提取与修复</b>：从可能夹带说明文字的输出中取出 JSON，修复被截断或括号不配对的片段；仍不合法时做一次<b>纠正性重试</b></li>
@@ -287,14 +287,14 @@
             <li>历史记录的字段集<b>按来源区分</b>（批量与单条所需信息不同），并设置保留期，长期运行不会无限增长</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-stream" style="color:#1976D2;"></i> 调度</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-stream" style="color:var(--lm-accent);"></i> 调度</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>分析、清理、健康巡检、容器轮询四类任务<b>彼此独立</b>：单个任务抛异常只记录该任务的失败原因与调用栈，不影响其它任务继续运行</li>
             <li>任务间隔<b>不缓存</b>：每次调度重新读取设置，因此改完间隔无需重启即生效</li>
             <li>同一任务<b>不重入</b>：上一次未结束时本轮跳过，避免慢任务堆积</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-shield-halved" style="color:#1976D2;"></i> 安全与防护</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-shield-halved" style="color:var(--lm-accent);"></i> 安全与防护</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>写入护栏</b>：连接到生产库时，后台写入组件默认拒绝启动并明确提示，避免"只想读一下"却改了数据；接管时需显式放行</li>
             <li>口令以<b>强哈希</b>存储，校验参数从存储值自身读取，因此参数的调整不会让既有口令失效</li>
@@ -302,7 +302,7 @@
             <li>容器日志采集仅以<b>只读</b>方式访问 Docker 接口，并支持排除列表，避免采集监控系统自身而形成回环</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: #333;"><i class="fas fa-vial" style="color:#1976D2;"></i> 测试与验证设计</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-vial" style="color:var(--lm-accent);"></i> 测试与验证设计</h4>
         <ul style="margin: 0 0 0;">
             <li>自测覆盖解析、过滤、告警、会话、通知模板、提示词、调度、清理、健康巡检、客户端跟踪等模块，可用命令行单独运行，且<b>拒绝在 0 号库上执行</b>写类用例</li>
             <li>断言刻意带上<b>类型与量纲</b>：例如"索引类型必须是有序集合""分数必须落在纪元秒的合理区间"。这类断言能抓住"看起来对、实际语义错"的问题——纯值比较往往抓不住</li>
