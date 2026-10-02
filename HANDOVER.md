@@ -223,11 +223,21 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
   ≠ "省了 499MB 磁盘"**，以 `docker system df` 为准。
 
 **c) 顺带清理真正占空间的东西（本轮验证产生的）**
-宿主机上最占地的其实是验证工具（各 3.38GB）：`logai-preview:latest`、
-`logai-ab:latest`，加上 8.19GB 构建缓存。验证做完后已删除这两个镜像并
-`docker buildx prune`，需要时按 `.preview/README.md` 重建（约 1 分钟）。
-`mcr.microsoft.com/dotnet/sdk:8.0`（1.23GB）**必须保留**——Dockerfile 的构建阶段要用，
-删了就没法再构建 .NET 镜像。
+宿主机上最占地的其实是验证工具（各 3.38GB：`logai-preview:latest`、
+`logai-ab:latest`）与构建缓存（8.19GB）。本次清理的实际回收：
+
+| 动作 | 释放 |
+|---|---|
+| `docker rmi logradarai:local` | ~1MB（与 `hardened` 共享层，见上） |
+| `docker rmi logai-preview logai-ab` | 约 6.8GB |
+| `docker buildx prune -af` | 7.82GB |
+| 合计 | 磁盘占用 11GB → 9.7GB，构建缓存 8.19GB → 0.37GB |
+
+保留的镜像（都还有用，别删）：`logaimonitor-cs:latest`（生产）、
+`logradarai:hardened`（Python 回退）、`mcr.microsoft.com/dotnet/sdk:8.0`（1.23GB，
+**Dockerfile 构建阶段必须用它**，删了就没法再构建 .NET 镜像）、`redis:7-alpine`、
+`alpine:3.19`。
+验证工具需要时按 `.preview/README.md` 重建（约 1 分钟）。
 
 ### 3.7 部署方式的一个隐患（本次踩到，已缓解）
 - **`logaimonitor` 容器不是 compose 建的**：它挂在 `logradarai_logaimonitor-net` 上，
