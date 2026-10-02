@@ -184,13 +184,38 @@ internal static class AppHost
                 {
                     var outcome = await runner.RunOnceAsync(ct);
                     if (outcome.Status == "analyzed")
+                    {
                         LogAI.Web.Api.StatsApi.PushIfNeeded(store);
-            LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete",
-                            new Dictionary<string, object?>(StringComparer.Ordinal)
+                        // The dashboard reads data.logs_analyzed and renders data.analysis
+                        // (Python emitted exactly those two keys). Sending count/history_id
+                        // alone made the toast read "Analyzed undefined logs" and left an
+                        // automatic analysis invisible on the page.
+                        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+                        {
+                            ["logs_analyzed"] = outcome.Count,
+                        };
+                        if (!string.IsNullOrEmpty(outcome.HistoryId))
+                        {
+                            var hash = await store.Db.HashGetAllAsync(outcome.HistoryId);
+                            foreach (var field in hash)
                             {
-                                ["count"] = outcome.Count,
-                                ["history_id"] = outcome.HistoryId,
-                            });
+                                if (field.Name != "analysis") continue;
+                                string raw = field.Value.ToString();
+                                if (raw.Length == 0) break;
+                                try
+                                {
+                                    payload["analysis"] = System.Text.Json.JsonSerializer
+                                        .Deserialize<Dictionary<string, object?>>(raw);
+                                }
+                                catch (System.Text.Json.JsonException)
+                                {
+                                    // A malformed record must not stop the scheduler.
+                                }
+                                break;
+                            }
+                        }
+                        LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete", payload);
+                    }
                 }
                 finally { lastAnalysis = DateTimeOffset.UtcNow; }
             },
