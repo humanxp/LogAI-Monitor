@@ -293,7 +293,10 @@ input:focus, select:focus, textarea:focus {
   margin: 0;
   font-size: 1.12rem;
   font-weight: 650;
-  color: #1f2733;
+  /* 令牌而不是写死的深色：这里曾写死 #1f2733，而晚上的 .modal-header 是深底，
+     于是标题成了"深灰字压深底"，几乎看不见（用户报的就是这个）。
+     注意晚上那边只设了 .modal-header 的 color，h3 自带 color 就不吃继承。 */
+  color: var(--lm-ink);
   letter-spacing: 0.2px;
   display: flex;
   align-items: center;
@@ -314,15 +317,15 @@ input:focus, select:focus, textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #7a8699;
+  color: var(--lm-ink-3);
   transition: background 0.14s ease, color 0.14s ease;
 }
-.modal-close:hover { background: rgba(16, 24, 40, 0.07); color: #1f2733; }
+.modal-close:hover { background: var(--lm-hover); color: var(--lm-ink); }
 .modal-body { padding: 1.25rem 1.4rem; }
 .modal-footer {
   padding: 0.9rem 1.4rem;
   border-top: 1px solid var(--lm-line);
-  background: #fafbfd;
+  background: var(--lm-surface-2);
   gap: 0.6rem;
 }
 

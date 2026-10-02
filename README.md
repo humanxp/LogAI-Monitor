@@ -18,7 +18,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 | **实时推送** | Engine.IO v4 长轮询（握手 / 命名空间连接 / 鉴权 / `\x1e` 多包 / 包序）；事件 `connected`、`new_log`、`new_alert`、`analysis_complete`、`stats`（2 秒节流） |
 | **调度** | 分析（设置间隔）、清理（保留期 + **死索引清理**）、健康巡检（`ok` 判据与阈值同 Python）、Docker 轮询；任务抛异常**可见**且不影响其它任务 |
 | **认证与权限** | Werkzeug 兼容口令校验**与生成**（scrypt / pbkdf2 / legacy sha256，参数从哈希中读取）；HMAC 签名会话 cookie；三级权限；`X-Ingest-Token` 摄取令牌 |
-| **界面** | 9 个页面，**HTML 与原版逐字节相同**，视觉改进集中在单个 `wwwroot/css/refined.css`（约 10.6 KB）——信息架构零改动 |
+| **界面与主题** | 9 个页面，**HTML 与原版逐字节相同**，视觉改进集中在叠加层 `wwwroot/css/refined.css`（约 30 KB）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内 |
 
 ---
 
@@ -61,6 +61,7 @@ docker run -d --name logaimonitor \
 | `SYSLOG_UDP_PORT` / `SYSLOG_TCP_PORT` | 默认 514 / 515 |
 | `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥 |
 | `DOCKER_COLLECTION` | 设为 `off` 可关闭容器日志采集 |
+| `FILTER_TRACE` | 设为 `1` 时，每条日志都打印 `[Filters] loaded=N matched=M …`。用于区分"没加载到规则""加载了但没匹配""匹配了"，**默认关闭**——生产约 100 条日志/秒，逐条打点会变成噪音而不是可观测性 |
 
 ### 安全护栏：DB 0 默认只读
 
@@ -68,11 +69,15 @@ docker run -d --name logaimonitor \
 
 这样"连生产库做只读对照"就不会意外写入数据；正式切换时必须**显式**加 `ALLOW_DB0_WRITES=1`。
 
+这个护栏同时也是**只读比对实例**的正确用法：`REDIS_DB=0` 且**不设** `ALLOW_DB0_WRITES`，
+就能对生产数据跑接口比对/参数排查。注意别用隔离库（如 DB 9）去读生产数据——
+那样读到的自然是空集合，容易被误判成"接口全挂"。
+
 ---
 
 ## 自测
 
-内置 17 套自测，可用命令行运行（`--<name>-selftest`），覆盖解析、过滤器、告警、会话、Telegram 模板、提示词、提交、调度、健康、清理、客户端跟踪、过滤器加载、AI 历史、批次挑选、Docker 采集等。多数自测**要求非 0 号库**，对 DB 0 直接拒绝执行。
+内置 **21 套自测 / 22 个入口**，可用命令行运行（`--<name>-selftest`），覆盖解析、过滤器、告警、会话、Telegram 模板、提示词、提交、调度、健康、清理、客户端跟踪、过滤器加载、AI 历史、批次挑选、Docker 采集、批量删除维护等。多数自测**要求非 0 号库**，对 DB 0 直接拒绝执行。
 
 ```bash
 docker run --rm --network host -e REDIS_HOST=<host> -e REDIS_DB=9 \
@@ -85,7 +90,20 @@ docker run --rm --network host -e REDIS_HOST=<host> -e REDIS_DB=9 \
 ```bash
 # 批量删除已不存在的容器所留下的日志来源（先干跑，确认后加 --confirm）
 dotnet LogAI.Web.dll --purge-sources "docker:cs-" --confirm
+
+# 签发一个临时会话 cookie（验证受保护端点时用，不必知道账号口令）
+dotnet LogAI.Web.dll --mint-session <用户名> <角色>
 ```
+
+---
+
+## 部署与验证工具
+
+- `scripts/deploy-cs.sh`：同步 → 构建 → 从旧容器读回机密 → **同参数重建容器** → 健康检查。
+  必须"构建与重建一起做"：`docker build` 会把 `logaimonitor-cs:latest` 从旧镜像上摘掉，
+  而运行中的容器正是用旧镜像创建的，只构建不重建会让容器下次重启起不来。
+- 界面改动的视觉验证：对**线上真实页面**截图 + 逐元素对比度审计 + 新旧样式表像素级 A/B。
+  工具在仓库上一级的 `.preview/`（含 README），浏览器跑在部署主机的容器里。
 
 ---
 
@@ -108,3 +126,12 @@ dotnet LogAI.Web.dll --purge-sources "docker:cs-" --confirm
 - 告警产出交 Python 读取逻辑消费验证
 - AI 三条路径均用**真实模型**端到端验证
 - 自测套件含类型断言与量纲断言（如"索引分数应为纪元秒"）
+- **参数驱动端点**逐个断言"返回集合 ⊆ 参数值"且 `total` 与 Redis 索引基数一致
+  （曾借此发现 `/api/ai-history/stats` 完全忽略 `start/end`：空时间窗返回全量）
+- **界面改动**用像素级 A/B + 逐元素对比度审计把关，而不是"看着差不多"。
+  测对比度必须覆盖"打开才出现"的界面（弹窗等），否则标题这类只在弹窗里的
+  元素会漏掉——`html.theme-night .modal-header { color }` 盖不住
+  `.modal-header h3 { color: #1f2733 }` 就是这个漏洞造成的。
+  比较截图前要冻结动画：CSS `prefers-reduced-motion` **拦不住 SVG SMIL**，
+  需要 `document.getAnimations()` 配合 `svg.pauseAnimations()`；
+  但也不能无差别冻结，把弹窗的 `opacity` transition 定在 t=0 会让弹窗重新变不可见。
