@@ -47,6 +47,14 @@ public static class TelegramState
             string token = RedisStore.ToText(settings.GetValueOrDefault("telegram_bot_token"));
             string chat = RedisStore.ToText(settings.GetValueOrDefault("telegram_chat_id"));
 
+            // 环境变量回退：Python 版 config.py 读取 TELEGRAM_BOT_TOKEN /
+            // TELEGRAM_CHAT_ID，生产容器也一直带着这两个变量。本实现此前只认
+            // Redis 设置，于是"只用环境变量配置"的部署会静默地不发任何通知
+            // （日志里只有 Telegram not configured）。设置页优先——那是用户
+            // 能改的地方，改完应当立刻生效。
+            if (token.Length == 0) token = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") ?? "";
+            if (chat.Length == 0) chat = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID") ?? "";
+
             BotToken = token;
             ChatId = chat;
             _configured = token.Length > 0 && chat.Length > 0;

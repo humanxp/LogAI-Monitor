@@ -33,6 +33,15 @@ internal static class AppHost
         bool alertOnCritical = BoolSetting(settings, "alert_on_critical", true);
         bool alertOnError = BoolSetting(settings, "alert_on_error", true);
 
+        // 巡检看门狗（对齐 Python 的 health_watchdog）：积压 / AI 后端 / 调度卡死
+        // 三种条件各自按冷却时间推送 Telegram，恢复正常时补一条"已恢复"，
+        // 并有可选的巡检日报。这些设置键在 Python 侧一直在用，本实现此前
+        // 完全没读——所以巡检再糟也只是一行日志，不会通知任何人。
+        int healthWarn = IntSettingAllowZero(settings, "health_backlog_warn", warnThreshold);
+        int healthWatchMinutes = Math.Max(1, IntSetting(settings, "health_watch_minutes", 5));
+        int healthAlertCooldownMinutes = Math.Max(1, IntSetting(settings, "health_alert_cooldown_min", 30));
+        bool healthDailySummary = BoolSetting(settings, "health_daily_summary", true);
+
         // Hard guard: database 0 is the LIVE production database. An instance
         // pointed at it for read-only comparison must not ingest, analyse, clean
         // up or poll docker - all of those write. This is enforced in code rather
@@ -305,7 +314,9 @@ internal static class AppHost
             },
             firstDelay: TimeSpan.FromSeconds(20));
 
-        scheduler.Add("health", () => TimeSpan.FromSeconds(30), async ct =>
+        // 巡检周期由 health_watch_minutes 决定（Python 侧会热重排；这里在启动时
+        // 读取一次，改完设置需要重启容器才生效）。
+        scheduler.Add("health", () => TimeSpan.FromMinutes(healthWatchMinutes), async ct =>
         {
             if (aiChecked is null || (DateTimeOffset.UtcNow - aiChecked.Value).TotalSeconds > 60)
             {
@@ -320,20 +331,19 @@ internal static class AppHost
             HealthState.AiAvailable = aiAvailable;
             HealthState.AiModel = client.Model;
             HealthState.LastAnalysisAgeSeconds = age;
-            HealthState.WarnThreshold = warnThreshold;
+            HealthState.WarnThreshold = healthWarn;
             HealthState.AnalysisMinutes = analysisMinutes;
 
-            var inputs = new HealthInputs(backlog, total, aiAvailable, age, warnThreshold, analysisMinutes);
+            var inputs = new HealthInputs(backlog, total, aiAvailable, age, healthWarn, analysisMinutes);
             bool ok = HealthCheck.IsOk(inputs);
-
-            // Python stores the epoch of the last summary under this key (a float).
-            await store.Db.StringSetAsync(Keys.HealthLastSummary,
-                (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0)
-                    .ToString(System.Globalization.CultureInfo.InvariantCulture));
 
             if (!ok)
                 Console.WriteLine("[Health] not ok: backlog=" + backlog + " total=" + total
-                    + " ai=" + aiAvailable + " age=" + age + " warn=" + warnThreshold);
+                    + " ai=" + aiAvailable + " age=" + age + " warn=" + healthWarn);
+
+            await RunHealthWatchdogAsync(store, notifier, backlog, total, aiAvailable, age,
+                healthWarn, healthAlertCooldownMinutes, healthDailySummary, analysisMinutes,
+                client.Model, client.BaseUrl, ct);
 
             // Positive heartbeat. The health job used to log only when something was
             // wrong, so "everything is fine" and "this job died" looked identical in
@@ -347,7 +357,7 @@ internal static class AppHost
                 string heartbeat = "[Health] " + (ok ? "ok" : "NOT OK")
                     + " backlog=" + backlog + " total=" + total
                     + " ai=" + aiAvailable + " age=" + age
-                    + " warn=" + warnThreshold;
+                    + " warn=" + healthWarn;
                 if (LogAI.Web.Realtime.EngineIoServer.Current is { } eio)
                     heartbeat += " | realtime sessions=" + eio.SessionCount
                         + " connected=" + eio.ConnectedClients
@@ -396,6 +406,113 @@ internal static class AppHost
             + " | analysis every " + analysisMinutes + "m | retention " + retentionHours + "h");
     }
 
+    /// <summary>
+    /// 巡检看门狗：把"积压 / AI 后端 / 调度卡死"三类异常推给 Telegram。
+    ///
+    /// 对齐 Python 的 health_watchdog，三点行为要一致：
+    ///   1. **按条件各自冷却**（不是整体冷却）：AI 宕机不会因为刚发过积压告警而被吞掉；
+    ///   2. **恢复通知**：条件消失时补一条"已恢复"，并清掉该条件的记录，
+    ///      否则下次复发要等到冷却结束才通知；
+    ///   3. **日报**：距上次日报 ≥24h 时发一条概览（时间戳落在 Redis，
+    ///      容器重启不会重复发；此前那段代码在每个巡检周期都写这个键，
+    ///      导致"距上次 ≥24h"永远不成立，日报永远不会发）。
+    ///
+    /// 冷却状态放在进程内（Python 同样是模块级字典），因此重启会重置冷却——
+    /// 对一个巡检看门狗来说是安全的（宁可重启后多提醒一次，也不要静默）。
+    /// </summary>
+    private static async Task RunHealthWatchdogAsync(
+        RedisStore store, TelegramNotifier notifier, long backlog, long total,
+        bool aiAvailable, int ageSeconds, int warnThreshold, int cooldownMinutes,
+        bool dailySummary, int analysisMinutes, string aiModel, string aiEndpoint,
+        CancellationToken ct)
+    {
+        var conditions = new List<(string Key, string Message)>();
+        if (backlog > warnThreshold)
+            conditions.Add(("backlog", "⚠️ 未分析日志积压 <b>" + backlog + "</b> 条（阈值 " + warnThreshold + "），AI 分析跟不上"));
+        if (!aiAvailable)
+            conditions.Add(("ai", "⚠️ <b>AI 后端不可达</b>（模型 " + aiModel + " @ " + aiEndpoint + "）"));
+        // Python: age > max(interval * 2.5, 300) 视为调度卡死
+        long stallAfter = Math.Max((long)analysisMinutes * 150, 300);
+        // 只有分析任务至少跑过一次（lastAnalysis 有值）才判定"调度卡死"：
+        // 缓存年龄 age 在从未跑过时是 -1（Python 同样用 age >= 0 挡住这种误报）。
+        if (ageSeconds >= 0 && ageSeconds > stallAfter)
+            conditions.Add(("sched", "⚠️ 自动分析已 " + (ageSeconds / 60) + " 分钟未运行（疑似调度器卡死）"));
+
+        // Telegram 凭据由 TelegramState 惰性加载（设置页优先，其次环境变量）。
+        // 过滤器告警那条路径每次都会先 EnsureAsync，而巡检任务可能早于任何一次
+        // 告警运行——以前这里直接查 Enabled，于是恒为 false，巡检永远只打一行
+        // "(telegram 未配置)"，即使 token 早已配好。
+        await TelegramState.EnsureAsync(store, ct);
+
+        bool CanSend() => TelegramState.Enabled;
+        async Task<bool> SendAsync(string text, string what)
+        {
+            if (!CanSend())
+            {
+                Console.WriteLine("[Health] " + what + " 未发送：Telegram 未配置");
+                return false;
+            }
+            bool sent;
+            try { sent = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId, text, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.WriteLine("[Health] " + what + " 发送异常: " + ex.Message);
+                return false;
+            }
+            // 每个结果都留痕：没有这一行，"发送失败"和"看门狗根本没跑"在日志里
+            // 长得一样——这正是之前几轮排查反复踩的坑。
+            Console.WriteLine("[Health] " + what + (sent ? " 已发送" : " FAILED"));
+            return sent;
+        }
+
+        double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+        var active = conditions.Select(c => c.Key).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var (key, message) in conditions)
+        {
+            if (now - _healthLastAlert.GetValueOrDefault(key) < cooldownMinutes * 60)
+            {
+                Console.WriteLine("[Health] 条件 '" + key + "' 在 " + cooldownMinutes + " 分钟冷却内，跳过");
+                continue;
+            }
+            if (await SendAsync("🚨 <b>LogAI Monitor 巡检告警</b>\n" + message, "巡检告警(" + key + ")"))
+                _healthLastAlert[key] = now;
+        }
+
+        // 恢复通知：此前在告警、现在不在条件里的，逐个清掉并发一条
+        foreach (string key in _healthLastAlert.Keys.ToList())
+        {
+            if (active.Contains(key)) continue;
+            if (key == "backlog" && backlog > warnThreshold) continue;
+            string what = key switch { "backlog" => "积压已回落到正常范围", "ai" => "AI 后端已恢复", _ => "调度已恢复" };
+            await SendAsync("✅ <b>LogAI Monitor</b>\n" + what, "恢复通知(" + key + ")");
+            _healthLastAlert.Remove(key);
+        }
+
+        if (!dailySummary) return;
+        double lastSummary = 0;
+        var raw = await store.Db.StringGetAsync(Keys.HealthLastSummary);
+        if (raw.HasValue
+            && double.TryParse(raw.ToString(), System.Globalization.NumberStyles.Float,
+                   System.Globalization.CultureInfo.InvariantCulture, out double parsed))
+            lastSummary = parsed;
+        if (now - lastSummary < 24 * 3600) return;
+
+        string aiIcon = aiAvailable ? "✅" : "⚠️";
+        string ageText = ageSeconds >= 0 ? (ageSeconds / 60) + " 分钟前" : "尚未运行";
+        if (await SendAsync("📊 <b>LogAI Monitor 巡检日报</b>\n"
+                + "日志总量：<b>" + total + "</b>\n"
+                + "未分析积压：" + backlog + "\n"
+                + "AI 后端：" + aiIcon + " " + aiModel + "\n"
+                + "最近自动分析：" + ageText, "巡检日报"))
+        {
+            await store.Db.StringSetAsync(Keys.HealthLastSummary,
+                now.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+    }
+
+    private static readonly Dictionary<string, double> _healthLastAlert = new(StringComparer.Ordinal);
+
     private static async Task<List<FilterRule>> LoadFiltersAsync(RedisStore store)
     {
         var ids = await store.Db.SetMembersAsync(Keys.Filters);
@@ -417,6 +534,14 @@ internal static class AppHost
 
     private static int IntSetting(Dictionary<string, object?> settings, string key, int fallback) =>
         int.TryParse(RedisStore.ToText(settings.GetValueOrDefault(key)), out int value) && value > 0 ? value : fallback;
+
+    /// <summary>
+    /// 与 IntSetting 相同，但允许 0。IntSetting 用 "> 0" 过滤，把合法的 0 也当成
+    /// 无效值回退默认——health_backlog_warn 允许 0（Python 侧 max(0, …)，
+    /// 含义是"任何积压都算超标"），用 IntSetting 读会让 0 变成 2000，设置形同虚设。
+    /// </summary>
+    private static int IntSettingAllowZero(Dictionary<string, object?> settings, string key, int fallback) =>
+        int.TryParse(RedisStore.ToText(settings.GetValueOrDefault(key)), out int value) ? value : fallback;
 
     private static bool BoolSetting(Dictionary<string, object?> settings, string key, bool fallback)
     {

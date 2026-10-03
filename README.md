@@ -61,7 +61,28 @@ docker run -d --name logaimonitor \
 | `SYSLOG_UDP_PORT` / `SYSLOG_TCP_PORT` | 默认 514 / 515 |
 | `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥 |
 | `DOCKER_COLLECTION` | 设为 `off` 可关闭容器日志采集 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram 凭据的**备选来源**：设置页里的值优先（那是用户能改的地方、改完立刻生效），为空时回退到这两个环境变量。只配环境变量、不配设置页也能正常推送 |
 | `FILTER_TRACE` | 设为 `1` 时，每条日志都打印 `[Filters] loaded=N matched=M …`。用于区分"没加载到规则""加载了但没匹配""匹配了"，**默认关闭**——生产约 100 条日志/秒，逐条打点会变成噪音而不是可观测性 |
+
+### 巡检看门狗（health watchdog）
+
+定时自检并把异常推给 Telegram，**按条件各自冷却**（不是整体冷却——AI 宕机不会因为刚发过积压告警而被吞掉），条件消失时补一条"已恢复"，另有可选的巡检日报：
+
+| 条件 | 触发 | 恢复通知 |
+|---|---|---|
+| `backlog` | 未分析积压 > `health_backlog_warn`（允许 0） | 积压回落 ≤ 阈值 |
+| `ai` | AI 后端不可达 | 后端恢复 |
+| `sched` | 自动分析超过 `max(分析间隔 × 2.5, 300s)` 未运行 | 恢复运行 |
+
+| 设置键 | 默认 | 说明 |
+|---|---|---|
+| `health_watch_minutes` | 5 | 巡检周期。**启动时读取一次，改完需重启容器**（Python 侧会热重排） |
+| `health_backlog_warn` | 2000 | 积压阈值，`0` 表示"任何积压都算超标" |
+| `health_alert_cooldown_min` | 30 | 每个条件的推送冷却 |
+| `health_daily_summary` | true | 每 24 小时一条概览（时间戳存 Redis，重启不会重复发） |
+
+每个推送结果都会留痕（`巡检告警(backlog) 已发送` / `FAILED` / `条件 'ai' 在 30 分钟冷却内，跳过`）——
+没有这些行，"发送失败"和"看门狗根本没跑"在日志里长得一样。
 
 ### 安全护栏：DB 0 默认只读
 
