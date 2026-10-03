@@ -29,6 +29,14 @@ public static class Keys
     public const string CleanupLastRemoved = "cleanup:last_removed";
     public const string HealthLastSummary = "health:last_summary";
 
+    /// <summary>
+    /// 分析失败的持久记录（最近 N 条，带时间戳与原因）。
+    /// 失败此前只在 stdout 里留一行，而 stdout 随容器重建一起消失，
+    /// 于是"13:48 之后为什么 4 小时没有分析记录"根本无法事后回答。
+    /// 排查这类"历史里一个空洞"的问题，必须有一个不随日志轮转消失的痕迹。
+    /// </summary>
+    public const string AnalysisFailures = "analysis:failures";
+
     public static string Log(string id) => "log:" + id;
     public static string LogSource(string source) => "logs:source:" + source;
     public static string LogHost(string host) => "logs:host:" + host;

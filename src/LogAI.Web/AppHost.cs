@@ -229,6 +229,11 @@ internal static class AppHost
                 try
                 {
                     var outcome = await runner.RunOnceAsync(ct);
+                    // "这一次没东西可分析"与"这次根本没跑/跑完没记录"必须能区分：
+                    // AI History 里的空洞（曾出现 13:48 → 18:07 无任何记录）
+                    // 只有配上这一行才解释得清。
+                    if (outcome.Status == "empty")
+                        Console.WriteLine("[Analysis] nothing to analyze");
                     if (outcome.Status == "analyzed")
                     {
                         // 成功也要留痕：此前只有推给前端的事件，服务端日志里
@@ -314,6 +319,13 @@ internal static class AppHost
                             }
                         }
                     }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // 失败写进 Redis（最近 100 条，带原因），而不是只写 stdout：
+                    // stdout 随容器重建消失，事后无法回答"这段时间为什么没有分析记录"。
+                    await RecordAnalysisFailureAsync(store, ex, ct);
+                    throw;   // 交给调度器，保留它那行 job failed 与堆栈
                 }
                 finally { lastAnalysis = DateTimeOffset.UtcNow; }
             },
@@ -409,6 +421,34 @@ internal static class AppHost
 
         Console.WriteLine("[AppHost] syslog udp=" + udpPort + " tcp=" + tcpPort
             + " | analysis every " + analysisMinutes + "m | retention " + retentionHours + "h");
+    }
+
+    /// <summary>
+    /// 记录一次分析失败：一行 stdout（方便实时看）+ 一条 Redis 记录（方便事后查）。
+    ///
+    /// 为什么需要持久化：AI History 里 2026-10-03 13:48→18:07 有 4 小时 18 分的
+    /// 空洞，而 stdout 已随容器重建消失，事后没有任何地方能说明那段时间发生了什么。
+    /// 这类"历史里的空洞"必须由不随日志轮转消失的痕迹来解释。
+    /// 列表用 LPUSH + LTRIM 限长，不会无限增长。
+    /// </summary>
+    private static async Task RecordAnalysisFailureAsync(RedisStore store, Exception ex, CancellationToken ct)
+    {
+        string reason = ex.GetType().Name + ": " + ex.Message;
+        Console.WriteLine("[Analysis] FAILED " + reason);
+        try
+        {
+            string entry = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.fffK",
+                System.Globalization.CultureInfo.InvariantCulture) + " " + reason;
+            await store.Db.ListLeftPushAsync(Keys.AnalysisFailures, entry);
+            await store.Db.ListTrimAsync(Keys.AnalysisFailures, 0, 99);
+            // 失败记录保留 7 天：足够回溯"那天下午为什么没分析"，又不会永久堆积。
+            await store.Db.KeyExpireAsync(Keys.AnalysisFailures, TimeSpan.FromDays(7));
+        }
+        catch (Exception logEx) when (logEx is not OperationCanceledException)
+        {
+            // 记录失败本身不能把分析任务再弄挂一次
+            Console.Error.WriteLine("[Analysis] 无法记录失败原因: " + logEx.Message);
+        }
     }
 
     /// <summary>
