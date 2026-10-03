@@ -231,6 +231,11 @@ internal static class AppHost
                     var outcome = await runner.RunOnceAsync(ct);
                     if (outcome.Status == "analyzed")
                     {
+                        // 成功也要留痕：此前只有推给前端的事件，服务端日志里
+                        // "分析在跑"与"分析卡死"完全一样——巡检心跳里的 age 因此
+                        // 难以解读（曾把"跑过但没记录"误读成"从未运行"）。
+                        Console.WriteLine("[Analysis] analyzed " + outcome.Count + " log(s)"
+                            + (string.IsNullOrEmpty(outcome.HistoryId) ? "" : " history=" + outcome.HistoryId));
                         LogAI.Web.Api.StatsApi.PushIfNeeded(store);
                         // The dashboard reads data.logs_analyzed and renders data.analysis
                         // (Python emitted exactly those two keys). Sending count/history_id
