@@ -8,6 +8,7 @@
 // against recorded replies without a live model.
 
 using System.Net.Http.Headers;
+using LogAI.Core.Store;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -83,6 +84,37 @@ public sealed class AiClient(HttpClient? http = null)
     /// http://192.168.50.23:8000 while the OpenAI-compatible route lives under
     /// /v1), which produced a 404 until this normalisation was added.
     /// </summary>
+    /// <summary>
+    /// 模型名的取值来源，顺序固定为：设置页的 ollama_model → 环境变量 OLLAMA_MODEL → 传参默认值。
+    ///
+    /// 之前各处只读环境变量，于是设置页的 Model 输入框改了完全不起作用——设置页显示
+    /// 的是一个值、实际调用用的是另一个值。这里与 batch/冷却一起统一"设置页优先"。
+    /// 用同步读是刻意的：调用点都在同步上下文里（构造 AiClient），不值得为一次
+    /// HGET 把整条调用链改成 async。
+    /// </summary>
+    public static string ResolveModel(RedisStore? store, string? fallback = null)
+    {
+        try
+        {
+            if (store is not null)
+            {
+                var value = store.Db.HashGet(Keys.Settings, "ollama_model");
+                string text = value.HasValue ? value.ToString().Trim().Trim('"') : "";
+                if (text.Length > 0) return text;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            // 读设置失败不应阻断分析：回退到环境变量/默认值即可。
+            // 这里刻意捕获基类而不是 RedisException——连接超时、序列化等失败
+            // 都不应该让"取个模型名"变成致命错误。
+        }
+
+        string env = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "";
+        if (env.Length > 0) return env;
+        return fallback ?? "";
+    }
+
     public static string NormalizeBaseUrl(string baseUrl, string provider)
     {
         string url = (baseUrl ?? "").TrimEnd((char)47);

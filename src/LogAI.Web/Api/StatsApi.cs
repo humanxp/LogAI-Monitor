@@ -37,7 +37,7 @@ internal static class StatsApi
             string host = RedisStore.ToText(settings.GetValueOrDefault("ollama_host"));
             string provider = RedisStore.ToText(settings.GetValueOrDefault("ai_provider"));
             if (provider.Length == 0) provider = "openai";
-            string model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "";
+            string model = AiClient.ResolveModel(store);
             string token = RedisStore.ToText(settings.GetValueOrDefault("telegram_bot_token"));
             string chat = RedisStore.ToText(settings.GetValueOrDefault("telegram_chat_id"));
 

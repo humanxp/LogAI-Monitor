@@ -26,6 +26,9 @@ internal static class AppHost
     /// </summary>
     internal const int MaxAnalysisBatch = 5000;
 
+    /// <summary>单批分析量的默认值（设置页与环境变量都没有给值时使用）。</summary>
+    internal const int DefaultAnalysisBatch = 500;
+
     public static async Task StartAsync(WebApplication app, CancellationToken cancellationToken)
     {
         var store = app.Services.GetRequiredService<RedisStore>();
@@ -33,10 +36,45 @@ internal static class AppHost
 
         int retentionHours = IntSetting(settings, "log_retention_hours", 720);
         int analysisMinutes = Math.Max(1, IntSetting(settings, "analysis_interval", 2));
-        // batch_size 来自设置页，过去没有任何上限：写成 1000000000 就会让分析任务
-        // 一次抓十亿条日志并全部水合成提示词（OOM）。UI 最多给 500，这里留 10 倍余量。
-        int batchSize = Math.Min(IntSetting(settings, "batch_size", 500), MaxAnalysisBatch);
-        int cooldownMinutes = IntSetting(settings, "alert_cooldown_minutes", 5);
+        // 单批分析量的取值来源必须唯一，否则会出现"设置页改了却不起作用"：
+        //   * 设置页的输入框（Logs per Analysis Run）读写的是 max_logs_per_analysis，
+        //     并被校验在 10..5000；
+        //   * MAX_LOGS_PER_ANALYSIS 环境变量作为初始默认值；
+        //   * 旧键 batch_size 只作为兼容回退（历史上曾是这个键，且没有界面）。
+        // 过去这里只读 batch_size，于是界面上改批次大小完全无效——用户看到的
+        // "500 一次"其实来自一个从未被读取的环境变量，"1000"来自残留的旧键。
+        int batchSize = MaxAnalysisBatch;
+        foreach (string key in new[] { "max_logs_per_analysis", "batch_size" })
+        {
+            int configured = IntSettingAllowZero(settings, key, 0);
+            if (configured > 0) { batchSize = configured; break; }
+        }
+        if (batchSize <= 0)
+        {
+            batchSize = IntEnv("MAX_LOGS_PER_ANALYSIS", DefaultAnalysisBatch);
+        }
+        batchSize = Math.Min(batchSize, MaxAnalysisBatch);
+
+        // batch_size 是与设置页不同名的旧键。两边都有值时说明配置已经分叉，
+        // 明确记一行，避免以后又出现"改了设置不知道哪个生效"。
+        int legacyBatchSize = IntSettingAllowZero(settings, "batch_size", 0);
+        int uiBatchSize = IntSettingAllowZero(settings, "max_logs_per_analysis", 0);
+        if (legacyBatchSize > 0 && uiBatchSize > 0 && legacyBatchSize != uiBatchSize)
+        {
+            Console.WriteLine("[AppHost] batch 配置分叉：max_logs_per_analysis=" + uiBatchSize
+                + "（设置页，生效）与旧键 batch_size=" + legacyBatchSize
+                + " 不一致，已按设置页取值。建议删除旧键以免混淆。");
+        }
+        Console.WriteLine("[AppHost] 每批分析 " + batchSize + " 条（来源："
+            + (uiBatchSize > 0 ? "设置页 max_logs_per_analysis"
+               : legacyBatchSize > 0 ? "旧键 batch_size" : "环境变量/默认值") + "）");
+        // 冷却时间同样只能有一个来源：设置页的 "Notification Cooldown" 写的是
+        // telegram_cooldown_minutes，而这里过去读 alert_cooldown_minutes——该键在库里
+        // 根本不存在，于是永远落到默认 5 分钟，界面上填 60 也不生效。
+        // 现在以设置页的键为准，旧键仅作兼容回退，默认值不变。
+        int cooldownMinutes = IntSettingAllowZero(settings, "telegram_cooldown_minutes", -1);
+        if (cooldownMinutes < 0) cooldownMinutes = IntSetting(settings, "alert_cooldown_minutes", 5);
+        if (cooldownMinutes > 1440) cooldownMinutes = 1440;
         int warnThreshold = IntSetting(settings, "analysis_warn_threshold", 2000);
         bool alertOnCritical = BoolSetting(settings, "alert_on_critical", true);
         bool alertOnError = BoolSetting(settings, "alert_on_error", true);
@@ -214,7 +252,7 @@ internal static class AppHost
         {
             Provider = provider,
             BaseUrl = AiClient.NormalizeBaseUrl(aiHost, provider),
-            Model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "",
+            Model = AiClient.ResolveModel(store),
             ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
         };
 

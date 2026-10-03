@@ -54,7 +54,7 @@ internal static class AnalyzeApi
             {
                 Provider = provider,
                 BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
-                Model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "",
+                Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
             };
             if (!await client.IsAvailableAsync())

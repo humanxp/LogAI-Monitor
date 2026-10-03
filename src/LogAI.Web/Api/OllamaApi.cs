@@ -24,7 +24,7 @@ internal static class OllamaApi
             if (host.Length == 0) host = Environment.GetEnvironmentVariable("AI_BASE_URL") ?? "";
             string provider = RedisStore.ToText(settings.GetValueOrDefault("ai_provider"));
             if (provider.Length == 0) provider = "openai";
-            string model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "";
+            string model = AiClient.ResolveModel(store);
 
             var models = new List<string>();
             bool available = false;

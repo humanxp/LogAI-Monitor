@@ -49,7 +49,7 @@ internal static class ChatApi
             {
                 Provider = provider,
                 BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
-                Model = Environment.GetEnvironmentVariable("OLLAMA_MODEL") ?? "",
+                Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
             };
 
