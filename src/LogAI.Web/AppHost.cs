@@ -20,6 +20,12 @@ using LogAI.Web.Api;
 
 internal static class AppHost
 {
+    /// <summary>
+    /// 单批分析日志数的硬上限。batch_size 由设置页提供，没有上限时一个
+    /// "都填 9" 的设置就能让每轮分析抓取并水合海量日志直至 OOM。
+    /// </summary>
+    internal const int MaxAnalysisBatch = 5000;
+
     public static async Task StartAsync(WebApplication app, CancellationToken cancellationToken)
     {
         var store = app.Services.GetRequiredService<RedisStore>();
@@ -27,7 +33,9 @@ internal static class AppHost
 
         int retentionHours = IntSetting(settings, "log_retention_hours", 720);
         int analysisMinutes = Math.Max(1, IntSetting(settings, "analysis_interval", 2));
-        int batchSize = IntSetting(settings, "batch_size", 500);
+        // batch_size 来自设置页，过去没有任何上限：写成 1000000000 就会让分析任务
+        // 一次抓十亿条日志并全部水合成提示词（OOM）。UI 最多给 500，这里留 10 倍余量。
+        int batchSize = Math.Min(IntSetting(settings, "batch_size", 500), MaxAnalysisBatch);
         int cooldownMinutes = IntSetting(settings, "alert_cooldown_minutes", 5);
         int warnThreshold = IntSetting(settings, "analysis_warn_threshold", 2000);
         bool alertOnCritical = BoolSetting(settings, "alert_on_critical", true);

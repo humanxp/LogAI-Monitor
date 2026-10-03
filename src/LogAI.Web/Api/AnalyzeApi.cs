@@ -35,6 +35,16 @@ internal static class AnalyzeApi
             if (logId.Length == 0 && (logs is null || logs.Count == 0))
                 return ReadApi.JsonBody(new { error = "No log_id or logs provided" }, 400);
 
+            // 入参校验必须在"后端可用性检查"之前：放在后面时，模型端点不可达就会先
+            // 返回 503，超限的请求永远看不到该有的 400（也白白多打一次上游探测）。
+            // 上限：单个日志对象可以很小（甚至只有 id），30MB 的请求体能塞下十几万个，
+            // 全部拼进提示词同样会撑爆内存。
+            if (logs is not null && logs.Count > AppHost.MaxAnalysisBatch)
+                return ReadApi.JsonBody(new
+                {
+                    error = "Too many logs in one request (max " + AppHost.MaxAnalysisBatch + ")",
+                }, 400);
+
             var settings = await store.GetSettingsAsync();
             string provider = RedisStore.ToText(settings.GetValueOrDefault("ai_provider"));
             if (provider.Length == 0) provider = "openai";
