@@ -1,6 +1,6 @@
 // POST /api/logs/cleanup - manual retention cleanup (login + admin).
 //
-// Response shape from the Python handler:
+// Response shape:
 //   {"cleanup_status":{"last_removed":N,"last_run":<iso|null>,"timeline_count":N},
 //    "deleted":N,"redis_connected":bool,"retention_hours":N,"status":"ok",
 //    "timeline_count":N}

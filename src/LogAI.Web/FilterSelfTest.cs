@@ -1,5 +1,5 @@
 // Self-test for filter matching, using the expectations verified earlier
-// against the running Python implementation (three UDP samples produced three
+// against a running receiver (three UDP samples produced three
 // alerts, with exactly one Telegram cooldown key).
 
 using LogAI.Core.Filters;

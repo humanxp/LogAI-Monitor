@@ -1,6 +1,6 @@
 // User create / update / delete.
 //
-// Permission rules copied from the Python handlers:
+// Permission rules:
 //   POST   admin only                         -> 403 {"error":"Access denied"}
 //   PUT    admin OR self                      -> 403 when neither
 //   DELETE admin only, never yourself          -> 400 {"error":"Cannot delete your own account"}

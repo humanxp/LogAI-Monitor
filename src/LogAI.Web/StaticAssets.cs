@@ -1,5 +1,5 @@
 // Static assets under /static, matching url_for('static', filename=...) in the
-// Python templates.
+// templates.
 //
 // Served through an explicit endpoint rather than UseStaticFiles so the URL
 // prefix matches, no extra package is needed, and the path is checked against

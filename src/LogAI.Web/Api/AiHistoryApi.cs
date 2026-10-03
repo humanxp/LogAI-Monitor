@@ -1,11 +1,11 @@
 // AI history endpoints.
 //
 // Two deliberate differences from a plain hash passthrough, both required for
-// fidelity with the Python API:
+// fidelity with the stored records and the API contract:
 //
 //   * The stored hash also carries log_ids and fail_count. log_ids is a JSON
 //     array of up to ~500 identifiers per record (several KB), so returning it
-//     would inflate the payload by orders of magnitude; the Python API exposes
+//     would inflate the payload by orders of magnitude; the API exposes
 //     neither field. Only analysis, id, logs_analyzed, timestamp and type are
 //     returned.
 //   * analysis is a JSON string in Redis and becomes a nested object in the
@@ -23,7 +23,7 @@ internal static class AiHistoryApi
     /// <summary>Buckets every stored analysis by its overall_status.</summary>
     public static void Map(WebApplication app, RedisStore store)
     {
-        // 这是带参数会改变行为的端点：Python 的 /api/ai-history/stats 接受
+        // 这是带参数会改变行为的端点：/api/ai-history/stats 接受
         // start/end（AI 历史页的日期筛选要让汇总卡片跟着范围走），
         // 之前这里把参数完全忽略，选任何时间范围返回的都是全量统计。
         app.MapGet("/api/ai-history/stats", async (HttpRequest request) =>
@@ -76,7 +76,7 @@ internal static class AiHistoryApi
     }
 
     /// <summary>
-    /// Python 的分类：single 记录看 is_critical，否则看 category；
+    /// 分类口径：single 记录看 is_critical，否则看 category；
     /// batch 记录看 overall_status，退回 category。healthy 与 info 同桶，
     /// critical 与 error 同桶——只看 overall_status 会把 single/info/error
     /// 全部算进 other，汇总卡片因此与列表内容对不上。

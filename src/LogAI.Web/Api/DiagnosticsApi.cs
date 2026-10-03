@@ -128,7 +128,7 @@ internal static class DiagnosticsApi
         });
     }
 
-    /// <summary>Python renders these with datetime.fromtimestamp(ts, utc).isoformat().</summary>
+    /// <summary>Rendered as datetime.fromtimestamp(ts, utc).isoformat() produces.</summary>
     private static string? Iso(double epochSeconds) =>
         epochSeconds <= 0
             ? null

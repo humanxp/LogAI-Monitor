@@ -1,6 +1,6 @@
 // Runtime state of the Telegram channel.
 //
-// The Python version configures the notifier exactly once, at import time, and
+// A notifier configured exactly once at startup, and
 // only when Redis happened to be reachable at that moment:
 //
 //     if _redis_available:
@@ -15,7 +15,7 @@
 // This implementation re-checks: configuration is attempted on demand and
 // retried after a cooldown, so a transient failure self-heals instead of
 // disabling alerts until the next restart. That is a deliberate divergence from
-// the Python behaviour, not an oversight.
+// intended behaviour, not an oversight.
 
 using LogAI.Core.Store;
 
@@ -47,7 +47,7 @@ public static class TelegramState
             string token = RedisStore.ToText(settings.GetValueOrDefault("telegram_bot_token"));
             string chat = RedisStore.ToText(settings.GetValueOrDefault("telegram_chat_id"));
 
-            // 环境变量回退：Python 版 config.py 读取 TELEGRAM_BOT_TOKEN /
+            // 环境变量回退：除设置页之外也接受 TELEGRAM_BOT_TOKEN /
             // TELEGRAM_CHAT_ID，生产容器也一直带着这两个变量。本实现此前只认
             // Redis 设置，于是"只用环境变量配置"的部署会静默地不发任何通知
             // （日志里只有 Telegram not configured）。设置页优先——那是用户

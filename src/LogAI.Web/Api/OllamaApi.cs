@@ -3,7 +3,7 @@
 //   {"available":…,"base_url":…,"current_model":…,"host":…,"models":[…],"provider":…}
 //
 // base_url is the NORMALISED form (with /v1) while host is the raw setting —
-// the two differ, and that difference is what the Python endpoint reports.
+// the two differ, and that difference is what the endpoint reports.
 // models is fetched live from the OpenAI-compatible /v1/models route; the model
 // order is whatever the endpoint returns, which is what the dashboard shows.
 

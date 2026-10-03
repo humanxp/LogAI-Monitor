@@ -1,6 +1,6 @@
 // POST /api/logs/ingest — the channel the Docker collector uses to push logs.
 //
-// Contract taken from the Python implementation:
+// Contract (fixed):
 //   * when LOG_INGEST_TOKEN is configured the request must carry it in the
 //     X-Ingest-Token header, otherwise 401 {"error":"Unauthorized"};
 //   * a body that is not a JSON object is 400 {"error":"No data provided"};

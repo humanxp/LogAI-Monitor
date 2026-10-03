@@ -59,7 +59,7 @@ internal static class ClientTrackerSelfTest
             fields.GetValueOrDefault("last_error") ?? "");
         // Format, not mere presence: these are epoch floats in production and the
         // diagnostics endpoint parses them with float(v). An ISO string here made
-        // every client look stale to the Python side.
+        // every client look stale to readers of the index.
         Check("first_seen is an epoch number",
             double.TryParse(fields.GetValueOrDefault("first_seen"), NumberStyles.Float,
                             CultureInfo.InvariantCulture, out double first)

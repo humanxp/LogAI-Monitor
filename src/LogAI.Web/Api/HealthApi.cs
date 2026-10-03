@@ -1,10 +1,10 @@
-// GET /api/health — public, like the Python endpoint (which answers 200 with no
+// GET /api/health — public (answers 200 with no
 // session). Monitoring should not need credentials.
 //
 //   {"ai_available":…,"ai_model":…,"backlog":…,"last_analysis_age_s":…,
 //    "ok":…,"total_logs":…,"ts":…}
 //
-// ts carries SIX fractional digits and a "+00:00" offset, matching Python's
+// ts carries SIX fractional digits and a "+00:00" offset, matching
 // datetime.now(timezone.utc).isoformat(). The age is the time since the last
 // analysis RUN: the scheduler publishes it, so an idle queue is not read as a
 // stalled analyser.

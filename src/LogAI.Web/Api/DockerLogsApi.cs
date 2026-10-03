@@ -1,6 +1,6 @@
 // GET /api/docker/containers/<id>/logs?lines=N
 //
-// Returns a BARE ARRAY of log lines (the Python handler jsonifies the collector's
+// Returns a BARE ARRAY of log lines (the collector's
 // list directly, it is not wrapped in {"logs":...}), with lines defaulting to 100.
 // A missing docker socket yields an empty array rather than an error, so the page
 // renders "no logs" instead of a failure.

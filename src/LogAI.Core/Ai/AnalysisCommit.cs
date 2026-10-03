@@ -48,7 +48,7 @@ public static class AnalysisCommit
     /// <summary>
     /// Retires a batch that failed too many times: it leaves the queue without a
     /// result. Without this the same poison batch is retried forever — the
-    /// Python deployment's guard raised on every attempt (a missing import), the
+    /// an earlier deployment's guard raised on every attempt, the
     /// queue grew to 41k entries and the health check reported ok:false.
     /// </summary>
     public static async Task RetireAsync(RedisStore store, IReadOnlyList<string> logIds)

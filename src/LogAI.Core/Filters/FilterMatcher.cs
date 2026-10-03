@@ -1,6 +1,6 @@
 // Filter rule matching.
 //
-// Semantics taken from the Python implementation: four conditions are ANDed,
+// Matching semantics: four conditions are ANDed,
 // and an empty condition means "no constraint".
 //
 //   severity         list of levels; empty list matches every level

@@ -1,6 +1,6 @@
 // Syslog ingestion: UDP/TCP reception, parsing and Redis persistence.
 //
-// The stored shape is byte-for-byte what the Python application writes, so the
+// The stored shape is fixed and stable, so the
 // two can run against the same Redis layout — that is what makes a parallel
 // verification (and a later cut-over) possible without a data migration.
 //
@@ -22,7 +22,7 @@ using StackExchange.Redis;
 
 namespace LogAI.Core.Syslog;
 
-/// <summary>Writes parsed entries with the layout the Python application uses.</summary>
+/// <summary>Writes parsed entries with the project's fixed log layout.</summary>
 public sealed class LogWriter(RedisStore store, int retentionHours)
 {
     private long _lastMicro;

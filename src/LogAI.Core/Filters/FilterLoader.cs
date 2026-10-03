@@ -15,7 +15,7 @@ public static class FilterLoader
     public static async Task<FilterRule?> LoadAsync(RedisStore store, string filterId)
     {
         // filters:all members ARE the full key ("filter:<ms>") and the hash is
-        // stored under that same string - Python does hgetall(filter_id) with no
+        // stored under that same string - reads do hgetall(filter_id) with no
         // prefixing. Prefixing here produced filter:filter:<ms> and silently
         // matched nothing, so alerts never fired.
         string key = filterId.StartsWith("filter:", StringComparison.Ordinal) ? filterId : Keys.Filter(filterId);

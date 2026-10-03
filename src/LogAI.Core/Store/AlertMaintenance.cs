@@ -5,7 +5,7 @@
 //   clear acknowledged   -> count of alerts removed (only acknowledged ones)
 //
 // "Acknowledged" is the operator's assertion that a human has seen the alert, so
-// it is written as the string "true"/"false" exactly like the Python version -
+// it is written as the string "true"/"false" -
 // /api/alerts passes the field through verbatim.
 
 using StackExchange.Redis;

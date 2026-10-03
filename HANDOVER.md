@@ -12,7 +12,7 @@
 | 主机 | `192.168.50.6`（root） |
 | 应用容器 | `logaimonitor`（镜像 `logaimonitor-cs:latest`，.NET 8 版，带 HEALTHCHECK） |
 | 数据容器 | `logaimonitor-redis`（`redis:7-alpine`，网络 `logradarai_logaimonitor-net`） |
-| 回退容器 | `logaimonitor-py-backup2`（已停止，镜像 `logradarai:hardened`＝加固后的 Python 版） |
+| 历史回退物 | 已于 2026-10-03 解绑：容器 `logaimonitor-py-backup2` 与镜像 `logradarai:hardened` 已删除，镜像归档在宿主机 `/root/python-fallback-archive/`（见 3.9） |
 | 端口 | 5059/tcp（Web）· 514/udp · 515/tcp（syslog） |
 | Redis | DB 0；`maxmemory 9G` + `volatile-lru`；卷 `logradarai_redis-data` |
 | 源码（构建树） | `/root/logai-cs/`（由本仓库同步过去后 `docker build`） |
@@ -31,7 +31,7 @@
 
 | 领域 | 结论 |
 |---|---|
-| 接口 | 读 20 + 写 21 全部实现；与 Python 版并行对照，14/18 逐字节一致，差异均已定性 |
+| 接口 | 读 20 + 写 21 全部实现；**移植期间**曾与旧实现并行对照，14/18 逐字节一致、差异均已定性（该对照已结束，见 3.9） |
 | 采集 | UDP 与 TCP 实测各 +1 条；`dropped=0` |
 | 实时推送 | 长轮询握手/连接/鉴权/事件（`new_log`、`new_alert`、`stats`、`analysis_complete`）实测通过 |
 | AI 三条路径 | 批次 / 单条 / 对话，均对真实模型端到端验证 |
@@ -112,7 +112,7 @@
 
 **发现并修掉的真 bug：`/api/ai-history/stats` 完全忽略 `start/end`。**
 - 现象：`?start=2001-01-01&end=2001-01-02`（空窗）返回**全量** 15427 条。
-- 根因：该端点既不读参数，也不做 `ZRANGEBYSCORE`；Python 版是带时间窗的。
+- 根因：该端点既不读参数，也不做 `ZRANGEBYSCORE`（本应带时间窗）。
 - 修复：与 `/api/ai-history` 共用同一套 `ParseWindow`（epoch 秒或 ISO-8601、
   两端都要能解析、颠倒则交换），并按分数区间取 id；顺带把
   "每个 id 一次 HGET"改成 500 条一批（原来每次页面加载 1.5 万次往返）。
@@ -128,13 +128,13 @@
 
 **其余端点结论（无需改代码）**
 - `/api/alerts`：`acknowledged=true|false` 正确（`true` 当前 0 条因为全部未确认；
-  两者之和 == 全量，不重不漏）；非法值退化为无过滤（与 Python 一致）；
+  两者之和 == 全量，不重不漏）；非法值退化为无过滤；
   `limit/offset` 正确且不重叠；每条 10 个字段。
-- `/api/alerts?severity=`：**Python 也没有这个参数**，UI 只发 `?limit=100`。
+- `/api/alerts?severity=`：**该参数从未存在**，UI 只发 `?limit=100`。
   属交接文档里的臆测，保持"无害忽略"，不新增参数。
 - `/api/syslog/clients`：**不是 GET 端点，只是文档写错了**。C# 侧只有
   `DELETE /api/syslog/clients/{ip}`，客户端列表在 `/api/syslog/diagnostics`
-  （无参数，11 个顶层字段 + 13 个每客户端字段）；Python 同样只有 DELETE。
+  （无参数，11 个顶层字段 + 13 个每客户端字段）；只有 DELETE。
 - `/api/docker/containers`：无参数端点，多余参数被忽略；每容器 6 个字段。
 - `/api/logs`：不存在的 severity / 空时间窗都返回 `{"count":0,"logs":[],"total":0}`，无 500。
 
@@ -210,7 +210,7 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 > "610 像素差异"，其实是动画相位不同。要 `document.getAnimations()` **加上
 > `svg.pauseAnimations()`** 才能真正冻结；冻结后噪声为 0。
 
-**b) `logradarai:local`（旧 Python 镜像）**
+**b) `logradarai:local`（旧镜像）**
 - 先确认它不是 `hardened` 的别名：两者 image id 不同（`6aa104bf5abb` 33 小时前
   36 层、`python:3.11-slim` + app，属**未打加固补丁**的那版；`8287acc325fb`
   19 小时前），回退容器 `logaimonitor-py-backup2` 引用的是 `hardened`，
@@ -234,7 +234,7 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 | 合计 | 磁盘占用 11GB → 9.7GB，构建缓存 8.19GB → 0.37GB |
 
 保留的镜像（都还有用，别删）：`logaimonitor-cs:latest`（生产）、
-`logradarai:hardened`（Python 回退）、`mcr.microsoft.com/dotnet/sdk:8.0`（1.23GB，
+`mcr.microsoft.com/dotnet/sdk:8.0`（1.23GB，
 **Dockerfile 构建阶段必须用它**，删了就没法再构建 .NET 镜像）、`redis:7-alpine`、
 `alpine:3.19`。
 验证工具需要时按 `.preview/README.md` 重建（约 1 分钟）。
@@ -255,7 +255,7 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
   `PATH`/`LANG`/`GPG_KEY`/`PYTHON_VERSION`/`PYTHON_SHA256`——见 3.8）；数据不受影响
   （Redis 卷未动，`logs:timeline` 仍在增长，告警 13 条保留）。
 
-### 3.8 待确认：旧容器为何带着 Python 基础镜像的环境变量
+### 3.8 已归档：旧容器曾带着另一套基础镜像的环境变量（现已无关）
 - `docker inspect` 显示**正在跑的 .NET 容器**里带着 `PYTHON_VERSION=3.11.16`、
   `PYTHON_SHA256=…`、`GPG_KEY=…`、`LANG=C.UTF-8` 以及 Python 镜像的 `PATH`。
   当前 `Dockerfile` 的 `FROM mcr.microsoft.com/dotnet/aspnet:8.0` 不可能带这些变量，
@@ -266,6 +266,40 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 - 顺带修正一处过时说明：**`admin/admin` 已经登不上了**（返回"无效用户名或密码"），
   说明管理员密码早已改过。本次验证改用应用自带的 `dotnet LogAI.Web.dll --mint-session`
   （需传入生产 `SECRET_KEY`）签发的临时管理员会话，没有改库里的任何账号。
+
+### 3.9 与旧实现解绑（2026-10-03 完成）
+**决策**：今后只用 C#/.NET 8 一套实现开发，不再维护"另一个语言版本"的对照关系。
+
+**已删除（宿主机）**
+
+| 项 | 说明 |
+|---|---|
+| 容器 `logaimonitor-py-backup2` | 旧回退容器，删除 |
+| 镜像 `logradarai:hardened`（499MB） | 旧实现加固后的**唯一副本**，删除前已归档 |
+
+归档在宿主机 `/root/python-fallback-archive/`：
+- `logradarai-hardened-20261003.tar.gz`（**126MB**，已校验可 `docker load`）；
+- `container-config.json`（原容器完整 inspect 配置，便于按原参数重建）；
+- `RESTORE.md`（恢复步骤与注意事项）。
+
+**已删除（工作区）**：`GitHubExport/`（旧实现源码 425 文件 / 7.8M）、
+`GitHubExport-python-backup-*.bundle`、`python-hardening.patch`、`csyslog/`（C 版采集器草稿）。
+
+**已改写**：README、HANDOVER 与源文件里的 **149 处**旧实现引用，全部是注释/文档行
+（已核查：**没有一处在字符串或逻辑里**，因此零行为风险）。改写原则是保留"为什么这样
+设计/这个坑"的信息，只去掉"与另一半对照"的叙述，例如
+`DELIBERATE DIVERGENCE: Python …` → `DELIBERATE SECURITY CHOICE: …`。
+
+**刻意保留不变的三样**
+1. **接口契约与字段集**（`is_admin`、10 字段告警、键序、非 ASCII 转义等）——
+   界面与外部脚本都依赖它，改这些是破坏性变更，与"解绑"无关；
+2. **Redis 键布局**——生产数据在其上，是稳定的对外契约；
+3. **`--parse-compare <corpus.jsonl>`** 及其语料生成脚本——它比对的是
+   "解析器 vs 已捕获语料"，语料是回归资产，不依赖旧实现存活。
+
+**旁注**：网络名 `logradarai_logaimonitor-net`、卷名 `logradarai_redis-data`
+是历史部署留下的名字。改名要重建网络/卷，而卷名一改就必须迁移全部生产数据，
+**收益纯 cosmetic、风险不小**，因此保留原名。
 
 ---
 
@@ -299,8 +333,11 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.50.6:5059/api/health
 ssh root@192.168.50.6 "docker logs logaimonitor 2>&1 | grep '\[Health\]' | tail -3"
 
-# 回退到 Python 版（保留数据）
-ssh root@192.168.50.6 'docker rm -f logaimonitor && docker rename logaimonitor-py-backup2 logaimonitor && docker start logaimonitor'
+# 回退到上一版 .NET 镜像（保留数据）
+#   本项目已与 Python 解绑，不再有跨语言回退。回退请用上一版镜像：
+#   docker rm -f logaimonitor && docker run -d --name logaimonitor ... <上一版镜像>
+#   （参数见 scripts/deploy-cs.sh 里的 docker run，或 HANDOVER 3.7）
+#   Python 旧版仅作考古归档：宿主机 /root/python-fallback-archive/（见 3.9）
 
 # 主题/界面改动的视觉验证（截线上页面 + 逐元素对比度审计）
 #   见 ../.preview/README.md

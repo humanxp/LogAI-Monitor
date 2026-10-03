@@ -5,14 +5,14 @@
 // exclusion list) can never wipe the Telegram / AI / retention configuration
 // that was not part of it.
 //
-// Values are stored the way the Python side stores them: JSON encoded. A string
+// Values are stored JSON encoded. A string
 // becomes "abc", a number 42, a list ["a","b"] - GetSettingsAsync decodes the
 // same way, so the two implementations interoperate on one hash.
 //
 // Tuning integers are clamped, so a bad UI value can never set a 0-minute
 // interval or a negative retention.
 //
-// DELIBERATE DIVERGENCE: the Python route carries only @require_redis_api, so an
+// DELIBERATE SECURITY CHOICE: the settings write route used to be reachable without
 // anonymous POST can repoint ollama_host (sending every analysed log to a
 // foreign server) or replace telegram_bot_token (intercepting every alert).
 // Settings change behaviour and data destinations, so this requires admin.
@@ -37,7 +37,7 @@ internal static class SettingsWriteApi
 
     public static void Map(WebApplication app, RedisStore store, SessionCookie cookies)
     {
-        // GET is part of the same resource; Python serves the raw settings hash
+        // GET is part of the same resource; the raw settings hash is served
         // with no auth at all, which is how the Telegram bot token leaked. A
         // session is required here (documented divergence).
         app.MapGet("/api/settings", async (HttpContext http) =>

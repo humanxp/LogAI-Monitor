@@ -1,6 +1,6 @@
 // Filter create / update / delete.
 //
-// Contract from the Python handlers:
+// Contract:
 //   POST   -> {"error":"No data provided"} 400 when the body is empty/falsy,
 //             otherwise {"id":"filter:<ms>","status":"ok"}
 //   PUT    -> 400 on an empty body, 404 {"error":"Filter not found"} when absent,
@@ -13,7 +13,7 @@
 // Updates are a MERGE: only the posted fields are written, so the filters page
 // can send a partial payload without dropping the conditions it did not include.
 //
-// DELIBERATE DIVERGENCE: Python guards all three with @require_redis_api only.
+// DELIBERATE SECURITY CHOICE: all three require admin, not just reachability.
 // Deleting every filter stops all alerting, so these require admin.
 
 using System.Globalization;
@@ -37,7 +37,7 @@ internal static class FilterWriteApi
 
             string id = "filter:" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             string now = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffzzz", CultureInfo.InvariantCulture);
-            // created_at only: the Python create_filter does NOT write updated_at,
+            // created_at only: create_filter deliberately does NOT write updated_at,
             // that field appears on the first update.
             var entries = new List<HashEntry> { new("id", id), new("created_at", now) };
 
@@ -108,7 +108,7 @@ internal static class FilterWriteApi
 
     /// <summary>
     /// Storage encoding, taken from the live data: only conditions and the three
-    /// boolean flags are stored as JSON - exactly the four keys the Python
+    /// boolean flags are stored as JSON - exactly the four keys the stored
     /// get_filter decodes. Everything else (name, id, timestamps) is stored as a
     /// plain string. JSON-encoding the name produced quoted \uXXXX values that
     /// the UI displayed literally.

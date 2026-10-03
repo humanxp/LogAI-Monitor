@@ -1,7 +1,7 @@
 // Read-only REST endpoints.
 //
 // Response shapes are not guessed: each one was captured from the running
-// Python application and compared against it at the same moment, because a
+// and compared against it at the same moment, because a
 // baseline captured earlier can differ purely because the data moved on.
 //
 // Details that are easy to get wrong and are encoded explicitly here:
@@ -40,7 +40,7 @@ internal static class ReadApi
     public static void Map(WebApplication app, RedisStore store) {
 
         // --- /api/logs 的筛选助手 -------------------------------------------
-        // 空串视为"未提供"，与 Python 的 request.args.get(...) 语义一致。
+        // 空串视为"未提供"（与 request.args.get(...) 的语义一致）。
         static string? Text(HttpRequest req, string name)
         {
             string raw = (req.Query[name].ToString() ?? "").Trim();
@@ -48,7 +48,7 @@ internal static class ReadApi
         }
 
         // ?start=&end= 解析为纪元秒窗口：UI 传纪元秒，也接受 ISO-8601；
-        // 两端都能解析才生效，颠倒时交换——与 Python 端点同一套契约。
+        // 两端都能解析才生效，颠倒时交换 —— 这是本接口的固定契约。
         static (double Start, double End) ParseWindow(HttpRequest req, out bool hasWindow)
         {
             hasWindow = false;
@@ -96,7 +96,7 @@ internal static class ReadApi
 
             // 索引筛选（来源/主机/级别/时间窗）交给 Redis 在维度有序集合上完成：
             // 这些集合的分数就是写入时间，因此用 ZINTERSTORE（聚合取 MAX，保证分数
-            // 仍是时间戳而不是被求和）求交后即可按 rank 分页。关键字搜索按 Python
+            // 仍是时间戳而不是被求和）求交后即可按 rank 分页。关键字搜索按既定
             // 的做法在"取回窗口之后"过滤，且单独使用时不改变 total（仍为时间线总数）。
             var dimensions = new List<RedisKey>(3);
             if (!string.IsNullOrEmpty(source)) dimensions.Add(Keys.LogSource(source));
@@ -190,7 +190,7 @@ internal static class ReadApi
         app.MapGet("/api/logs/{id}", async (string id) =>
         {
             var hash = await store.Db.HashGetAllAsync(id);
-            // The Python API answers with a JSON body, not an empty 404; the UI parses it.
+            // The endpoint answers with a JSON body, not an empty 404; the UI parses it.
             if (hash.Length == 0) return JsonBody(new { error = "Log not found" }, 404);
 
             var single = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -338,7 +338,7 @@ internal static class ReadApi
     /// <summary>
     /// Flask serialises JSON with a trailing newline, so a byte-identical
     /// response needs one too — without it every payload is exactly one byte
-    /// short of the Python original.
+    /// short of the intended behaviour.
     private static readonly JsonSerializerOptions FlaskJsonOptions = new()
     {
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
@@ -348,11 +348,11 @@ internal static class ReadApi
     internal static IResult JsonBody(object payload, int statusCode = 200) =>
         Results.Text(EscapeNonAscii(JsonSerializer.Serialize(payload, FlaskJsonOptions)) + "\n", "application/json", statusCode: statusCode);
 
-    /// <summary>Field names match the Python payload; the order is alphabetical.</summary>
+    /// <summary>Field names match the API payload; the order is alphabetical.</summary>
     private sealed record HostEntry(long count, string full, string kind, string label, string value);
 
     /// <summary>
-    /// Python's json.dumps(ensure_ascii=True) escapes every non-ASCII character
+    /// The serializer escapes every non-ASCII character
     /// as a lowercase \uXXXX (surrogate pairs included) but leaves HTML
     /// characters such as &lt; &gt; &amp; raw. UnsafeRelaxedJsonEscaping gives
     /// the second half; this adds the first.
@@ -360,7 +360,7 @@ internal static class ReadApi
     /// <summary>
     /// Serialises exactly the way the HTTP responses do (Flask semantics). Socket
     /// event payloads must use this too: the default .NET encoder escapes "+" as
-    /// \u002B, which Python leaves literal, so a pushed timestamp differed byte
+    /// \u002B, which stays literal, so a pushed timestamp differed byte
     /// for byte from the HTTP copy of the same value.
     /// </summary>
     internal static string SerializeLikeFlask(object? payload) =>

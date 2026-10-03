@@ -1,6 +1,6 @@
 // Per-client state for the Connected Clients view and /api/syslog/diagnostics.
 //
-// Four keys per client, matching the Python receiver exactly:
+// Four keys per client:
 //   syslog:client:<ip>            hash  first_seen last_seen message_count
 //                                       hostname error_count last_error last_error_time
 //   syslog:client:<ip>:protocols  set   UDP / TCP
@@ -12,7 +12,7 @@
 // pipeline, so messages_per_minute is just ZCARD(recent) and there is no reset
 // boundary to get wrong.
 //
-// Errors refresh the index score too (the Python code does this in both branches)
+// Errors refresh the index score too (both branches do it)
 // so an actively failing host still counts as recently active.
 
 using System.Globalization;
@@ -31,19 +31,19 @@ public sealed class ClientTracker(RedisStore store)
     {
         if (string.IsNullOrEmpty(sourceIp)) return;
 
-        // Microsecond precision, matching Python's time.time(). The member name
+        // Microsecond precision, as an epoch float. The member name
         // must be unique per message: at millisecond precision a burst collapses
         // into one member and messages_per_minute under-reports exactly when a
         // client is flooding.
         // Epoch seconds with 100ns resolution. Both parts matter:
         //   * epoch based, so the score stays comparable with the values the
-        //     Python side writes into the same index (a switch-over depends on it);
+        //     external readers of the same index depend on it;
         //   * sub-millisecond, so a burst yields one window member per message.
         // UtcNow.Ticks alone counts from year 1 and produced 6.39e10.
         double now = (DateTimeOffset.UtcNow.Ticks - DateTimeOffset.UnixEpoch.Ticks)
                      / (double)TimeSpan.TicksPerSecond;
-        // Stored as an EPOCH FLOAT string, like Python's time.time(): the
-        // diagnostics endpoint parses these with float(v) and the Python side
+        // Stored as an EPOCH FLOAT string: the
+        // diagnostics endpoint parses these with float(v), and anything else
         // would fall back to 0.0 on an ISO string, marking every client stale.
         string timestamp = now.ToString(CultureInfo.InvariantCulture);
         string key = "syslog:client:" + sourceIp;

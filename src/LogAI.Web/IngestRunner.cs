@@ -1,5 +1,5 @@
 // Runs the syslog receiver against an isolated Redis database so ingestion can
-// be compared with the Python implementation without touching production.
+// be compared with another deployment without touching production.
 //
 //   dotnet LogAI.Web.dll --ingest <udpPort> <tcpPort> <seconds>
 

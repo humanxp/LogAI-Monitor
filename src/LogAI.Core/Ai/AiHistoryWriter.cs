@@ -1,7 +1,7 @@
 // Writes AI analysis history records.
 //
 // The stored record and the API representation differ deliberately, and both
-// shapes were verified against the running Python application:
+// shapes are verified against real stored records:
 //
 //   stored (7 fields): id analysis log_ids timestamp type logs_analyzed fail_count
 //   served (5 fields): analysis id logs_analyzed timestamp type
@@ -54,7 +54,7 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
         double score = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
         await store.Db.SortedSetAddAsync(Keys.AiHistoryTimeline, id, score);
 
-        // Python keeps history for as long as the configured log retention
+        // History is kept for as long as the configured log retention
         // (store_analysis_history calls expire with _history_ttl_seconds()).
         // Without this the records accumulate forever.
         if (retentionHours > 0)
@@ -66,7 +66,7 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
     /// <summary>
     /// Marks a batch as failed. After three consecutive failures the batch is
     /// retired rather than retried forever — the guard that was inert in the
-    /// Python deployment (a missing import made it raise every time) and let
+    /// an earlier deployment (it raised every time) and let
     /// the pending queue grow to 41k entries.
     /// </summary>
     public const int MaxFailedRetries = 3;

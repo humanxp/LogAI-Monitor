@@ -3,7 +3,7 @@
 // Field set comes from the stored alert hash: acknowledged, filter_id,
 // filter_name, hostname, id, log_id, message, severity, source, timestamp.
 // acknowledged is stored as the string "true"/"false" and is served as a real
-// boolean, like the Python API does.
+// boolean, as the API contract requires.
 
 using LogAI.Core.Store;
 using StackExchange.Redis;

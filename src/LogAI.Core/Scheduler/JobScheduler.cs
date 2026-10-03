@@ -1,9 +1,9 @@
 // Interval scheduler for the background jobs (analysis, cleanup, health check).
 //
-// Three behaviours are deliberate, all of them learned from the Python version:
+// Three behaviours are deliberate, each one fixing a real problem:
 //
 //   * the interval is re-read every tick, so changing it in Settings takes
-//     effect without a restart (the Python job had to reschedule itself);
+//     effect without a restart (no self-rescheduling needed);
 //   * a tick is a short poll rather than a timer armed for the whole interval,
 //     which is what made interval changes apply only after the current wait;
 //   * a job that is still running is skipped, never started twice, so a slow

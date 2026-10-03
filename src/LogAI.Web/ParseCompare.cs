@@ -1,6 +1,6 @@
-// Field-by-field comparison of this parser against the Python implementation.
+// Field-by-field comparison of this parser against a captured corpus.
 //
-// The Python side (scripts/gen_parse_corpus.py, run inside the application
+// The corpus (scripts/gen_parse_corpus.py, run inside the application
 // container) rebuilds raw syslog lines from real records taken out of Redis,
 // parses each one with SyslogReceiver.parse_syslog_message, and writes a JSONL
 // corpus:  {"input": "...", "ip": "...", "fields": {...}}
@@ -43,7 +43,7 @@ internal static class ParseCompare
             var entry = SyslogParser.Parse(Encoding.UTF8.GetBytes(input), ip);
             var actual = entry.Fields().ToDictionary(f => f.Name, f => f.Value, StringComparer.Ordinal);
 
-            // Timestamps differ by construction: the Python parser keeps the
+            // Timestamps differ by construction: the parser keeps the
             // sender's text, and both sides do, so they are comparable; the
             // arrival-time default is not, so it is excluded.
             var differences = new List<string>();

@@ -1,6 +1,6 @@
 // Login endpoint and session handling.
 //
-// The contract was taken from the running Python application rather than
+// The contract was taken from observed traffic rather than
 // assumed, which corrected three things:
 //   * the path is POST /login (form encoded); /api/login does not exist,
 //   * the cookie is named "session",
@@ -29,7 +29,7 @@ internal static class AuthApi
             var user = await AuthenticateAsync(store, username, password);
             if (user is null)
             {
-                // Python clears the cookie and re-renders the page with an error.
+                // The cookie is cleared and the page re-rendered with an error.
                 http.Response.Cookies.Delete(CookieName, new CookieOptions { Path = "/" });
                 return Results.Content(engine.Render("login.html", LoginScope("Invalid username or password")),
                                        "text/html; charset=utf-8");
@@ -82,7 +82,7 @@ internal static class AuthApi
         scope.Set("error", error);
         scope.Set("show_home_link", false);
         scope.Set("messages", new List<object?>());
-        // Python flashes ("Invalid username or password", "error") and the
+        // The page flashes ("Invalid username or password", "error") and the
         // template renders it through get_flashed_messages(with_categories=true).
         scope.Set("get_flashed_messages", (Func<CallArgs, object?>)(_ => error is null
             ? new List<object?>()

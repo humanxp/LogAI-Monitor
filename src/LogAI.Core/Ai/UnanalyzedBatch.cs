@@ -6,7 +6,7 @@
 //   * skip ids whose hash already expired (the index outlives the TTL) and ids
 //     that were marked analyzed behind the index's back;
 //   * do NOT top the batch back up to the requested size — the caller sees
-//     fewer entries, which is what the Python version does.
+//     fewer entries, which is the intended behaviour.
 //
 // Worth stating because it is easy to "improve" into a different behaviour: if
 // expired ids were counted as batch members, a healthy-looking 500-log batch

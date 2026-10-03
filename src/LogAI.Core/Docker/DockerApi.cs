@@ -1,6 +1,6 @@
 // Minimal Docker Engine client over the unix socket.
 //
-// The Python version uses the Docker SDK with a read-only socket mount; the same
+// The collector talks to the Docker Engine API over a read-only socket mount; the same
 // three endpoints are all this needs:
 //   GET /containers/json          running containers
 //   GET /containers/{id}/json     inspect (raw State object)
@@ -13,7 +13,7 @@
 //
 // Created is kept as the RAW Docker string: it carries nanosecond precision
 // ("2026-09-24T23:06:41.82329016Z") and re-formatting it through a DateTime type
-// changes the digits, which breaks byte comparison against the Python endpoint.
+// changes the digits, which would break the timestamp contract clients rely on.
 
 using System.Text;
 using System.Text.Json.Nodes;
@@ -68,7 +68,7 @@ public sealed class DockerApi : IDisposable
     /// <summary>
     /// The full inspect object. Called for Created as well as State, because
     /// /containers/json reports Created as an integer epoch while inspect returns
-    /// the nanosecond ISO string the Python endpoint serves.
+    /// the nanosecond ISO string the API contract serves.
     /// </summary>
     public async Task<JsonNode?> InspectAsync(string containerId, CancellationToken cancellationToken = default)
     {
@@ -78,9 +78,9 @@ public sealed class DockerApi : IDisposable
 
     /// <summary>Tail of a container's stdout/stderr, one entry per line.</summary>
     /// <summary>
-    /// Recent container output, split the way the Python collector splits it.
+    /// Recent container output, split the way the collector expects it.
     ///
-    /// Python calls container.logs(tail=N, timestamps=True) - which demultiplexes
+    /// container.logs(tail=N, timestamps=True) demultiplexes
     /// the stream - then decodes and splits on "\n" WITHOUT dropping empty
     /// entries. Each line ends with a newline, so the array always carries a
     /// trailing "": tail=5 yields 6 items. Reproducing that matters because the

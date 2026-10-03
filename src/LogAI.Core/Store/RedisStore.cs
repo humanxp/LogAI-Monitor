@@ -1,4 +1,4 @@
-// Redis layout shared with the Python application.
+// Redis layout of this project (the storage contract).
 //
 // Key names, types and value encodings are identical to services/redis_client.py
 // so the two implementations can run side by side against the same data — that
@@ -104,7 +104,7 @@ public sealed class RedisStore : IDisposable
     // ------------------------------------------------------------- settings
 
     /// <summary>
-    /// Reads the settings hash. Values are JSON encoded by the Python side
+    /// Reads the settings hash. Values are stored JSON encoded
     /// (save_settings stores json.dumps(value)), so numbers, booleans and
     /// strings are decoded back to their natural types.
     /// </summary>
@@ -127,7 +127,7 @@ public sealed class RedisStore : IDisposable
         }
         catch (JsonException)
         {
-            // Not JSON: the Python side treats a bare string as-is.
+            // Not JSON: a bare string is used as-is.
             return raw;
         }
     }

@@ -11,7 +11,7 @@
 //   Body may override bot_token / chat_id; the notifier is reconfigured and a
 //   probe is attempted -> {"message":...,"success":bool}
 //
-// DELIBERATE DIVERGENCE: Python guards telegram/test with @require_redis_api
+// DELIBERATE SECURITY CHOICE: telegram/test is gated to admins instead of
 // only, and it reconfigures the notifier from the request body - an anonymous
 // caller could point the alert channel at their own bot. A session is required
 // here.

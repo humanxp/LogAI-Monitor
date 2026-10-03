@@ -45,7 +45,7 @@ internal static class MaintenanceSelfTest
         await store.Db.SortedSetAddAsync(Keys.ClientsIndex, "10.0.0.1", 1);
 
         // The per-client hash, not just the index entry: DeleteClientAsync reports
-        // whether a RECORD existed (the Python delete_client semantics), so a
+        // whether a RECORD existed (the delete_client semantics), so a
         // fixture that only touches the index makes that assertion fail.
         await store.Db.HashSetAsync("syslog:client:10.0.0.1",
             [new HashEntry("hostname", "box-a"), new HashEntry("message_count", 1)]);

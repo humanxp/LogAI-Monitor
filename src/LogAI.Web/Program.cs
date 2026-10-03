@@ -1,7 +1,7 @@
 // LogAI Monitor — .NET 8 host.
 //
 // Stage 1 provides the page layer: the Jinja engine renders the existing
-// templates against a context equivalent to what the Python application
+// templates against the context the pages expect
 // supplies, and the static assets are served unchanged.  The REST API, syslog
 // ingest, Redis store and scheduler are added in the following stages.
 //
@@ -197,11 +197,11 @@ var redisOptions = new LogAI.Core.Store.RedisOptions
 builder.Services.AddSingleton(new LogAI.Core.Store.RedisStore(redisOptions));
 var app = builder.Build();
 
-// The Python application serves assets under /static (url_for('static', ...)),
+// Assets are served under /static (url_for('static', ...)),
 // so the mount point has to match or every page renders unstyled.
 StaticAssets.Map(app);
 
-// Realtime channel (Engine.IO v4 long-polling, as captured from the Python server).
+// Realtime channel (Engine.IO v4 long-polling, wire format captured).
 var engineIo = new LogAI.Web.Realtime.EngineIoServer();
 
 
@@ -210,7 +210,7 @@ var sessionSecret = Environment.GetEnvironmentVariable("SECRET_KEY") ?? "develop
 var sessionCookies = new LogAI.Core.Auth.SessionCookie(System.Text.Encoding.UTF8.GetBytes(sessionSecret));
 LogAI.Web.Api.AuthApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies, app.Services.GetRequiredService<JinjaEngine>());
 
-// The realtime channel is auth gated, like the Python Socket.IO layer.
+// The realtime channel is auth gated.
 engineIo.Map(app, http => LogAI.Web.Api.AuthApi.CurrentUser(http, sessionCookies) is not null);
 
 LogAI.Web.Api.CurrentUserApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
@@ -247,10 +247,10 @@ foreach (var page in pages)
     var current = page;
     app.MapGet(current.Path, (HttpContext http, JinjaEngine engine) =>
     {
-        // Every page requires a signed-in user, like the Python login_required
+        // Every page requires a signed-in user, mirroring login_required
         // decorator; anonymous visitors are sent to the login page.
         var user = LogAI.Web.Api.AuthApi.CurrentUser(http, sessionCookies);
-        // Match the Python redirect, which carries the original page so the user
+        // The redirect carries the original page so the user
         // lands back where they were after signing in.
         // The login page must NOT be gated: redirecting it to itself produced a
         // loop ("/login?next=%2Flogin" repeated) and the form was unreachable, so
@@ -258,7 +258,7 @@ foreach (var page in pages)
         if (user is null && current.Path != "/login")
             return Results.Redirect("/login?next=" + Uri.EscapeDataString(current.Path));
 
-        // /users is admin-only in the Python application: a non-admin is sent
+        // /users is admin-only: a non-admin is sent
         // back to the dashboard instead of seeing the page.
         if (current.Path == "/users" && user.Role != "admin") return Results.Redirect("/");
 

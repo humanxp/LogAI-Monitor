@@ -1,6 +1,6 @@
 // Health evaluation for /api/health and the watchdog.
 //
-// The ok rule is copied from the Python endpoint, which ANDs three conditions:
+// The ok rule ANDs three conditions:
 //
 //   ok = backlog <= warn_threshold
 //        and (ai_available or last_analysis_age_s < 0)
@@ -10,7 +10,7 @@
 // before the first run (age -1). Once any run has happened, ai_available=false
 // makes the service unhealthy immediately, however recent that run was.
 //
-// last_analysis_age_s is in-process state in the Python version (the moment the
+// last_analysis_age_s is in-process state (the moment the
 // analyser last completed a run, which is updated even when a run analyses
 // nothing). Reproducing that faithfully means the scheduler owns the value; the
 // evaluator below therefore takes it as input rather than deriving it from

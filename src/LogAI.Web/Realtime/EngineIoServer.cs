@@ -1,7 +1,7 @@
 // Engine.IO v4 over HTTP long-polling, enough for the socket.io client the
 // dashboard already ships.
 //
-// The wire format was captured from the running Python server rather than taken
+// The wire format was captured from a running server rather than taken
 // from the specification, because three details differ from what one would
 // assume and each of them breaks the client silently:
 //
@@ -156,7 +156,7 @@ public sealed class EngineIoServer
             {
                 if (!_isAuthenticated(http))
                 {
-                    // The Python server refuses an anonymous namespace connect
+                    // An anonymous namespace connect is refused
                     // (captured: 44{"message":"Connection rejected by server"}).
                     session.Outbox.Enqueue("44" + JsonSerializer.Serialize(
                         new { message = "Connection rejected by server" }));

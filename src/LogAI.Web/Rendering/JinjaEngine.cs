@@ -2,7 +2,7 @@
 //
 // Scope is deliberately narrow: it implements exactly the subset the existing
 // LogAI Monitor templates use, so the template files can be carried over
-// byte-for-byte from the Python version.  Supported:
+// byte-for-byte from the reference renders.  Supported:
 //
 //   {% extends "base.html" %}          template inheritance
 //   {% block name %} ... {% endblock %}  named, overridable regions
@@ -206,7 +206,7 @@ public sealed class JinjaEngine
 
         string source = File.ReadAllText(path);
         // Jinja's keep_trailing_newline defaults to False: one trailing newline
-        // is dropped, which is why the Python output has none after </html>.
+        // is dropped, so output has none after </html>.
         if (source.EndsWith('\n')) source = source[..^1];
 
         var template = Parser.Parse(source);

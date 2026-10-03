@@ -1,6 +1,6 @@
 // One analysis cycle: pick a batch, ask the model, repair the reply, commit.
 //
-// The policy details come from the Python implementation:
+// The analysis policy:
 //   * an unparseable reply is retried once with the corrective prompt;
 //   * a second failure records nothing and leaves the batch queued for the next
 //     tick (the caller counts attempts and retires after three);

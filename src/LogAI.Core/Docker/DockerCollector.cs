@@ -47,7 +47,7 @@ public sealed class DockerCollector(DockerApi api, LogWriter writer, Func<IReadO
 
                 await writer.StoreAsync(new SyslogEntry
                 {
-                    // Same convention as the Python collector: docker:<container>.
+                    // Same convention used elsewhere: docker:<container>.
                     Source = $"docker:{container.Name}",
                     SourceType = "docker",
                     Hostname = "docker-host",

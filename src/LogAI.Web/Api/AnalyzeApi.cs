@@ -7,10 +7,10 @@
 //   endpoint unavailable -> 503 {"error":"Ollama not available"}
 //
 // An unparseable reply is retried once with the corrective prompt, then treated
-// as a genuine FAILURE: the Python analyser deliberately does not fabricate a
+// as a genuine FAILURE: the analyser deliberately does not fabricate a
 // successful analysis, so the log stays queued and heals on a later run.
 //
-// DELIBERATE DIVERGENCE: Python guards this with @require_redis_api only.
+// DELIBERATE SECURITY CHOICE: this endpoint requires a real session, not just reachability.
 
 using System.Text.Json.Nodes;
 using LogAI.Core.Ai;

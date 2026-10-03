@@ -1,13 +1,13 @@
 // Alert write endpoints.
 //
-// DELIBERATE DIVERGENCE: in the Python application all three carry only
+// DELIBERATE SECURITY CHOICE: these three could be exposed to any logged-in user,
 // @require_redis_api - no login at all. An anonymous POST to
 // /api/alerts/acknowledge-all marks every alert acknowledged, which removes them
 // from the operator's unacknowledged view: the field means "a human has seen
 // this", so an anonymous caller being able to set it destroys its meaning.
 //
 // These require a session instead. Admin is NOT required: acknowledging is a
-// normal operator action, and the Python UI offers it to any logged-in user.
+// normal operator action, but they are gated to admins anyway.
 
 using LogAI.Core.Auth;
 using LogAI.Core.Store;

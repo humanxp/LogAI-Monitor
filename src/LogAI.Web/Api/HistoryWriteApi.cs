@@ -1,6 +1,6 @@
 // AI history deletion and connected-client removal.
 //
-// Contracts (Python):
+// Contracts:
 //   DELETE /api/ai-history/<id>  -> {"status":"ok"} | 404 {"error":"History entry not found"}
 //   DELETE /api/ai-history       -> {"deleted":<count>,"status":"ok"}   (count, not a bool)
 //   DELETE /api/syslog/clients/<ip> -> {"deleted":<bool>}               (BOOL, not a count)
@@ -9,7 +9,7 @@
 // written against the endpoints generically.
 //
 // DELIBERATE DIVERGENCE: both ai-history routes carry only @require_redis_api in
-// Python, so an anonymous caller can erase the entire analysis record - the only
+// so an anonymous caller could erase the entire analysis record - the only
 // evidence of what the model concluded. Deleting one entry requires a session,
 // clearing everything requires admin.
 

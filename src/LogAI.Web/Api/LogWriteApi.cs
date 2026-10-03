@@ -1,12 +1,12 @@
 // Log write endpoints.
 //
-// Contract notes (from the Python source):
+// Contract notes:
 //   POST /api/logs/delete-source  login + admin, 403 {"error":"Access denied"},
 //                                 400 {"error":"source required"},
 //                                 -> {"client_deleted":bool,"deleted":N,"status":"ok"}
 //   POST /api/logs/clear          -> {"deleted":N,"status":"ok"}
 //
-// DELIBERATE DIVERGENCE: the Python /api/logs/clear carries NO authentication at
+// DELIBERATE SECURITY CHOICE: /api/logs/clear used to carry NO authentication at
 // all (only @require_redis_api), so an anonymous POST wipes every log in the
 // database. This implementation requires login plus admin. Reproducing an
 // anonymous data-destruction endpoint is not "preserving functionality"; say the

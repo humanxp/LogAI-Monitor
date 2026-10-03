@@ -41,9 +41,9 @@ internal static class AppHost
         bool alertOnCritical = BoolSetting(settings, "alert_on_critical", true);
         bool alertOnError = BoolSetting(settings, "alert_on_error", true);
 
-        // 巡检看门狗（对齐 Python 的 health_watchdog）：积压 / AI 后端 / 调度卡死
+        // 巡检看门狗：积压 / AI 后端 / 调度卡死
         // 三种条件各自按冷却时间推送 Telegram，恢复正常时补一条"已恢复"，
-        // 并有可选的巡检日报。这些设置键在 Python 侧一直在用，本实现此前
+        // 并有可选的巡检日报。这些设置键此前
         // 完全没读——所以巡检再糟也只是一行日志，不会通知任何人。
         int healthWarn = IntSettingAllowZero(settings, "health_backlog_warn", warnThreshold);
         int healthWatchMinutes = Math.Max(1, IntSetting(settings, "health_watch_minutes", 5));
@@ -64,7 +64,7 @@ internal static class AppHost
             return;
         }
 
-        // First-run bootstrap, mirroring the Python ensure_admin_exists(): a fresh
+        // First-run bootstrap (ensure_admin_exists): a fresh
         // deployment has no user at all, so without this nobody could ever sign in.
         // Idempotent: it only acts when no account with role=admin exists.
         bool hasAdmin = false;
@@ -222,7 +222,7 @@ internal static class AppHost
         var scheduler = new JobScheduler(TimeSpan.FromSeconds(10));
 
         // The health check reports the age of the last analysis RUN, not of the
-        // last stored analysis: the Python version updates that timestamp even
+        // last stored analysis: that timestamp is updated even
         // when a run analyses nothing, so an idle queue is not mistaken for a
         // stalled analyser.
         DateTimeOffset? lastAnalysis = null;
@@ -251,7 +251,7 @@ internal static class AppHost
                             + (string.IsNullOrEmpty(outcome.HistoryId) ? "" : " history=" + outcome.HistoryId));
                         LogAI.Web.Api.StatsApi.PushIfNeeded(store);
                         // The dashboard reads data.logs_analyzed and renders data.analysis
-                        // (Python emitted exactly those two keys). Sending count/history_id
+                        // (those two keys are the contract). Sending count/history_id
                         // alone made the toast read "Analyzed undefined logs" and left an
                         // automatic analysis invisible on the page.
                         string? analysisRaw = null;
@@ -282,7 +282,7 @@ internal static class AppHost
                         }
                         LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete", payload);
 
-                        // Python sent the summary to Telegram whenever an analysis came
+                        // The summary is sent to Telegram whenever an analysis comes
                         // back critical ("Send Telegram summary if critical issues found");
                         // that path was missing here. It has no throttle upstream, so an
                         // independent cooldown keeps a critical-every-few-minutes stream
@@ -339,7 +339,7 @@ internal static class AppHost
             },
             firstDelay: TimeSpan.FromSeconds(20));
 
-        // 巡检周期由 health_watch_minutes 决定（Python 侧会热重排；这里在启动时
+        // 巡检周期由 health_watch_minutes 决定（在启动时
         // 读取一次，改完设置需要重启容器才生效）。
         scheduler.Add("health", () => TimeSpan.FromMinutes(healthWatchMinutes), async ct =>
         {
@@ -375,7 +375,7 @@ internal static class AppHost
             // the log. One throttled line a minute carries the health verdict plus the
             // receiver counters, which makes that distinction obvious at a glance.
             // The counters are deliberately NOT added to the diagnostics payload: the
-            // Python endpoint does not expose them and that payload stays byte identical.
+            // endpoint does not expose them and that payload stays byte identical.
             if (DateTimeOffset.UtcNow - lastReceiverReport > TimeSpan.FromMinutes(1))
             {
                 lastReceiverReport = DateTimeOffset.UtcNow;
@@ -462,7 +462,7 @@ internal static class AppHost
     /// <summary>
     /// 巡检看门狗：把"积压 / AI 后端 / 调度卡死"三类异常推给 Telegram。
     ///
-    /// 对齐 Python 的 health_watchdog，三点行为要一致：
+    /// 三点行为：
     ///   1. **按条件各自冷却**（不是整体冷却）：AI 宕机不会因为刚发过积压告警而被吞掉；
     ///   2. **恢复通知**：条件消失时补一条"已恢复"，并清掉该条件的记录，
     ///      否则下次复发要等到冷却结束才通知；
@@ -470,7 +470,7 @@ internal static class AppHost
     ///      容器重启不会重复发；此前那段代码在每个巡检周期都写这个键，
     ///      导致"距上次 ≥24h"永远不成立，日报永远不会发）。
     ///
-    /// 冷却状态放在进程内（Python 同样是模块级字典），因此重启会重置冷却——
+    /// 冷却状态放在进程内，因此重启会重置冷却——
     /// 对一个巡检看门狗来说是安全的（宁可重启后多提醒一次，也不要静默）。
     /// </summary>
     private static async Task RunHealthWatchdogAsync(
@@ -484,10 +484,10 @@ internal static class AppHost
             conditions.Add(("backlog", "⚠️ 未分析日志积压 <b>" + backlog + "</b> 条（阈值 " + warnThreshold + "），AI 分析跟不上"));
         if (!aiAvailable)
             conditions.Add(("ai", "⚠️ <b>AI 后端不可达</b>（模型 " + aiModel + " @ " + aiEndpoint + "）"));
-        // Python: age > max(interval * 2.5, 300) 视为调度卡死
+        // age > max(interval * 2.5, 300) 视为调度卡死
         long stallAfter = Math.Max((long)analysisMinutes * 150, 300);
         // 只有分析任务至少跑过一次（lastAnalysis 有值）才判定"调度卡死"：
-        // 缓存年龄 age 在从未跑过时是 -1（Python 同样用 age >= 0 挡住这种误报）。
+        // 缓存年龄 age 在从未跑过时是 -1（用 age >= 0 挡住这种误报）。
         if (ageSeconds >= 0 && ageSeconds > stallAfter)
             conditions.Add(("sched", "⚠️ 自动分析已 " + (ageSeconds / 60) + " 分钟未运行（疑似调度器卡死）"));
 
@@ -590,7 +590,7 @@ internal static class AppHost
 
     /// <summary>
     /// 与 IntSetting 相同，但允许 0。IntSetting 用 "> 0" 过滤，把合法的 0 也当成
-    /// 无效值回退默认——health_backlog_warn 允许 0（Python 侧 max(0, …)，
+    /// 无效值回退默认——health_backlog_warn 允许 0（语义是 max(0, …)，
     /// 含义是"任何积压都算超标"），用 IntSetting 读会让 0 变成 2000，设置形同虚设。
     /// </summary>
     private static int IntSettingAllowZero(Dictionary<string, object?> settings, string key, int fallback) =>

@@ -1,6 +1,6 @@
 // POST /api/ollama/chat
 //
-// Ported from the Python handler and its prompt builder:
+// Behaviour of the chat handler and its prompt builder:
 //
 //   system = "You are LogAI Monitor, an expert system administrator assistant."
 //            [+ "\n\nAvailable context (use ONLY what's relevant to the question):\n{context}"]
@@ -13,7 +13,7 @@
 //
 // Unavailable endpoint -> 503 {"error":"Ollama not available"}.
 //
-// DELIBERATE DIVERGENCE: Python guards this with @require_redis_api only; a
+// DELIBERATE SECURITY CHOICE: a real session is required; a
 // session is required here because the endpoint proxies arbitrary prompts to the
 // configured model (and counts against its capacity).
 

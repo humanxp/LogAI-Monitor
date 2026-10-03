@@ -1,7 +1,7 @@
 // User management endpoints.
 //
 // Security note: the stored hashes contain password_hash, which must never
-// reach a client. The Python API strips it, and so does this — a naive
+// reach a client. It is stripped here — a naive
 // "mirror the Redis hash" implementation would leak password hashes to any
 // signed-in user, which is exactly the kind of difference a rewrite can
 // introduce silently.
@@ -13,7 +13,7 @@ namespace LogAI.Web.Api;
 
 internal static class UsersApi
 {
-    /// <summary>Fields the Python API exposes for a user record.</summary>
+    /// <summary>Fields exposed for a user record.</summary>
     private static readonly string[] ExposedFields =
         ["created_at", "email", "id", "role", "username"];
 
@@ -21,7 +21,7 @@ internal static class UsersApi
     {
         app.MapGet("/api/users", async (HttpContext http) =>
         {
-            // Admin only, mirroring the Python check at the top of the handler:
+            // Admin only:
             // anonymous callers are sent to the login page, a signed-in
             // non-admin back to the dashboard. Without this the endpoint listed
             // every username, email and role to anyone who asked.

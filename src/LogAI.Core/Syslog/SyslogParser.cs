@@ -1,13 +1,13 @@
 // Syslog parsing, ported field-for-field from services/syslog_receiver.py.
 //
-// The Python implementation is regex driven, so this port keeps the very same
+// Parsing is regex driven, keeping the very same
 // patterns rather than hand-parsing: that is what makes a field-by-field
 // comparison between the two implementations meaningful.
 //
 // Ported behaviours that matter and are easy to get wrong:
 //   * _plausible_hostname — a program tag such as "connmand[351]:" or "rngd:"
 //     must never be taken for a hostname, otherwise sender-side field shifts
-//     invent fake hosts (the bug fixed in the Python version on 2026-10-01).
+//     invent fake hosts (a bug fixed on 2026-10-01).
 //   * _smart_decode — UTF-8, then GB18030, then latin-1, so Chinese text from
 //     network devices survives and no byte is ever lost.
 //   * The RFC 5424 pattern tolerates spaces inside structured data
@@ -19,7 +19,7 @@ using System.Text.RegularExpressions;
 
 namespace LogAI.Core.Syslog;
 
-/// <summary>One parsed syslog message, with the same field set as the Python dict.</summary>
+/// <summary>One parsed syslog message and its fixed field set.</summary>
 public sealed class SyslogEntry
 {
     public string Source { get; set; } = "";
@@ -107,7 +107,7 @@ public static partial class SyslogParser
         EnsureEncodings();
 
         // UTF-8: reject the decode when it produces replacement characters,
-        // which is how Python's strict decoder behaves.
+        // which is how a strict UTF-8 decoder behaves.
         try
         {
             var strict = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -136,7 +136,7 @@ public static partial class SyslogParser
         return HostnameShape.IsMatch(token);
     }
 
-    /// <summary>Formats the arrival time exactly like the Python side (ISO-8601, +00:00).</summary>
+    /// <summary>Formats the arrival time as the fixed ISO-8601 (+00:00) contract.</summary>
     public static string NowTimestamp() =>
         DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'+00:00'", CultureInfo.InvariantCulture);
 
@@ -175,7 +175,7 @@ public static partial class SyslogParser
         }
 
         // ---- RFC 3164 -------------------------------------------------
-        // NOTE: the 3164 timestamp text is deliberately not stored. The Python
+        // NOTE: the 3164 timestamp text is deliberately not stored. The arrival
         // parser keeps the arrival time for RFC 3164 (only 5424 assigns the
         // sender timestamp), and a drop-in replacement has to match that.
         var host = Rfc3164Host.Match(text);

@@ -1,4 +1,4 @@
-// Compares the composed message with the Python template written out literally,
+// Compares the composed message with the template written out literally,
 // so a change in spacing or markup cannot slip through unnoticed.
 
 using LogAI.Core.Notify;

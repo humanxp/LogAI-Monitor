@@ -27,7 +27,7 @@ public sealed class TelegramNotifier(HttpClient? http = null)
         _ => "⚪",
     };
 
-    /// <summary>Python html.escape(quote=True): &amp; &lt; &gt; &quot; &#x27;.</summary>
+    /// <summary>HTML escaping (quote=True): &amp; &lt; &gt; &quot; &#x27;.</summary>
     public static string Escape(string text)
     {
         var builder = new StringBuilder(text.Length + 16);
@@ -94,7 +94,7 @@ public sealed class TelegramNotifier(HttpClient? http = null)
         catch (JsonException) { return text.ToString(); }   // never send a broken message
         if (node is null) return text.ToString();
 
-        // Structured rendering, matching the Python summary line for line.
+        // Structured rendering; the summary line layout is fixed.
         string status = node["overall_status"]?.ToString() ?? "unknown";
         string emoji = status.ToLowerInvariant() switch
         {

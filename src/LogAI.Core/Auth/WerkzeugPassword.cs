@@ -96,7 +96,7 @@ public static class WerkzeugPassword
 //   hash  = hex(scrypt(password, salt_ascii, n, r, p, 64)) -> 128 chars
 //
 // The parameters are Werkzeug's current defaults, and the output is verified by
-// asking Python's check_password_hash to accept it.
+// asking a compatibility verifier to accept it.
 
 public static partial class WerkzeugPasswordGenerator
 {

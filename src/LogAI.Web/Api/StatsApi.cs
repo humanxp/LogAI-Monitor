@@ -4,7 +4,7 @@
 // they drift by a few between two calls; the rest are configuration or index
 // content and must match exactly.
 //
-// ollama_last_check_age is an UNROUNDED double in the Python payload; rounding it
+// ollama_last_check_age is an UNROUNDED double in the payload; rounding it
 // here would change the rendered "checked N seconds ago" text.
 
 using LogAI.Core.Ai;
@@ -25,7 +25,7 @@ internal static class StatsApi
 
     /// <summary>
     /// The dashboard payload, shared by the HTTP endpoint and the realtime
-    /// broadcast - the Python version documents its builder as "one dict used by
+    /// broadcast - the builder is documented as "one dict used by
     /// both /api/stats and the realtime stats broadcast".
     /// </summary>
     internal static async Task<Dictionary<string, object?>> BuildPayloadAsync(RedisStore store)
@@ -44,7 +44,7 @@ internal static class StatsApi
             // Never block the response on the inference endpoint. A cold availability
             // probe measured ~4s, and every page fetches /api/stats, so it stalled the
             // whole UI. Serve the last known value and refresh in the background - the
-            // same shape the Python version documents ("trigger a background refresh so
+            // same shape the contract documents ("trigger a background refresh so
             // UI updates quickly"). age is -1 while nothing has been checked yet.
             bool available;
             double age;

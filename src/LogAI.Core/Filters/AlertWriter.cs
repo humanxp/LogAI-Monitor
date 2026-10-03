@@ -1,6 +1,6 @@
 // Writes alert records and owns the Telegram suppression window.
 //
-// Record shape and key layout match the Python implementation, verified
+// Record shape and key layout are the project's storage contract, verified
 // against a real alert read back from Redis:
 //   alert:<ms>  acknowledged filter_id filter_name hostname id log_id message
 //               severity source timestamp
