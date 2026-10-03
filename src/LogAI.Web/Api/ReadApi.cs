@@ -31,6 +31,12 @@ internal static class ReadApi
 {
     private const int HostLabelMax = 16;
 
+    /// <summary>
+    /// 单次分页的硬上限。没有它，一个 ?limit=999999999 就能让进程水合整条时间线
+    /// 并被 OOM 杀掉（实测 anon-rss 5.96GB）。这是接口层的基本自保。
+    /// </summary>
+    internal const int MaxPageSize = 1000;
+
     public static void Map(WebApplication app, RedisStore store) {
 
         // --- /api/logs 的筛选助手 -------------------------------------------
@@ -74,7 +80,12 @@ internal static class ReadApi
 
         app.MapGet("/api/logs", async (HttpRequest request) =>
         {
-            int limit = int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100;
+            // 上限必须存在：limit 只校验 "> 0"，于是 ?limit=999999999 会让服务
+            // 把整条时间线（当时 280 万条）全部读 id + 逐条 HGETALL 水合成列表，
+            // 实测匿名内存冲到 5.96GB，被内核 OOM 杀掉，容器重启——一次请求就能
+            // 让整个监控断线。UI 最多请求 200 条，这里给 1000 的余量。
+            int limit = Math.Min(int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100,
+                                 MaxPageSize);
             int offset = int.TryParse(request.Query["offset"], out int o) && o > 0 ? o : 0;
 
             string? source = Text(request, "source");

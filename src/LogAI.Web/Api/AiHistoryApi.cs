@@ -131,7 +131,9 @@ internal static class AiHistoryApi
         // write time, so the window becomes a plain score range.
         app.MapGet("/api/ai-history", async (HttpRequest request) =>
         {
-            int limit = int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100;
+            // 同 /api/logs：给 limit 加上限，避免一次请求水合整条历史。
+            int limit = Math.Min(int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100,
+                                 ReadApi.MaxPageSize);
             int offset = int.TryParse(request.Query["offset"], out int o) && o > 0 ? o : 0;
             var (startTime, endTime) = ParseWindow(request, out bool hasWindow);
 

@@ -131,6 +131,9 @@ internal static class ParseSelfTest
         else { _failures++; Console.WriteLine($"{"decode GB18030",-46} FAIL (got '{decoded}')"); }
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
-        return _failures == 0 ? 1 : 2;
+        // 退出码必须是 成功=0 / 失败=1（另加 2 = 拒绝在 DB 0 上跑），与其余 20 套
+        // 自测一致。这里曾经写成 成功=1、失败=2，于是 CI/脚本把"2164 项断言全过"
+        // 判成失败——自测的退出码本身就是被测接口，写反等于让所有调用方误判。
+        return _failures == 0 ? 0 : 1;
     }
 }

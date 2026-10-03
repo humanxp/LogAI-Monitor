@@ -16,7 +16,10 @@ internal static class AlertsApi
     {
         app.MapGet("/api/alerts", async (HttpRequest request) =>
         {
-            int limit = int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100;
+            // 同 /api/logs：这里没有上限时，limit 很大就会把整条告警时间线
+            // 全部水合成列表后再切片，属于同一类"一次请求拖垮进程"的问题。
+            int limit = Math.Min(int.TryParse(request.Query["limit"], out int l) && l > 0 ? l : 100,
+                                 ReadApi.MaxPageSize);
             int offset = int.TryParse(request.Query["offset"], out int o) && o > 0 ? o : 0;
 
             // ?acknowledged=false asks for the unacknowledged ones only; when the

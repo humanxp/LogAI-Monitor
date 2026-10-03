@@ -67,7 +67,20 @@ internal static class RunnerSelfTest
 
         var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), batchSize: 50);
         var started = DateTime.UtcNow;
-        var outcome = await runner.RunOnceAsync();
+        // AI 不可达时 CompleteAsync 会抛异常。自测必须把它变成"一条失败断言 + 结论行"，
+        // 而不是让进程带着未捕获异常崩溃：崩溃时没有 verdict，调用方只能看到 exit=134，
+        // 分不清"功能坏了"和"环境没配好"（本次就是这么被绊了一下）。
+        AnalysisRunner.Outcome outcome;
+        try
+        {
+            outcome = await runner.RunOnceAsync();
+        }
+        catch (Exception ex)
+        {
+            Check("cycle analysed the batch", false, ex.GetType().Name + ": " + ex.Message);
+            Console.WriteLine($"\nFAILED ({_failures} failures)");
+            return 1;
+        }
         Console.WriteLine($"cycle: {outcome.Status}, count={outcome.Count}, {(DateTime.UtcNow - started).TotalSeconds:0.0}s");
         if (outcome.Error is not null) Console.WriteLine($"error: {outcome.Error}");
 

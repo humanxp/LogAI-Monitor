@@ -15,8 +15,11 @@ internal static class DockerLogsApi
     {
         app.MapGet("/api/docker/containers/{containerId}/logs", async (HttpContext http, string containerId) =>
         {
+            // 同样要有上限：lines 请求多少就向 Docker 要多少行并全部读进内存，
+            // ?lines=999999999 等于把某个容器的全部日志拉进进程。
             int lines = 100;
-            if (int.TryParse(http.Request.Query["lines"], out int requested) && requested > 0) lines = requested;
+            if (int.TryParse(http.Request.Query["lines"], out int requested) && requested > 0)
+                lines = Math.Min(requested, 5000);
 
             try
             {
