@@ -29,11 +29,45 @@ public static partial class PromptBuilder
         return text.Length <= maxLen ? text : text[..maxLen];
     }
 
-    /// <summary>One line per log: [SEVERITY] [HOST] program: message.</summary>
-    public static string LogSummary(IEnumerable<IReadOnlyDictionary<string, string>> logs)
+    /// <summary>
+    /// 日志在提示词里的优先级：越靠前越先交给模型。未知级别排最后，
+    /// 这样"级别字段异常"的记录不会挤掉真正的严重问题。
+    /// </summary>
+    private static int SeverityRank(IReadOnlyDictionary<string, string> log) =>
+        Field(log, "severity", "info").Trim().ToLowerInvariant() switch
+        {
+            "emerg" or "emergency" or "alert" or "crit" or "critical" or "fatal" => 0,
+            "error" or "err" => 1,
+            "warning" or "warn" => 2,
+            "notice" => 3,
+            "info" or "informational" => 4,
+            "debug" => 5,
+            _ => 6,
+        };
+
+    /// <summary>
+    /// One line per log: [SEVERITY] [HOST] program: message.
+    ///
+    /// 顺序按级别从严重到轻微（同级保持原有先后），可用 sampleLimit 限制行数。
+    /// 之所以要排序与限行：批次上限（每批分析条数）与送给模型的样本数是两个
+    /// 独立的设置，界面上写着"每批按级别排序后取 N 行"，此前这里既没排序也没
+    /// 限行——整批 1000 条会全部灌进提示词。当样本被截断时补一行提示，
+    /// 让模型知道看到的是样本而不是全部，避免它给出"整体健康"的错误结论。
+    /// </summary>
+    public static string LogSummary(IEnumerable<IReadOnlyDictionary<string, string>> logs,
+                                    int sampleLimit = 0)
     {
+        var ordered = logs
+            .Select((log, index) => (log, index))
+            .OrderBy(pair => SeverityRank(pair.log))
+            .ThenBy(pair => pair.index)          // 同级按到达顺序，保持稳定
+            .Select(pair => pair.log)
+            .ToList();
+
+        int shown = sampleLimit > 0 && ordered.Count > sampleLimit ? sampleLimit : ordered.Count;
+
         var builder = new StringBuilder();
-        foreach (var log in logs)
+        foreach (var log in ordered.Take(shown))
         {
             string severity = Safe(Field(log, "severity", "info"), 16).ToUpperInvariant();
             string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
@@ -42,7 +76,13 @@ public static partial class PromptBuilder
             builder.Append('[').Append(severity).Append("] [").Append(host).Append("] ")
                    .Append(program).Append(": ").Append(message).Append('\n');
         }
-        return builder.ToString().TrimEnd('\n');
+        string summary = builder.ToString().TrimEnd('\n');
+        if (shown < ordered.Count)
+        {
+            summary += "\n[" + (ordered.Count - shown) + " more log(s) omitted: showing the "
+                     + shown + " most severe]";
+        }
+        return summary;
     }
 
     public static string BatchPrompt(string logSummary) => $"""

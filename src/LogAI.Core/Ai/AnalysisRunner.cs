@@ -10,7 +10,8 @@ namespace LogAI.Core.Ai;
 
 using LogAI.Core.Store;
 
-public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryWriter history, int batchSize = 500)
+public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryWriter history,
+                                       int batchSize = 500, int sampleLimit = 0)
 {
     public sealed record Outcome(string Status, int Count, string? HistoryId, string? Error);
 
@@ -22,7 +23,9 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         var ids = batch.Select(item => item.Id).ToList();
         var logs = batch.Select(item => (IReadOnlyDictionary<string, string>)item.Fields).ToList();
 
-        string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs));
+        // 取批上限与送给模型的样本数是两件事：批次决定"这一轮处理多少条"，
+        // 样本上限决定"其中多少条真正进入提示词"（按级别优先）。
+        string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs, sampleLimit));
         string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
         var analysis = JsonExtractor.Extract(reply);
 

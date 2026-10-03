@@ -55,6 +55,12 @@ internal static class AppHost
         }
         batchSize = Math.Min(batchSize, MaxAnalysisBatch);
 
+        // 每批真正送给模型的样本行数（设置页的 "AI Sample Limit per Batch"）。
+        // 这个键此前只存在于设置白名单里，代码从未读取，于是界面上写着"按级别
+        // 排序取 N 行"，实际却是整批全部灌进提示词。0/缺省表示不限制。
+        int sampleLimit = IntSettingAllowZero(settings, "batch_sample_limit", 200);
+        if (sampleLimit < 0) sampleLimit = 0;
+
         // batch_size 是与设置页不同名的旧键。两边都有值时说明配置已经分叉，
         // 明确记一行，避免以后又出现"改了设置不知道哪个生效"。
         int legacyBatchSize = IntSettingAllowZero(settings, "batch_size", 0);
@@ -65,7 +71,8 @@ internal static class AppHost
                 + "（设置页，生效）与旧键 batch_size=" + legacyBatchSize
                 + " 不一致，已按设置页取值。建议删除旧键以免混淆。");
         }
-        Console.WriteLine("[AppHost] 每批分析 " + batchSize + " 条（来源："
+        Console.WriteLine("[AppHost] 每批分析 " + batchSize + " 条，其中按级别优先送模型 "
+            + (sampleLimit > 0 ? sampleLimit + " 条" : "全部") + "（来源："
             + (uiBatchSize > 0 ? "设置页 max_logs_per_analysis"
                : legacyBatchSize > 0 ? "旧键 batch_size" : "环境变量/默认值") + "）");
         // 冷却时间同样只能有一个来源：设置页的 "Notification Cooldown" 写的是
@@ -256,7 +263,7 @@ internal static class AppHost
             ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
         };
 
-        var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), batchSize);
+        var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), batchSize, sampleLimit);
         var scheduler = new JobScheduler(TimeSpan.FromSeconds(10));
 
         // The health check reports the age of the last analysis RUN, not of the

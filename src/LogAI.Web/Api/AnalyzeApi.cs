@@ -99,7 +99,10 @@ internal static class AnalyzeApi
                 .Where(id => id.Length > 0).ToList();
 
             var batchAnalysis = await CompleteAndExtractAsync(
-                client, PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(batchFields)), 2048);
+                client, PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(
+                    batchFields,
+                    int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
+                                 out int sample) && sample > 0 ? sample : 200)), 2048);
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {

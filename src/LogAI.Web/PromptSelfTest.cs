@@ -65,6 +65,55 @@ internal static class PromptSelfTest
             corrective.Contains("Your previous reply was NOT a single valid JSON object", StringComparison.Ordinal)
             && corrective.EndsWith("Every string must be proper JSON.", StringComparison.Ordinal));
 
+        // ---- 级别优先与样本上限 ----
+        // 设置页承诺"每批按级别排序后取 N 行送给模型"。这几条断言把该承诺钉住：
+        // 曾经这里既不排序也不限行，整批日志会全部灌进提示词。
+        var mixed = new List<IReadOnlyDictionary<string, string>>
+        {
+            new Dictionary<string, string> { ["severity"] = "info",    ["hostname"] = "h1", ["program"] = "p", ["message"] = "info-1" },
+            new Dictionary<string, string> { ["severity"] = "debug",   ["hostname"] = "h2", ["program"] = "p", ["message"] = "debug-1" },
+            new Dictionary<string, string> { ["severity"] = "critical",["hostname"] = "h3", ["program"] = "p", ["message"] = "crit-1" },
+            new Dictionary<string, string> { ["severity"] = "error",   ["hostname"] = "h4", ["program"] = "p", ["message"] = "err-1" },
+            new Dictionary<string, string> { ["severity"] = "warning", ["hostname"] = "h5", ["program"] = "p", ["message"] = "warn-1" },
+        };
+
+        string ranked = PromptBuilder.LogSummary(mixed);
+        var rankedLines = ranked.Split('\n');
+        Check("等级由重到轻排序",
+            rankedLines[0].StartsWith("[CRITICAL]", StringComparison.Ordinal) &&
+            rankedLines[1].StartsWith("[ERROR]", StringComparison.Ordinal) &&
+            rankedLines[2].StartsWith("[WARNING]", StringComparison.Ordinal) &&
+            rankedLines[3].StartsWith("[INFO]", StringComparison.Ordinal) &&
+            rankedLines[4].StartsWith("[DEBUG]", StringComparison.Ordinal),
+            ranked.Replace("\n", " | "));
+
+        string limited = PromptBuilder.LogSummary(mixed, 2);
+        var limitedLines = limited.Split('\n');
+        Check("限制条数时只保留最严重的 N 行",
+            limitedLines[0].StartsWith("[CRITICAL]", StringComparison.Ordinal) &&
+            limitedLines[1].StartsWith("[ERROR]", StringComparison.Ordinal),
+            limited.Replace("\n", " | "));
+        Check("被截断时明确告知模型剩余条数",
+            limited.Contains("3 more log(s) omitted", StringComparison.Ordinal), limited);
+
+        // 同级必须保持原有先后（稳定排序），否则同一批次的提示词会抖动。
+        var sameLevel = new List<IReadOnlyDictionary<string, string>>
+        {
+            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "a", ["program"] = "p", ["message"] = "first" },
+            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "b", ["program"] = "p", ["message"] = "second" },
+        };
+        Check("同级保持到达顺序",
+            PromptBuilder.LogSummary(sameLevel).Replace("\n", "|").Contains("first|[ERROR] [b]", StringComparison.Ordinal));
+
+        Check("样本上限大于总数时不截断、不提示",
+            !PromptBuilder.LogSummary(mixed, 99).Contains("omitted", StringComparison.Ordinal));
+        Check("未知级别排在最后",
+            PromptBuilder.LogSummary(new List<IReadOnlyDictionary<string, string>>
+            {
+                new Dictionary<string, string> { ["severity"] = "weird", ["program"] = "p", ["message"] = "x" },
+                new Dictionary<string, string> { ["severity"] = "info", ["program"] = "p", ["message"] = "y" },
+            }).StartsWith("[INFO]", StringComparison.Ordinal));
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }
