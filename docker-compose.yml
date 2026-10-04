@@ -20,6 +20,11 @@ services:
       --maxmemory-samples 5
       --maxmemory-clients 5%
       --lazyfree-lazy-eviction yes
+      # RDB 快照频率：默认的 3600/300/60 会在 6GB 数据上每小时 fork 一次，
+      # 每次约 31 秒打满一个核。开着 AOF 时重启只从 AOF 恢复（实测启动日志
+      # 不读 dump.rdb），所以 RDB 只是"应急回退点"，降到每天一次即可，
+      # 既保留兜底又去掉 23/24 的每小时突发。
+      --save 86400 1
     volumes:
       - redis-data:/data
     networks: [logai]

@@ -4,6 +4,14 @@
 #   sh scripts/deploy-cs.sh
 #
 # Why this script exists: the running `logaimonitor` container was NOT created by
+#
+# NOTE on --network-alias redis: the app reaches Redis as REDIS_HOST=redis, and the
+# Redis container's own name is logaimonitor-redis. The short name "redis" only
+# resolves because the original compose-created network gave the redis service that
+# alias. Recreating the Redis container with a bare `docker run` (as happened once)
+# silently drops the alias, the app then cannot resolve "redis" at all, and the
+# background subsystems never start. Declaring the alias here makes the app side
+# independent of how the Redis container was created.
 # docker-compose (the Redis network is named `logradarai_logaimonitor-net`, from a
 # compose project that is no longer on the host), so `docker compose up -d` cannot
 # recreate it. Its full run configuration is reconstructed here from the live
@@ -53,6 +61,7 @@ docker rm -f logaimonitor
 docker run -d --name logaimonitor \
   --restart unless-stopped \
   --network logradarai_logaimonitor-net \
+  --network-alias redis \
   -p 5059:5059 -p 514:514/udp -p 515:515/tcp \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -e AI_BASE_URL=http://192.168.50.23:8000/v1 \

@@ -76,8 +76,12 @@ compose 里 Redis 的启动参数是刻意配置的，**不建议改**：
 
 ```
 --maxmemory 9216mb --maxmemory-policy volatile-lru --maxmemory-samples 5
---maxmemory-clients 5% --lazyfree-lazy-eviction yes
+--maxmemory-clients 5% --lazyfree-lazy-eviction yes --save 86400 1
 ```
+
+`--save 86400 1` 把 RDB 快照从默认的每小时降到每天一次。原因：**开着 AOF 时，重启只从 AOF 恢复**（实测启动日志为 `DB loaded from append only file`，全程不读 `dump.rdb`），所以 RDB 的角色只是"万一 AOF 损坏时的应急回退点"；而 6GB 数据上每次快照要 fork 并写盘约 31 秒，期间打满一个核。降到每天一次既保留兜底，又去掉每小时的 CPU 突发。
+
+> 注意：这个参数写在容器启动命令里。如果 Redis 容器是用 `docker run` 手工起的（而不是 compose），改完必须**重建容器**才生效；`redis-cli CONFIG SET save "86400 1"` 只作用于运行时，容器一重启就回到默认值。
 
 `volatile-lru` 只淘汰**带 TTL 的键**（日志 / 告警 / AI 历史），而 `settings`、`users`、索引注册集合**没有 TTL，永不会被淘汰**。这样即使数据量超预期，也是优雅地丢弃最旧日志，而不是把配置和账号一起清掉。
 

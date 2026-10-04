@@ -286,7 +286,73 @@ app.MapFallback((HttpContext http, JinjaEngine engine) =>
 });
 
 // Start the background subsystems: syslog receiver, scheduler, docker poll.
-_ = LogAI.Web.AppHost.StartAsync(app, app.Lifetime.ApplicationStopping);
+//
+// 这里刻意不写成 `_ = AppHost.StartAsync(...)`：那样的 fire-and-forget 会把
+// 异常直接丢掉。曾真实发生过——Redis 暂时不可达时 StartAsync 在读设置那一步就
+// 抛异常，异常被静默吞掉，于是 syslog 接收、分析、巡检、清理**全都没有启动**，
+// 而日志里一行提示都没有：进程活着、HTTP 还能响应，看起来"在跑"，实际已经完全
+// 停止采集（表现为时间线不再增长，很容易几小时后才发现）。
+//
+// 现在的做法：先等 Redis 可达，再启动后台子系统。失败会持续重试并明确记录，
+// 超过一定时间升级为醒目的警告，绝不静默。
+_ = WaitForRedisThenStartAsync(app);
+
+static async Task WaitForRedisThenStartAsync(WebApplication app)
+{
+    var store = app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>();
+    var stopping = app.Lifetime.ApplicationStopping;
+    int attempt = 0;
+
+    while (!stopping.IsCancellationRequested)
+    {
+        try
+        {
+            // 用一次实际读取探活：AppHost.StartAsync 的第一步就是读设置，
+            // 所以这一步成功意味着它也能成功，不会出现"半启动"。
+            await store.GetSettingsAsync();
+            break;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            attempt++;
+            // 前 6 次逐次记录，其后每分钟一次，避免长时间故障刷屏。
+            if (attempt <= 6 || attempt % 12 == 1)
+            {
+                Console.WriteLine("[AppHost] Redis 尚不可用（第 " + attempt + " 次重试，"
+                    + (attempt <= 6 ? "5" : "60") + " 秒后重试）：" + ex.GetType().Name + ": " + ex.Message);
+            }
+            if (attempt == 20)
+            {
+                Console.WriteLine("[AppHost] 警告：Redis 已持续不可用约 5 分钟，"
+                    + "后台子系统（采集/分析/巡检）**尚未启动**，期间不会有任何日志入库。");
+            }
+        }
+
+        try { await Task.Delay(attempt <= 6 ? TimeSpan.FromSeconds(5) : TimeSpan.FromSeconds(60), stopping); }
+        catch (OperationCanceledException) { return; }
+    }
+
+    if (stopping.IsCancellationRequested) return;
+
+    try
+    {
+        // 正常情况下这个调用在进程存活期间不会返回（它内部跑调度循环），
+        // 只在应用停止时随取消令牌退出。所以这里不做"启动成功"的输出——
+        // 子系统是否真的起来了，由 AppHost 自己打印的 [AppHost] 标记说明。
+        await LogAI.Web.AppHost.StartAsync(app, stopping);
+        // 正常情况：StartAsync 只负责"搭建并启动"各子系统
+        // （接收器与调度器都在内部以后台任务运行），随即返回。因此返回本身不是
+        // 异常信号——子系统是否起来了，由它自己打印的 [AppHost] 标记说明。
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        // 只有这里才是真问题：搭建阶段就失败（例如读设置出错），
+        // 此时子系统根本没起来，必须显式说出来，否则就是又一次静默停摆。
+        Console.WriteLine("[AppHost] 后台子系统启动失败（采集/分析/巡检不会运行）："
+            + ex.GetType().FullName + ": " + ex.Message);
+        Console.WriteLine(ex.ToString());
+    }
+}
 
 
 // Bulk removal of log sources whose containers no longer exist. Used to clean up
