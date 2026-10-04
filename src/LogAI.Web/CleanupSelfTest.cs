@@ -80,6 +80,45 @@ internal static class CleanupSelfTest
         Check("cutoff moves with retention",
             CleanupJob.Cutoff(1000, 1) == 1000 - 3600 && CleanupJob.Cutoff(1000, 24) == 1000 - 86400);
 
+        // ---- 分页与边界：清理过去是"一次取回全部到期项 + 每条 6 次顺序往返"，
+        // 加上 Chunk() 用 Skip(i).Take(size) 造成的 O(n^2) 切片。下面这批断言把
+        // 重写后的分页行为钉住，否则很容易又退回无界实现。
+        await store.Db.ExecuteAsync("FLUSHDB");
+        double t0 = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+
+        // 25 条到期 + 3 条保留期内：pageSize=3 强制走多页往返。
+        for (int i = 0; i < 25; i++)
+            await Seed($"log:pg{i:D2}", t0 - 100 * 3600, withHash: true);
+        for (int i = 0; i < 3; i++)
+            await Seed($"log:keep{i}", t0 - 60, withHash: true);
+
+        var paged = await CleanupJob.RunAsync(store, retentionHours: 24, pageSize: 3);
+        Check("分页清理：全部到期项都被删除（跨多次分页）", paged.Removed == 25, paged.Removed.ToString());
+        Check("分页清理：保留期内的条目一条不动",
+            await store.Db.SortedSetLengthAsync(Keys.Timeline) == 3,
+            (await store.Db.SortedSetLengthAsync(Keys.Timeline)).ToString());
+        Check("分页清理：索引同步收敛到保留期内条目",
+            await store.Db.SortedSetLengthAsync(Keys.LogSource("10.0.0.1")) == 3,
+            (await store.Db.SortedSetLengthAsync(Keys.LogSource("10.0.0.1"))).ToString());
+        Check("分页清理：待分析队列只剩保留期内条目",
+            await store.Db.SortedSetLengthAsync(Keys.Unanalyzed) == 3,
+            (await store.Db.SortedSetLengthAsync(Keys.Unanalyzed)).ToString());
+        Check("分页清理：pageSize<=0 时回退默认值而不是死循环",
+            (await CleanupJob.RunAsync(store, retentionHours: 24, pageSize: 0)) is { Removed: 0, DeadPurged: 0 });
+
+        // 死条目可能已不在时间线上（TTL 只作用于哈希）。此时仍要能清掉，
+        // 且不能因为 ZREM 时间线找不到就漏掉队列里的残留。
+        await store.Db.ExecuteAsync("FLUSHDB");
+        await store.Db.SortedSetAddAsync(Keys.Unanalyzed, "log:orphan", t0 - 60);
+        await store.Db.SortedSetAddAsync(Keys.Unanalyzed, "log:live", t0 - 60);
+        await store.Db.HashSetAsync("log:live", [new HashEntry("severity", "info")]);
+        var orphaned = await CleanupJob.RunAsync(store, retentionHours: 24, pageSize: 1);
+        Check("队列中已不在时间线上的死条目也能清除",
+            orphaned.DeadPurged == 1
+            && await store.Db.SortedSetLengthAsync(Keys.Unanalyzed) == 1
+            && await store.Db.SortedSetScoreAsync(Keys.Unanalyzed, "log:live") is not null,
+            $"{orphaned.DeadPurged}/{await store.Db.SortedSetLengthAsync(Keys.Unanalyzed)}");
+
         // Second run over a clean database changes nothing.
         var again = await CleanupJob.RunAsync(store, retentionHours: 24);
         Check("second run is a no-op", again is { Removed: 0, DeadPurged: 0 }, $"{again.Removed}/{again.DeadPurged}");
