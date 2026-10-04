@@ -273,6 +273,8 @@ internal static class AppHost
             ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
         };
 
+        // 这两个值在 AnalysisRunner 里每轮都会重新读取（设置页写着"立即生效"），
+        // 这里传入的只是读取失败时的兜底与启动日志的展示值。
         var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), batchSize, sampleLimit);
         var scheduler = new JobScheduler(TimeSpan.FromSeconds(10));
 

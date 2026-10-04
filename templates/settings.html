@@ -156,13 +156,13 @@
             <div class="form-group">
                 <label class="form-label" for="maxLogsPerAnalysis">Logs per Analysis Run</label>
                 <input type="number" class="form-control" id="maxLogsPerAnalysis" value="500" min="10" max="5000">
-                <small style="color: var(--lm-ink-2);">Batch size: analysis triggers when this many unanalyzed logs accumulate (MAX_LOGS_PER_ANALYSIS). Applied immediately.</small>
+                <small style="color: var(--lm-ink-2);">每轮分析最多取这么多条未分析日志（实际取多少取决于积压量）。分析按「分析间隔」定时触发，不是攒够这个数才触发。改动从下一轮开始生效，无需重启。</small>
             </div>
 
             <div class="form-group">
                 <label class="form-label" for="batchSampleLimit">AI Sample Limit per Batch</label>
                 <input type="number" class="form-control" id="batchSampleLimit" value="100" min="1" max="5000">
-                <small style="color: var(--lm-ink-2);">How many log lines are sent to the model per batch, severity-ranked (BATCH_SAMPLE_LIMIT). Applied immediately.</small>
+                <small style="color: var(--lm-ink-2);">其中真正送给模型的行数：按级别从严重到轻微排序后取前 N 行，被截断时会告知模型剩余条数。改动从下一轮开始生效，无需重启。</small>
             </div>
 
             <div class="form-group">

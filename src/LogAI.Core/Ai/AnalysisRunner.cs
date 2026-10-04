@@ -11,12 +11,54 @@ namespace LogAI.Core.Ai;
 using LogAI.Core.Store;
 
 public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryWriter history,
-                                       int batchSize = 500, int sampleLimit = 0)
+                                       int fallbackBatchSize = 500, int fallbackSampleLimit = 0)
 {
     public sealed record Outcome(string Status, int Count, string? HistoryId, string? Error);
 
+    /// <summary>单批分析量的硬上限，与 AppHost.MaxAnalysisBatch 保持一致。</summary>
+    public const int MaxBatch = 5000;
+
+    /// <summary>
+    /// 每轮开始时重新读取批次上限与样本上限。
+    ///
+    /// 之前这两个值只在启动时读一次并固定下来，于是设置页上明明写着
+    /// "Applied immediately"，改完却必须重启容器——用户看到的告警冷却等
+    /// 是即时生效的，很容易据此以为这里也是。分析任务本身几分钟才跑一次，
+    /// 每轮多一次 HGET 完全可以忽略，换来的是文案与行为一致。
+    /// 读取失败时退回启动时的取值，不让一次抖动影响分析。
+    /// </summary>
+    private (int BatchSize, int SampleLimit) ReadLimits()
+    {
+        try
+        {
+            var settings = store.GetSettingsAsync().GetAwaiter().GetResult();
+
+            int batch = 0;
+            foreach (string key in new[] { "max_logs_per_analysis", "batch_size" })
+            {
+                if (settings.TryGetValue(key, out object? raw) &&
+                    int.TryParse(RedisStore.ToText(raw).Trim().Trim('"'), out int parsed) && parsed > 0)
+                { batch = parsed; break; }
+            }
+            if (batch <= 0) batch = fallbackBatchSize;
+            batch = Math.Min(batch, MaxBatch);
+
+            int sample = 0;
+            if (settings.TryGetValue("batch_sample_limit", out object? sampleRaw))
+                int.TryParse(RedisStore.ToText(sampleRaw).Trim().Trim('"'), out sample);
+            if (sample <= 0) sample = fallbackSampleLimit;
+
+            return (batch, sample);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
+        {
+            return (fallbackBatchSize, fallbackSampleLimit);
+        }
+    }
+
     public async Task<Outcome> RunOnceAsync(CancellationToken cancellationToken = default)
     {
+        var (batchSize, sampleLimit) = ReadLimits();
         var batch = await UnanalyzedBatch.FetchAsync(store, batchSize, cancellationToken);
         if (batch.Count == 0) return new Outcome("empty", 0, null, null);
 

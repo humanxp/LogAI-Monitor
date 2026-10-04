@@ -65,7 +65,7 @@ internal static class RunnerSelfTest
             ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
         };
 
-        var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), batchSize: 50);
+        var runner = new AnalysisRunner(store, client, new AiHistoryWriter(store), fallbackBatchSize: 50);
         var started = DateTime.UtcNow;
         // AI 不可达时 CompleteAsync 会抛异常。自测必须把它变成"一条失败断言 + 结论行"，
         // 而不是让进程带着未捕获异常崩溃：崩溃时没有 verdict，调用方只能看到 exit=134，
