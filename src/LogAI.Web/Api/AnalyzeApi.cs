@@ -57,6 +57,11 @@ internal static class AnalyzeApi
                 Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
             };
+            // 总开关关闭时不调用模型，"配置为停用"与"后端连不上"要给不同的话术，
+            // 否则用户会去排查一个根本没启用的后端。
+            if (!AiClient.AiEnabledIn(settings))
+                return ReadApi.JsonBody(new { error = "AI analysis is disabled in settings" }, 503);
+
             if (!await client.IsAvailableAsync())
                 return ReadApi.JsonBody(new { error = "Ollama not available" }, 503);
 

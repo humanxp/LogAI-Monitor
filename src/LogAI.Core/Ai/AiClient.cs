@@ -92,6 +92,25 @@ public sealed class AiClient(HttpClient? http = null)
     /// 用同步读是刻意的：调用点都在同步上下文里（构造 AiClient），不值得为一次
     /// HGET 把整条调用链改成 async。
     /// </summary>
+    /// <summary>
+    /// "启用 AI 分析"总开关（设置页 ollama_enabled）。缺省视为启用。
+    ///
+    /// 这个键此前只被前端读写、后端从不读取，于是勾掉它毫无效果：定时分析照跑、
+    /// 手动分析照调模型。读设置失败时按"启用"处理——宁可多分析一次，也不要因为
+    /// 一次读取抖动把整个分析链路静默停掉。
+    /// </summary>
+    public static bool AiEnabledIn(IReadOnlyDictionary<string, object?> settings)
+    {
+        if (!settings.TryGetValue("ollama_enabled", out object? raw) || raw is null)
+            return true;
+        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
+        return text is not ("false" or "0" or "no" or "off");
+    }
+
+    /// <summary>Dictionary&lt;string,string&gt; 版本（设置页返回的是这个形状）。</summary>
+    public static bool AiEnabledIn(IReadOnlyDictionary<string, string> settings) =>
+        AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
+
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {
         try

@@ -55,6 +55,16 @@ internal static class AppHost
         }
         batchSize = Math.Min(batchSize, MaxAnalysisBatch);
 
+        // 两个开关此前只在设置页里存在，代码从不读取：勾掉"启用 AI 分析"或
+        // "自动分析"都不会有任何效果。这里定义成"每次使用前重读设置"的函数，
+        // 而不是启动时取一次的快照——否则改完设置必须重启容器才生效。
+        bool AutoAnalyzeEnabled() =>
+            BoolSetting(store.GetSettingsAsync().GetAwaiter().GetResult(), "auto_analyze", true);
+        bool AiEnabled() => AiClient.AiEnabledIn(store.GetSettingsAsync().GetAwaiter().GetResult());
+
+        Console.WriteLine("[AppHost] 开关：自动分析=" + (AutoAnalyzeEnabled() ? "启用" : "停用")
+            + "，AI 分析=" + (AiEnabled() ? "启用" : "停用") + "（改动即时生效，无需重启）");
+
         // 每批真正送给模型的样本行数（设置页的 "AI Sample Limit per Batch"）。
         // 这个键此前只存在于设置白名单里，代码从未读取，于是界面上写着"按级别
         // 排序取 N 行"，实际却是整批全部灌进提示词。0/缺省表示不限制。
@@ -276,11 +286,26 @@ internal static class AppHost
         bool aiAvailable = false;
         DateTimeOffset? aiChecked = null;
 
-        scheduler.Add("analysis", () => TimeSpan.FromMinutes(analysisMinutes),
+        scheduler.Add("analysis",
+            // 关闭"自动分析"时返回 null，调度器即跳过该任务——间隔每次 tick 重新
+            // 求值，所以勾选框改完立即生效，不需要重启。手动分析不受此开关影响。
+            () => AutoAnalyzeEnabled() ? TimeSpan.FromMinutes(analysisMinutes) : null,
             async ct =>
             {
                 try
                 {
+                    // 双重判定：间隔提供者可能在本轮开始后才发现开关被改，
+                    // 这里再确认一次，避免"刚关掉还跑一轮"。
+                    if (!AutoAnalyzeEnabled())
+                    {
+                        Console.WriteLine("[Analysis] 自动分析已关闭，跳过本轮");
+                        return;
+                    }
+                    if (!AiEnabled())
+                    {
+                        Console.WriteLine("[Analysis] AI 分析总开关已关闭，跳过本轮（不调用模型）");
+                        return;
+                    }
                     var outcome = await runner.RunOnceAsync(ct);
                     // "这一次没东西可分析"与"这次根本没跑/跑完没记录"必须能区分：
                     // AI History 里的空洞（曾出现 13:48 → 18:07 无任何记录）

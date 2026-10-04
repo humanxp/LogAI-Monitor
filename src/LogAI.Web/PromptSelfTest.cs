@@ -114,6 +114,26 @@ internal static class PromptSelfTest
                 new Dictionary<string, string> { ["severity"] = "info", ["program"] = "p", ["message"] = "y" },
             }).StartsWith("[INFO]", StringComparison.Ordinal));
 
+        // ---- "启用 AI 分析"总开关的判定 ----
+        // 这个键此前后端从不读取，勾掉它完全无效。判定语义要有断言钉住，
+        // 否则以后很容易又退化成"设置页是个摆设"。
+        Check("缺省视为启用",
+            LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string>()));
+        Check("空串视为启用",
+            LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "" }));
+        Check("true 视为启用",
+            LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "true" }));
+        Check("false 视为停用",
+            !LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "false" }));
+        Check("JSON 编码的 false 也视为停用（存储里是带引号的）",
+            !LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "\"false\"" }));
+        Check("0/no/off 也视为停用",
+            !LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "0" }) &&
+            !LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "no" }) &&
+            !LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "off" }));
+        Check("TRUE 大写视为启用",
+            LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "TRUE" }));
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }
