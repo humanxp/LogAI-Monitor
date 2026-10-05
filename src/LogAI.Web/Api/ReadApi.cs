@@ -388,6 +388,14 @@ internal static class ReadApi
 
     private static string EscapeNonAscii(string json)
     {
+        // 快速路径：纯 ASCII 的 payload（syslog 的常见情形）本身就是契约要求的
+        // 线上形态，无需转义，也无需逐字符经 StringBuilder 复制一遍。
+        // /api/logs 整页可达 1.5MB，逐字符 Append 是纯 CPU 开销。
+        // 扫描用 .NET 8 的 SIMD 向量化 IndexOfAnyExceptInRange：对 1.5MB 的量级
+        // 几乎免费，因此即使命中非 ASCII（转义路径仍需走），也没有可感知的回退。
+        if (json.AsSpan().IndexOfAnyExceptInRange((char)0, (char)0x7F) < 0)
+            return json;
+
         var builder = new System.Text.StringBuilder(json.Length + 16);
         foreach (char c in json)
         {
