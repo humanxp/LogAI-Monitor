@@ -24,11 +24,24 @@
   --lm-line-strong: rgba(0, 0, 0, 0.14);
   --lm-ink: #1d1d1f;
   --lm-ink-2: #5f6368;
-  --lm-ink-3: #8a8f98;
+  /* ink-3 从 #8a8f98 加深到 #6b7280：原值在白底 3.25:1、次级面 3.08:1，
+     全部低于正文 4.5:1 的门槛（实测审计：stat-label、表头、空状态说明、
+     过滤器条件标签都栽在这里）。新值白底 4.83、#f8f9fa 4.59、#f7f8fa 4.55。 */
+  --lm-ink-3: #6b7280;
   --lm-accent: #0066cc;
   --lm-accent-soft: rgba(0, 102, 204, 0.1);
   --lm-btn-primary-bg: #0b5ed7;   /* 主按钮底色：保证白字 ≥ 4.5:1 */
   --lm-btn-primary-ink: #ffffff;
+  /* 彩色实心按钮变体：原色来自 style.css 的 Bootstrap 默认值，白字对比度
+     全部不达标（success #28a745 仅 3.13、danger #dc3545 对夜间文字 3.82、
+     secondary #6c757d 3.95）。这里统一收敛为令牌，取值均已对白字与
+     夜间 off-white #e8ecf2 双重验证 ≥ 4.5:1。 */
+  --lm-btn-success-bg: #18752f;    /* 白字 5.79:1 · off-white 4.89:1 */
+  --lm-btn-danger-bg: #b02a37;     /* 白字 6.50:1 · off-white 5.48:1 */
+  --lm-btn-secondary-bg: #5a6268;  /* 白字 6.21:1 · off-white 5.24:1 */
+  /* "实心 accent 面"（侧栏/分页当前项）：白天与链接蓝同值 5.36:1；
+     夜间的值在 html.theme-night 里覆盖（#58a6ff 白字只有 2.53:1）。 */
+  --lm-nav-active-bg: #0066cc;
   --lm-surface: #ffffff;
   --lm-surface-2: #f7f8fa;
   --lm-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 0 0 1px var(--lm-line);
@@ -47,7 +60,9 @@
   --lm-hover: #f1f3f5;         /* 悬停面 */
   --lm-chip: #e9ecef;          /* 中性徽标底 */
   --lm-btn-hover: #f8f9fa;     /* 描边按钮悬停底 */
-  --lm-header-bg: var(--lm-surface);  /* 顶栏 */
+  /* 顶栏：半透明 + 毛玻璃（配合下方 .main-header 的 backdrop-filter）。
+     .main-header 是 sticky（style.css），滚动时有内容从下面经过。 */
+  --lm-header-bg: rgba(255, 255, 255, 0.86);
   --lm-overlay: rgba(16, 24, 40, 0.5);
   --lm-shadow-color: rgba(16, 24, 40, 0.08);
   --lm-scroll-thumb: rgba(16, 24, 40, 0.28);
@@ -182,6 +197,29 @@ button:hover:not(:disabled), .btn:hover {
 }
 .btn-primary:hover, button.btn-primary:hover, .primary:hover { filter: brightness(1.07); }
 
+/* 彩色实心变体：底色换成已验证 ≥4.5:1 的令牌（见 :root 注释）。
+   原色 #28a745/#dc3545/#6c757d 配白字 3.13–4.53:1，"Ack / Clear / Close"
+   这类关键操作按钮全都不达标。文字一律纯白：夜间的通用按钮文字规则
+   （html.theme-night button:not(...)）已把这些变体排除在外。 */
+.btn-success, button.btn-success {
+  background: var(--lm-btn-success-bg);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-success:hover, button.btn-success:hover { filter: brightness(1.1); }
+.btn-danger, button.btn-danger {
+  background: var(--lm-btn-danger-bg);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-danger:hover, button.btn-danger:hover { filter: brightness(1.1); }
+.btn-secondary, button.btn-secondary {
+  background: var(--lm-btn-secondary-bg);
+  border-color: transparent;
+  color: #fff;
+}
+.btn-secondary:hover, button.btn-secondary:hover { filter: brightness(1.1); }
+
 input, select, textarea {
   border-radius: var(--lm-radius-control);
   border: 1px solid var(--lm-line-strong);
@@ -222,9 +260,10 @@ input:focus, select:focus, textarea:focus {
 }
 .sidebar-nav a:hover { background: rgba(255, 255, 255, 0.08); }
 .sidebar-nav a.active {
-  background: var(--lm-accent);
+  background: var(--lm-nav-active-bg);
   color: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  /* 左侧内嵌指示条：不占布局（inset 阴影），两套主题白条都清晰 */
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* ---------------------------------------------------------------- 反馈 */
@@ -253,6 +292,13 @@ input:focus, select:focus, textarea:focus {
 [class*="header"]:not(thead):not(tr),
 [class*="topbar"] {
   font-weight: 600;
+}
+
+/* 顶栏毛玻璃：.main-header 是 sticky（style.css），半透明底 + 背景模糊让
+   滚动经过的内容有层次感。底色来自 --lm-header-bg（白天/夜间各一套）。 */
+.main-header {
+  backdrop-filter: blur(10px) saturate(1.15);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
 }
 
 [class*="header"] h1, [class*="header"] h2,
@@ -369,7 +415,7 @@ input:focus, select:focus, textarea:focus {
 /* 当前页 */
 [class*="pagination"] .active, [class*="pager"] .active,
 [class*="page-item"].active > * {
-  background: var(--lm-accent);
+  background: var(--lm-nav-active-bg);
   border-color: transparent;
   color: #fff;
 }
@@ -517,12 +563,18 @@ html.theme-night {
   --lm-hover: #212936;
   --lm-chip: #262e3a;
   --lm-btn-hover: #212936;
-  --lm-header-bg: #141a22;
+  /* 夜间顶栏：半透明 + 毛玻璃（规则见 .main-header 的 backdrop-filter）。
+     sticky 顶栏滚动时有内容从下面经过，纯不透明底看不到层次。 */
+  --lm-header-bg: rgba(20, 26, 34, 0.88);
   --lm-overlay: rgba(4, 7, 11, 0.66);
   --lm-shadow-color: rgba(0, 0, 0, 0.5);
   --lm-scroll-thumb: rgba(255, 255, 255, 0.22);
   --lm-scroll-track: rgba(255, 255, 255, 0.05);
   --lm-selection: rgba(88, 166, 255, 0.3);
+  /* 夜间"实心 accent 面"：链接蓝 #58a6ff 是为"深底上的文字"调的亮蓝，
+     直接当底色配白字只有 2.53:1（实测审计里每个夜间页面的侧栏当前项
+     都栽在这）。这里换成专用的深一档蓝：白字 5.41:1 · off-white 4.56:1。 */
+  --lm-nav-active-bg: #2b68c4;
 
   --lm-danger-bg: #3a1c1c;  --lm-danger-ink: #ff9c95;  --lm-danger-line: #5c2b29;
   --lm-warn-bg:   #3a2f16;  --lm-warn-ink:   #f0c45a;  --lm-warn-line:   #57451f;
@@ -639,7 +691,10 @@ html.theme-night .btn-outline:hover {
 /* 侧栏页脚的"退出登录"是深底白色描边按钮，不属于内容区，保持原样 */
 html.theme-night .sidebar .btn-outline,
 html.theme-night .sidebar-footer .btn-outline { color: #fff; }
-html.theme-night button:not(.btn-primary):not(.primary):not(.danger):not(.logout-btn) {
+/* 彩色实心变体（success/danger/secondary）排除在这条通用文字规则之外：
+   它们各自带纯白文字与已验证的实心底色（见上面的变体规则），
+   若被这里改成 ink 色，白字对深底色的对比度反而降到 3.8–4:1。 */
+html.theme-night button:not(.btn-primary):not(.primary):not(.danger):not(.logout-btn):not(.btn-success):not(.btn-danger):not(.btn-secondary) {
   color: var(--lm-ink);
 }
 html.theme-night button:disabled,
@@ -800,3 +855,58 @@ html.theme-night .header-status { color: var(--lm-ink-2); }
 html.theme-night .user-menu,
 html.theme-night .user-menu span,
 html.theme-night [class*="user-info"] { color: var(--lm-ink-2); }
+
+/* ==========================================================================
+ * 第四层：可读性修正与细节打磨（2026-10 对比度审计之后）
+ *
+ * 这里的每一条都有客观依据：对比度审计把"哪些字看不清"逐元素列了出来，
+ * 本节把那一批问题收敛成几处令牌/规则修正，再补上不改变布局的质感细节。
+ * ========================================================================== */
+
+/* 过滤器条件标签：style.css 里写死 #8a8f98（白底 3.25:1），改走令牌后
+   白天取深一档灰、夜间取暗色版，两套主题都过 4.5:1。 */
+.cond-label, .cond-none { color: var(--lm-ink-3); }
+
+/* 日志来源主机名链接：style.css 的 #2196F3 在白底只有 3.12:1。
+   只在白天覆盖；夜间的 #2196F3 在深底上本已达 5.5:1，保持不动。 */
+html:not(.theme-night) .log-entry .log-host { color: #0b6eb8; }
+
+/* 侧栏 logo 的渐变亮端 #00a3cc 配白字只有 2.95:1，收暗到 #0077b6（4.87:1）。 */
+.sidebar-header .logo {
+  background: linear-gradient(135deg, #0066cc, #0077b6);
+}
+
+/* ------------------------------------------------------------ 可访问性 */
+/* 键盘焦点环：输入框已有边框+光环，这里给按钮/链接补上可见焦点，
+   让 Tab 键导航不再"失明"。 */
+button:focus-visible,
+.btn:focus-visible,
+a:focus-visible,
+[class*="pagination"] button:focus-visible,
+[class*="nav"] a:focus-visible {
+  outline: 2px solid var(--lm-accent);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------ 交互细节 */
+/* 按下反馈：轻微下沉，点按更有实感；纯 transform 不影响布局 */
+button:active:not(:disabled),
+.btn:active:not(:disabled) { transform: translateY(1px); }
+
+/* 统计卡悬停微抬升（.card/.stat-card 已带 box-shadow 过渡） */
+.stat-card:hover { transform: translateY(-2px); }
+
+/* 表格行悬停渐显，替代生硬的即时换色 */
+table tbody tr { transition: background-color 0.1s ease; }
+
+/* ------------------------------------------------------------ 动效克制 */
+/* 用户偏好减弱动效时，一律收窄过渡与动画，尊重无障碍设置 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
