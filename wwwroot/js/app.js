@@ -1078,8 +1078,8 @@ function showAlertDetail(alertId) {
         field('Host', escapeHtml(alert.hostname || '-')) +
         field('Source', escapeHtml(alert.source || '-')) +
         field('Log ID', `<code>${escapeHtml(alert.log_id || '-')}</code>`) +
-        field('Message', `<div style="white-space: pre-wrap; word-break: break-word; background: #f8f9fa;
-            border: 1px solid #e9ecef; border-radius: 4px; padding: 0.6rem 0.75rem;
+        field('Message', `<div style="white-space: pre-wrap; word-break: break-word; background: var(--lm-subtle);
+            color: var(--lm-ink); border: 1px solid var(--lm-line); border-radius: 4px; padding: 0.6rem 0.75rem;
             font-family: 'SF Mono', Monaco, Consolas, monospace; font-size: 0.85rem;">${escapeHtml(alert.message || '-')}</div>`) +
         `<div id="alertAiResult"></div>`;
 
@@ -1141,7 +1141,7 @@ async function analyzeAlertFromDetail(alertId) {
         }
         renderAlertAiResult(box, res.data);
     } catch (e) {
-        box.innerHTML = `<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">`
+        box.innerHTML = `<div style="margin-top:.6rem; color:var(--lm-danger-ink); font-size:.9rem;">`
             + `AI 分析失败：${escapeHtml(e.message || String(e))}</div>`;
     } finally {
         setBusy(false);
@@ -1155,7 +1155,7 @@ function renderAiAnalysisBox(box, analysis, opts) {
     opts = opts || {};
     if (!analysis || opts.error) {
         const msg = opts.error || '未知错误';
-        box.innerHTML = `<div style="margin-top:.6rem; color:#c62828; font-size:.9rem;">`
+        box.innerHTML = `<div style="margin-top:.6rem; color:var(--lm-danger-ink); font-size:.9rem;">`
             + `AI 分析失败：${escapeHtml(String(msg))}</div>`;
         return;
     }
@@ -1165,10 +1165,10 @@ function renderAiAnalysisBox(box, analysis, opts) {
     const recs = a.recommendations || [];
     const li = (arr) => arr.map((x) => `<li>${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}</li>`).join('');
     box.innerHTML = `
-        <div style="margin-top:.75rem; border-top:1px solid #e9ecef; padding-top:.6rem;">
+        <div style="margin-top:.75rem; border-top:1px solid var(--lm-line); padding-top:.6rem;">
             <div style="font-weight:600; margin-bottom:.4rem;">
                 <i class="fas fa-robot"></i> AI 分析结果
-                <span style="font-weight:400; color:#888; font-size:.8rem;">${escapeHtml(opts.note || '（已写入 AI History）')}</span>
+                <span style="font-weight:400; color:var(--lm-ink-3); font-size:.8rem;">${escapeHtml(opts.note || '（已写入 AI History）')}</span>
             </div>
             <div style="margin-bottom:.4rem;">状态：${severityBadge(status)}</div>
             ${a.summary ? `<div style="margin-bottom:.4rem;">${escapeHtml(a.summary)}</div>` : ''}
@@ -1798,7 +1798,7 @@ function updateAnalysisDisplay(analysis) {
         <div style="margin-top: 1rem;">
             <h4><i class="fas fa-server"></i> 受影响主机</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                ${analysis.affected_hosts.map(host => `<span class="badge" style="background: var(--lm-accent); color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
+                ${analysis.affected_hosts.map(host => `<span class="badge" style="background: var(--lm-nav-active-bg); color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
             </div>
         </div>
         ` : ''}
