@@ -449,6 +449,27 @@ TTL(12h) 与主路径(720h) 还不一致。
 选项：A) 继续观察；B) 上调 Redis maxmemory 到 ~11G（宿主尚有 ~4GB 余量，才能真
 留满 30 天）；C) 接受更短保留期（内存降到 0.5–2GB，可控可预期）。当前按 A 观察。
 
+### 3.15 幻影主机/来源清理 —— ✅ 已完成（2026-10-05）
+**现象**：Logs 页「所有主机」出现大量不存在的来源/主机。
+**根因**：生产 `logaimonitor` 的 DockerCollector 会采集宿主机上**所有运行中容器**
+的日志（排除列表 `docker_excluded_containers` 只有 `["logaimonitor","logaimonitor-redis"]`）。
+历次验证/自测会话建的临时容器（`logai-*`、`ab-new`、`busy_davinci`、`pedantic_turing`
+等）没被排除，它们的日志以 `source=docker:<容器名>` 落入生产 Redis；容器删除后
+这些来源就变成「幻影」。另有验证脚本直接发的合成主机名（alertDiagHost、
+envCheckHost、netTestHost、rtFinal、tcpCheck…）。
+
+**本次清理**：
+- `--purge-sources "docker:" --confirm` 删 63 个来源、2558 条日志；
+- 按主机名精准删 10 个合成主机名（~10 条日志）+ 死索引 `LogRadarAI-test`、
+  `docker-host`、`10.99.99.9`。
+- 结果：来源 95→31、主机 53→42，均为真实设备。`ShellCrash`（7490 条，来源
+  192.168.50.11，跑代理工具）确认是真实设备，保留。
+
+**教训（重要）**：今后在宿主机上起任何临时容器做验证，要么把它加进生产的
+`docker_excluded_containers`，要么验证完立刻 `--purge-sources "docker:<名>" --confirm`
+清掉；否则每建一个测试容器，生产日志库就多一个幻影 `docker:*` 来源。宿主机的
+docker socket 是只读挂进 logaimonitor 的，它看得见所有容器。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
