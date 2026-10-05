@@ -37,7 +37,7 @@ internal static class ReadApi
     /// </summary>
     internal const int MaxPageSize = 1000;
 
-    public static void Map(WebApplication app, RedisStore store) {
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive) {
 
         // --- /api/logs 的筛选助手 -------------------------------------------
         // 空串视为"未提供"（与 request.args.get(...) 的语义一致）。
@@ -156,7 +156,8 @@ internal static class ReadApi
 
                 // 一批取回整页哈希:逐条 HGETALL 是 N 次串行往返(limit=1000 实测
                 // 0.10s,几乎全是等待);500 条一批后同样的页只剩毫秒级。
-                var hashes = await store.HashGetAllBatchAsync(ids);
+                // 哈希 miss 的(已归档)回落 SQLite 冷存储,响应字段完全一致。
+                var hashes = await HydrateAsync(store, archive, ids);
                 var entries = new List<Dictionary<string, object?>>(ids.Length);
                 for (int i = 0; i < ids.Length; i++)
                 {
@@ -193,6 +194,12 @@ internal static class ReadApi
         app.MapGet("/api/logs/{id}", async (string id) =>
         {
             var hash = await store.Db.HashGetAllAsync(id);
+            if (hash.Length == 0)
+            {
+                // 已归档的日志哈希不在 Redis，回落到 SQLite 冷存储。
+                var archived = await archive.GetFieldsBatchAsync([id]);
+                hash = archived[0];
+            }
             // The endpoint answers with a JSON body, not an empty 404; the UI parses it.
             if (hash.Length == 0) return JsonBody(new { error = "Log not found" }, 404);
 
@@ -259,6 +266,26 @@ internal static class ReadApi
 
             return JsonBody(await HostGroupsAsync(store));
         });
+    }
+
+    /// <summary>
+    /// 一批取回日志字段：Redis 哈希命中则用，miss（已归档冷日志）回落到 SQLite。
+    /// 返回值与 Redis 的 HashGetAllBatchAsync 形状一致（HashEntry[][]，缺失为空）。
+    /// </summary>
+    private static async Task<HashEntry[][]> HydrateAsync(RedisStore store, LogArchive archive, RedisValue[] ids)
+    {
+        var hashes = await store.HashGetAllBatchAsync(ids);
+        var missing = new List<string>();
+        for (int i = 0; i < ids.Length; i++)
+            if (hashes[i].Length == 0) missing.Add(ids[i].ToString());
+        if (missing.Count > 0)
+        {
+            var archived = await archive.GetFieldsBatchAsync(missing);
+            int k = 0;
+            for (int i = 0; i < ids.Length; i++)
+                if (hashes[i].Length == 0) hashes[i] = archived[k++];
+        }
+        return hashes;
     }
 
     /// <summary>Sorted names from the registry set, exactly like _index_names().</summary>

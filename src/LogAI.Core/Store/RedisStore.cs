@@ -37,6 +37,12 @@ public static class Keys
     /// </summary>
     public const string AnalysisFailures = "analysis:failures";
 
+    /// <summary>
+    /// 归档水位：score（epoch 秒）小于等于该值的日志哈希已搬到 SQLite 冷存储。
+    /// 归档任务据此只处理"新变老"的一小段，无需每次全量重扫时间线。
+    /// </summary>
+    public const string ArchiveWatermark = "logs:archive:watermark";
+
     public static string Log(string id) => "log:" + id;
     public static string LogSource(string source) => "logs:source:" + source;
     public static string LogHost(string host) => "logs:host:" + host;

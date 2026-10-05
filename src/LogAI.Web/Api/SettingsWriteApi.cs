@@ -32,6 +32,7 @@ internal static class SettingsWriteApi
         ["max_logs_per_analysis"] = (10, 5000, 500),
         ["batch_sample_limit"] = (1, 5000, 200),
         ["log_retention_hours"] = (1, 8760, 720),
+        ["archive_after_hours"] = (0, 8760, 168),
         ["health_watch_minutes"] = (1, 1440, 5),
     };
 

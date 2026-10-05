@@ -64,6 +64,8 @@ docker run -d --name logaimonitor \
   --network-alias redis \
   -p 5059:5059 -p 514:514/udp -p 515:515/tcp \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
+  -v /root/logai-archive:/data \
+  -e LOG_ARCHIVE_PATH=/data/logai-archive.db \
   -e AI_BASE_URL=http://192.168.50.23:8000/v1 \
   -e BATCH_SAMPLE_LIMIT=100 \
   -e REDIS_HOST=redis -e REDIS_PORT=6379 \

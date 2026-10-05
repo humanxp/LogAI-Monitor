@@ -32,6 +32,7 @@ internal static class AppHost
     public static async Task StartAsync(WebApplication app, CancellationToken cancellationToken)
     {
         var store = app.Services.GetRequiredService<RedisStore>();
+        var archive = app.Services.GetRequiredService<LogArchive>();
         var settings = await store.GetSettingsAsync();
 
         // 保留期的唯一来源是设置页的 log_retention_hours（默认 720h=30 天）。
@@ -40,6 +41,9 @@ internal static class AppHost
         // 存在且取值不同（settings=720 vs 部署脚本 -e LOG_RETENTION_HOURS=12），
         // 造成"部署写着 12 小时、实际留 30 天"的困惑；部署脚本里的死配置已移除。
         int retentionHours = IntSetting(settings, "log_retention_hours", 720);
+        // 冷热分层：超过该小时数的日志哈希搬到 SQLite，Redis 只留 ZSET 索引。
+        // 默认 168h=7 天；0 表示关闭归档。与保留期同理，每次使用前重读设置。
+        int archiveAfterHours = IntSettingAllowZero(settings, "archive_after_hours", 168);
         int analysisMinutes = Math.Max(1, IntSetting(settings, "analysis_interval", 2));
         // 单批分析量的取值来源必须唯一，否则会出现"设置页改了却不起作用"：
         //   * 设置页的输入框（Logs per Analysis Run）读写的是 max_logs_per_analysis，
@@ -474,7 +478,7 @@ internal static class AppHost
             async ct =>
             {
                 var cleanup = await LogAI.Core.Scheduler.CleanupJob.RunAsync(
-                    store, retentionHours, cancellationToken: ct);
+                    store, retentionHours, archive: archive, cancellationToken: ct);
                 // Log the outcome even when nothing was removed: without a positive
                 // line, "the job ran and found nothing" and "the job never ran" look
                 // identical in the log, which is exactly how a data deletion can go
@@ -484,6 +488,25 @@ internal static class AppHost
 
             },
             firstDelay: TimeSpan.FromMinutes(1));
+
+        // 冷热分层归档：把超过 archive_after_hours 的日志哈希搬到 SQLite。间隔固定
+        // 5 分钟；阈值每次重读设置（改成 0 即停用，用于回退）。首轮会追平历史存量，
+        // 之后每轮只处理"新变老"的一小段。
+        scheduler.Add("archive", () => TimeSpan.FromMinutes(5),
+            async ct =>
+            {
+                int hours = IntSettingAllowZero(await store.GetSettingsAsync(), "archive_after_hours", 168);
+                if (hours <= 0)
+                {
+                    Console.WriteLine("[Archive] disabled (archive_after_hours=0)");
+                    return;
+                }
+                var result = await LogAI.Core.Scheduler.LogArchiveJob.RunAsync(
+                    store, archive, hours, cancellationToken: ct);
+                Console.WriteLine("[Archive] archived " + result.Archived + " log(s), watermark="
+                    + result.Watermark.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+            },
+            firstDelay: TimeSpan.FromSeconds(30));
 
         if (Environment.GetEnvironmentVariable("DOCKER_COLLECTION") != "off")
         {

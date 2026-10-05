@@ -195,6 +195,11 @@ var redisOptions = new LogAI.Core.Store.RedisOptions
     Password = Environment.GetEnvironmentVariable("REDIS_PASSWORD"),
 };
 builder.Services.AddSingleton(new LogAI.Core.Store.RedisStore(redisOptions));
+
+// 冷存储：老日志哈希落盘（SQLite）。路径须指向持久卷，否则容器重建归档就丢了。
+var archivePath = Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db";
+builder.Services.AddSingleton(new LogAI.Core.Store.LogArchive(archivePath));
+
 var app = builder.Build();
 
 // Assets are served under /static (url_for('static', ...)),
@@ -232,7 +237,8 @@ LogAI.Web.Api.ChatApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.
 LogAI.Web.Api.AnalyzeApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies,
     new LogAI.Core.Ai.AiHistoryWriter(app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>()));
 
-LogAI.Web.Api.ReadApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
+LogAI.Web.Api.ReadApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
 LogAI.Web.Api.UsersApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.AiHistoryApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
 LogAI.Web.Api.AiHistoryApi.MapList(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());

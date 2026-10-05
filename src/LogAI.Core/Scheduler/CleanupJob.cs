@@ -41,13 +41,14 @@ public static class CleanupJob
 
     public static async Task<Result> RunAsync(RedisStore store, int retentionHours,
                                               int pageSize = DefaultPageSize,
+                                              LogArchive? archive = null,
                                               CancellationToken cancellationToken = default)
     {
         if (pageSize <= 0) pageSize = DefaultPageSize;
         var db = store.Db;
         double cutoff = Cutoff(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0, retentionHours);
 
-        int removed = await RemoveExpiredAsync(db, cutoff, pageSize, cancellationToken);
+        int removed = await RemoveExpiredAsync(db, archive, cutoff, pageSize, cancellationToken);
         int deadPurged = await PurgeDeadQueuedAsync(db, pageSize, cancellationToken);
 
         await db.StringSetAsync(Keys.CleanupLastRun, DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00"));
@@ -61,8 +62,8 @@ public static class CleanupJob
     /// 每页都从 rank 0 重新取，因此不需要游标：删除会把它自己从时间线摘掉，
     /// 下一轮 rank 0 就是新的最旧一条。空页即结束——这也让重复运行天然幂等。
     /// </summary>
-    private static async Task<int> RemoveExpiredAsync(IDatabase db, double cutoff, int pageSize,
-                                                      CancellationToken cancellationToken)
+    private static async Task<int> RemoveExpiredAsync(IDatabase db, LogArchive? archive, double cutoff,
+                                                       int pageSize, CancellationToken cancellationToken)
     {
         int removed = 0;
         while (!cancellationToken.IsCancellationRequested)
@@ -78,8 +79,27 @@ public static class CleanupJob
                 hashes[i] = db.HashGetAllAsync(page[i].ToString());
             var loaded = await Task.WhenAll(hashes);
 
+            // 已归档日志的哈希早被搬到 SQLite（Redis 里缺失），维度要从冷存储读回，
+            // 否则 source/host/severity 三个 ZSET 会残留死 id。
+            if (archive is not null)
+            {
+                var missing = new List<string>();
+                for (int i = 0; i < page.Length; i++)
+                    if (loaded[i].Length == 0) missing.Add(page[i].ToString());
+                if (missing.Count > 0)
+                {
+                    var archived = await archive.GetFieldsBatchAsync(missing, cancellationToken);
+                    int k = 0;
+                    for (int i = 0; i < page.Length; i++)
+                        if (loaded[i].Length == 0) loaded[i] = archived[k++];
+                }
+            }
+
             var batch = db.CreateBatch();
             var pending = new List<Task>(page.Length * 8);
+            var affectedSources = new HashSet<string>(StringComparer.Ordinal);
+            var affectedHosts = new HashSet<string>(StringComparer.Ordinal);
+            var affectedSeverities = new HashSet<string>(StringComparer.Ordinal);
 
             for (int i = 0; i < page.Length; i++)
             {
@@ -91,17 +111,34 @@ public static class CleanupJob
                 pending.Add(batch.SortedSetRemoveAsync(Keys.Timeline, id));
                 pending.Add(batch.SortedSetRemoveAsync(Keys.Unanalyzed, id));
                 if (fields.TryGetValue("source", out string? source))
+                {
                     pending.Add(batch.SortedSetRemoveAsync(Keys.LogSource(source), id));
+                    affectedSources.Add(source);
+                }
                 if (fields.TryGetValue("hostname", out string? hostname))
+                {
                     pending.Add(batch.SortedSetRemoveAsync(Keys.LogHost(hostname), id));
+                    affectedHosts.Add(hostname);
+                }
                 if (fields.TryGetValue("severity", out string? severity))
+                {
                     pending.Add(batch.SortedSetRemoveAsync(Keys.LogSeverity(severity), id));
+                    affectedSeverities.Add(severity);
+                }
 
                 removed++;
             }
 
             batch.Execute();
             await Task.WhenAll(pending);
+
+            // 保留期到期：一并删除 SQLite 归档记录（非归档 id 是 no-op）。
+            if (archive is not null)
+                await archive.DeleteBatchAsync(page.Select(p => p.ToString()).ToArray(), cancellationToken);
+
+            // 维度 ZSET 若已清空，把名字从注册表摘掉——否则停止上报的来源/主机/级别
+            // 会在下拉列表里永远留下幻影条目（之前"多出来的主机"就是它）。
+            await PurgeEmptyRegistriesAsync(db, affectedSources, affectedHosts, affectedSeverities, cancellationToken);
         }
 
         return removed;
@@ -145,5 +182,37 @@ public static class CleanupJob
         }
 
         return dead;
+    }
+
+    /// <summary>
+    /// 维度 ZSET 清空后，把名字从注册表（logs:index:sources/hosts/severities）摘掉。
+    /// 否则停止上报的来源/主机/级别会永远留在下拉列表里，就是"多出来的主机"。
+    /// </summary>
+    private static async Task PurgeEmptyRegistriesAsync(IDatabase db,
+        HashSet<string> sources, HashSet<string> hosts, HashSet<string> severities,
+        CancellationToken cancellationToken)
+    {
+        var batch = db.CreateBatch();
+        var lengthTasks = new List<Task<long>>(sources.Count + hosts.Count + severities.Count);
+        foreach (var source in sources)
+            lengthTasks.Add(batch.SortedSetLengthAsync(Keys.LogSource(source)));
+        foreach (var host in hosts)
+            lengthTasks.Add(batch.SortedSetLengthAsync(Keys.LogHost(host)));
+        foreach (var severity in severities)
+            lengthTasks.Add(batch.SortedSetLengthAsync(Keys.LogSeverity(severity)));
+        batch.Execute();
+        var lengths = await Task.WhenAll(lengthTasks);
+
+        int k = 0;
+        var emptySources = new List<RedisValue>();
+        foreach (var source in sources) if (lengths[k++] == 0) emptySources.Add(source);
+        var emptyHosts = new List<RedisValue>();
+        foreach (var host in hosts) if (lengths[k++] == 0) emptyHosts.Add(host);
+        var emptySeverities = new List<RedisValue>();
+        foreach (var severity in severities) if (lengths[k++] == 0) emptySeverities.Add(severity);
+
+        if (emptySources.Count > 0) await db.SetRemoveAsync(Keys.SourcesIndex, emptySources.ToArray());
+        if (emptyHosts.Count > 0) await db.SetRemoveAsync(Keys.HostsIndex, emptyHosts.ToArray());
+        if (emptySeverities.Count > 0) await db.SetRemoveAsync(Keys.SeveritiesIndex, emptySeverities.ToArray());
     }
 }
