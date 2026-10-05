@@ -381,6 +381,32 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 旧容器 `docker inspect` 读回，不落盘）。部署后 health 200、采集恢复 dropped=0、
 环境变量 26/26 对齐。
 
+### 3.12 序列化快速路径 + 密码式部署脚本 —— ✅ 已完成（2026-10-05）
+**a) `EscapeNonAscii` 纯 ASCII 快速路径（`ReadApi.cs`）**
+响应契约要求非 ASCII 转义为 `\uXXXX`、HTML 字符保持原样，所以序列化分两步：
+`JsonSerializer`（`UnsafeRelaxedJsonEscaping`）→ 逐字符 `EscapeNonAscii`。第二步
+对纯 ASCII payload 是纯浪费——`/api/logs` 整页 1.5MB 逐字符 `Append` 一遍。
+
+现改为先用 .NET 8 的 SIMD 向量化 `IndexOfAnyExceptInRange((char)0, (char)0x7F)`
+扫描：纯 ASCII 直接原样返回（与旧实现逐字符复制的输出**逐字节相同**）；命中
+非 ASCII 才走转义循环。扫描对 1.5MB 量级几乎免费，因此命中非 ASCII 时也没有
+可感知的回退。
+
+验证：生产只读 A/B 逐字节一致，含 84 处中文转义的 1.49MB 冻结窗口、以及
+alerts/filters/ai-history 等 ASCII 端点。（计时上收益取决于 payload 是否纯 ASCII：
+大页若混有中文日志则快路径不触发，此时退化为"一次向量化扫描 + 原循环"，无回归。）
+
+**b) 密码式部署脚本 `scripts/deploy-cs-password.sh`**
+面向"无法配置 SSH 密钥"的环境（只读 `$HOME`、只有密码）。与 `deploy-cs.sh`
+同样的四步，但：(1) 密码经 throwaway `SSH_ASKPASS` helper 交给 ssh，不落盘、
+不进命令行；(2) build + 读机密 + 重建容器在**远程单会话**内完成，四个机密
+从不离开主机、也不写到本地文件系统。用法见第 5 节，已端到端实测两次真实部署。
+
+**踩坑记录（脚本）**：`$SSH` 变量若含空格路径必须加引号——本脚本的语义是
+"单个可执行包装器路径"（auth 与 ssh 选项都封装在 wrapper 内），不是多词命令。
+另：容器重建后 ASP.NET 需数秒绑定端口，verify 步骤必须轮询（单次 curl 会误报
+`health=000`，看起来像部署失败、实际已成功）。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
@@ -408,6 +434,10 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 # 脚本做四件事：同步 → 构建 → 从旧容器读回 4 个机密 → 同参数重建容器 → 健康检查。
 # 前置：ssh-keygen -t ed25519 -N "" -f ~/.ssh/logai_deploy && ssh-copy-id -i ~/.ssh/logai_deploy.pub root@192.168.50.6
 # （脚本内部要二次 ssh 读旧容器环境变量，交互式密码在那里答不了。）
+
+# 无法配密钥的环境（只读 $HOME、只有密码）用密码版（见 3.12）：
+#   SSHPASS='<root 密码>' sh scripts/deploy-cs-password.sh
+# 同一四步，但密码经 throwaway SSH_ASKPASS、build+读机密+重建在远程单会话完成。
 
 # 健康与心跳
 curl -s -o /dev/null -w '%{http_code}\n' http://192.168.50.6:5059/api/health
