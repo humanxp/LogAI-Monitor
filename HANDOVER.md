@@ -470,6 +470,37 @@ envCheckHost、netTestHost、rtFinal、tcpCheck…）。
 清掉；否则每建一个测试容器，生产日志库就多一个幻影 `docker:*` 来源。宿主机的
 docker socket 是只读挂进 logaimonitor 的，它看得见所有容器。
 
+### 3.16 冷热分层归档（SQLite 冷存储）—— ✅ 已完成（2026-10-06）
+**动机**：Redis 7GB 里大头是日志哈希（~1.1KB/条），而有序集合索引每条才 ~70B。
+把「没人实时看」的老日志哈希搬到硬盘、索引留内存，即可大幅降内存且不影响筛选。
+
+**实现（方案 C）**
+- 新 `LogArchive`（SQLite，WAL）：`/data/logai-archive.db`（宿主机卷 `/root/logai-archive`）。
+  表 `logs` 字段与 Redis 哈希一致；可选字段 pid/proc_id/msg_id 存 NULL，保证回退
+  读出的字段与热日志逐字节一致。
+- 新 `LogArchiveJob`：调度任务每 5 分钟跑，把超过 `archive_after_hours`（默认
+  **168h=7 天**，0=停用）的日志哈希搬进 SQLite、删 Redis 哈希、**保留四个 ZSET**。
+  增量推进靠 Redis 水位 `logs:archive:watermark`（score），只处理「新变老」的一段。
+- 读回退：`/api/logs` 与 `/api/logs/{id}` 哈希 miss 时查 SQLite（`HydrateAsync`）。
+- `CleanupJob`：归档日志到期时从 SQLite 读 source/hostname/severity 摘除维度 ZSET，
+  删 SQLite 记录，并新增 `PurgeEmptyRegistriesAsync`——维度 ZSET 清空就摘掉注册表
+  名字（**根治 3.15 的幻影主机**）。
+
+**效果（生产实测）**：2,095,679 条老日志落盘（SQLite 560MB），Redis **7.22G → 4.29G**；
+读回退逐字段正确，采集/分析/巡检不受影响。剩余 4.29G = 7 天热哈希（~1.3G）+
+四个 ZSET（~0.9G，索引全量保留）+ ai_history + 碎片。
+
+**回退**：当前镜像已备份为 `logaimonitor-cs:pre-archive`。回退 = `docker tag
+logaimonitor-cs:pre-archive logaimonitor-cs:latest` + 按 3.7 重建容器（去掉归档卷
+/env 亦可，但留着无害）；或只把设置 `archive_after_hours` 改为 0 即停用归档
+（已归档数据仍在 SQLite，pre-archive 镜像读不到它们——那是回退的代价）。
+
+**踩坑记录**：归档循环曾用 `nextWatermark` 记录水位却从不回写 `watermark`，导致
+无限循环重复处理同一批（CPU 174%、WAL 不增长、无完成日志）。教训：推进型游标的
+"当前值"必须在循环内就地更新，别用"下一个值"变量最后才写回。
+另：SQLite 驱动是同步的，逐行 `await ExecuteNonQueryAsync` 会叠加 Task.Run 调度
+开销，5000 行批量插入应同步 `ExecuteNonQuery()`。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
