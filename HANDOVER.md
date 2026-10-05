@@ -41,17 +41,23 @@
 | 性能 | `/api/stats` 冷启动 4.05s → **0.003s**；筛选 0.20–0.36s → **0.014s**（60 秒交集缓存） |
 | 时间筛选 | `/api/logs`、`/api/ai-history` 的 `start/end` 逐项验证（含颠倒交换、ISO 格式、空结果） |
 | 无效参数 | `limit=abc`、`start=abc`、`limit=-5`、超大/颠倒时间窗 → 全部 200，**无 500** |
+| 分批管道（3.10） | 18/18 自测通过；生产数据只读 A/B 全部读端点逐字节一致；500 条突发 274–373ms → **182ms** |
+| 界面对比度（3.11） | 无头 Chromium 审计：页面级 28→1、弹窗级 35→0（剩余 1 处为登录按钮渐变误报） |
 
 ---
 
 ## 3. 工作项与确切下一步
 
-> 现状（2026-10-03）：
-> **3.1 / 3.2 / 3.3 / 3.5 / 3.6 已完成并部署**，其中 3.6（晚上主题）与
-> 3.5（死代码/镜像清理）是新增的工作项。
-> **只剩 3.4 需要人来做**：撤销曾出现在对话里的 Telegram 令牌与两个 GitHub 令牌
-> ——这一步与代码无关，但优先级最高。
-> 3.7 是部署方式的隐患（已加脚本缓解），3.8 是一个待确认的历史遗留问题。
+> 现状（2026-10-05）：
+> **3.10（读端点/采集/维护路径分批管道化）与 3.11（界面对比度修复 + 打磨）已
+> 完成并部署**，都按本项目一贯的三层验证（隔离库自测 → 生产数据只读 A/B 逐字节
+> 对比 → 计时/审计）走完。
+> **仍只剩 3.4 需要人来做**：撤销曾出现在对话里的 Telegram 令牌与两个 GitHub
+> 令牌——这一步与代码无关，但优先级最高。
+
+> 现状（2026-10-03，已过时，仅留档）：
+> 3.1 / 3.2 / 3.3 / 3.5 / 3.6 已完成并部署；3.7 是部署方式的隐患（已加脚本缓解），
+> 3.8 是一个待确认的历史遗留问题。
 
 ### 3.1 补两个静默删除入口的日志 —— ✅ 已完成（2026-10-03）
 ```csharp
@@ -300,6 +306,80 @@ HTTP 把 `+` 解成空格 ⇒ 时间戳解析失败 ⇒ 两轮都退化成全量
 **旁注**：网络名 `logradarai_logaimonitor-net`、卷名 `logradarai_redis-data`
 是历史部署留下的名字。改名要重建网络/卷，而卷名一改就必须迁移全部生产数据，
 **收益纯 cosmetic、风险不小**，因此保留原名。
+
+### 3.10 读端点/采集/维护路径的分批管道化 —— ✅ 已完成（2026-10-05）
+**主题**：把项目里"循环内逐条 `await` Redis"的串行往返统一收敛为**分批管道**，
+每批一次往返。这批改动不改任何接口契约 / 字段集 / 键布局，只消除往返等待。
+
+**改动清单（15 个源码文件）**
+- 新增共享助手 `RedisStore.HashGetAllBatchAsync(ids, chunkSize=500)`。
+- 读端点：`/api/logs`、`/api/ai-history`、`/api/alerts`（页与 acknowledged 扫描
+  两个分支）、`/api/filters`、`/api/users` 的逐条 `HGETALL` → 一批取回；
+  `/api/hosts` 的逐键 `ZCARD`、`/api/syslog/diagnostics` 的每客户端三读
+  （hash+protocols+per-minute）、`/api/stats` 的七个计数/索引读取 → 单批。
+- 采集热路径：`ClientTracker.TrackAsync` 约 8 次串行往返 → 单批（首见初始化用
+  字段级 `HSETNX`，顺带消除 EXISTS↔HSET 之间的并发竞态）；`LogWriter.StoreAsync`
+  的 `HSET` 并入索引批。
+- `LoadFiltersAsync`：每条日志重读规则 → 进程内 2 秒 TTL 缓存 + 过滤写接口
+  （FilterWriteApi）每次写后 `InvalidateFilterCache()`。同进程改动即时生效，
+  外部直改 Redis 最多等 2 秒——与 60 秒筛选交集缓存同一哲学。
+- 维护/写：`LogMaintenance.DeleteBySourceAsync`（含"来源索引缺失时扫整条时间线"
+  的回退路径，原来 300 万条逐条 HGET 能占住端点几分钟）、`ClearAllAsync`、
+  `AlertMaintenance.AcknowledgeAllAsync` / `ClearAcknowledgedAsync`、
+  `DELETE /api/ai-history` 清空，全部批量管道化。
+
+**验证（三层，均为正面判据）**
+1. 隔离库（DB 9）自测 18/18 `ALL PASSED`（`client-tracker`、`ingest`、
+   `maintenance`、`alert`、`filter`、`filter-load`、`parse`、`json`、`session`、
+   `health`、`cleanup`、`scheduler`、`commit`、`prompt`、`ai-history`、`telegram`、
+   `docker`、`docker-poll`）。`runner`/`ai` 两项需要真实 AI 端点凭据，在测试
+   容器里失败，但**新旧镜像失败方式逐字一致**，属环境性而非回归。
+2. 生产数据只读 A/B：新旧镜像各起一个 `REDIS_DB=0` 且不设 `ALLOW_DB0_WRITES`
+   的实例，同一 `SECRET_KEY`，并行抓取后逐字节比较——**全部读端点一致**，含
+   3MB 冻结窗口、1.58MB `logs1000`、diagnostics、users、settings。
+3. DB 9 合成数据 A/B：新旧实例共用 DB 9（各开一个 syslog 端口），同源流量下
+   diagnostics 逐字节一致、过滤器缓存失效端到端生效（新建规则→下一条匹配日志
+   立即告警）、告警链路两端都触发。
+
+**计时**：500 条突发 OLD 274–373ms → NEW 182ms（应用层零丢弃；两端对称的少量
+丢包是内核级 UDP 突发损耗，非应用行为）。`/api/logs?limit=1000` 0.10s → 0.04s、
+`/api/ai-history?limit=1000` 0.13s → 0.06s——剩余耗时主要是 JSON 序列化 +
+`EscapeNonAscii`（逐字符）+ 1.5MB 传输，Redis 往返已基本消除。
+
+**踩坑记录**：本仓库 Dockerfile 的 `ENTRYPOINT ["dotnet","LogAI.Web.dll"]` 意味着
+`docker run <image> dotnet LogAI.Web.dll --x-selftest` 会把 `dotnet` 当作 `args[0]`，
+自测分支匹配不上，整包以 Web 服务形态空跑。正确姿势是 `docker run <image> --x-selftest`
+（只传 flag）。README 里那句 `dotnet LogAI.Web.dll --parse-selftest` 对 `docker exec`
+成立、对 `docker run` 不成立，别照抄。
+
+### 3.11 界面对比度修复 + 细节打磨 —— ✅ 已完成（2026-10-05）
+**方法**：`.preview` 工具（无头 Chromium 截图 + 逐元素对比度审计）跑线上真实页面，
+以审计结果（`contrast.json` / `modal-contrast.json`）为唯一改动依据。
+
+**改动（仅 `wwwroot/css/refined.css`，叠加层不改原版 style.css）**
+- 夜间侧栏/分页当前项：`--lm-accent`（#58a6ff）+白字 2.53:1 → 专用
+  `--lm-nav-active-bg`（#2b68c4）5.41:1。
+- 彩色实心按钮 Ack/Clear/Close：`success` #28a745（3.13:1）、`danger` #dc3545、
+  `secondary` #6c757d 收敛为令牌 `--lm-btn-success/danger/secondary-bg`
+  （#18752f/#b02a37/#5a6268），对白字与夜间 off-white #e8ecf2 双重 ≥4.5:1；
+  夜间两条通用按钮文字规则都排除这些变体（否则 background:transparent / ink 色
+  会把白字压成 3.8–4:1 甚至透明底白字）。
+- 灰色标签文字 `--lm-ink-3` #8a8f98（白底 3.25:1）→ #6b7280（白/次级面均 ≥4.55:1）。
+- `.log-host` 链接蓝 #2196F3（白底 3.12:1）→ 仅白天覆盖 #0b6eb8；侧栏 logo 渐变
+  亮端 #00a3cc（2.95:1）→ #0077b6。
+- 打磨：顶栏毛玻璃（`--lm-header-bg` 改半透明 + `.main-header` backdrop-filter）、
+  侧栏当前项左侧内嵌指示条、统计卡悬停抬升、按钮按下反馈、键盘 `:focus-visible`
+  焦点环、`prefers-reduced-motion` 收窄动效。
+
+**验证**：审计前后 **页面级 28→1、弹窗级 35→0**；剩余 1 处是登录按钮
+`linear-gradient` 背景（审计跳过 `background-image`，误报 1:1），实际两端
+#0066cc/#004c99 对白字均 ≥5.3:1，无需处理。夜间两套 26 个「页面×主题」与 8 个
+弹窗全部渲染无错误。
+
+**部署说明**：3.10 与 3.11 分两个 commit（`perf(redis)`、`fix(ui)`），一起
+`docker build -t logaimonitor-cs:latest` 后按 3.7 的脚本参数重建容器（机密仍从
+旧容器 `docker inspect` 读回，不落盘）。部署后 health 200、采集恢复 dropped=0、
+环境变量 26/26 对齐。
 
 ---
 
