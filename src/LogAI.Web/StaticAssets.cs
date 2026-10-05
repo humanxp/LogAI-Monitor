@@ -32,7 +32,7 @@ internal static class StaticAssets
         string root = Path.Combine(AppContext.BaseDirectory, "wwwroot");
         if (!Directory.Exists(root)) root = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
 
-        app.MapGet("/static/{**path}", (string? path) =>
+        app.MapGet("/static/{**path}", async (string? path, HttpContext http) =>
         {
             if (string.IsNullOrEmpty(path)) return Results.NotFound();
 
@@ -43,7 +43,11 @@ internal static class StaticAssets
             string type = ContentTypes.TryGetValue(Path.GetExtension(full), out string? known)
                 ? known
                 : "application/octet-stream";
-            return Results.File(full, type);
+            // 静态资源(js/css)每次部署才变：5 分钟缓存，避免每页导航都回源校验(304)。
+            // 用内存字节返回(而非 Results.File 的 sendfile)，好让 gzip 中间件压缩。
+            http.Response.Headers.CacheControl = "public, max-age=300";
+            byte[] bytes = await File.ReadAllBytesAsync(full);
+            return Results.Bytes(bytes, type);
         });
     }
 }

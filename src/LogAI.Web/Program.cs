@@ -10,6 +10,7 @@
 
 using LogAI.Web;
 using LogAI.Web.Rendering;
+using Microsoft.AspNetCore.ResponseCompression;
 
 var pages = new (string Path, string Template, string Title)[]
 {
@@ -186,6 +187,17 @@ if (args.Length >= 2 && args[0] == "--render-dump")
 }
 
 var builder = WebApplication.CreateBuilder(args);
+// gzip 压缩静态资源与 JSON 响应：app.js(124KB)+socket.io(45KB)+CSS 压缩后 ~60KB，
+// 每个页面导航都能少传 ~180KB，明显改善页面加载。
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(new[]
+    {
+        "application/javascript; charset=utf-8",
+        "text/css; charset=utf-8",
+    });
+});
 builder.Services.AddSingleton(new JinjaEngine(templateRoot));
 var redisOptions = new LogAI.Core.Store.RedisOptions
 {
@@ -201,6 +213,8 @@ var archivePath = Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/da
 builder.Services.AddSingleton(new LogAI.Core.Store.LogArchive(archivePath));
 
 var app = builder.Build();
+
+app.UseResponseCompression();
 
 // Assets are served under /static (url_for('static', ...)),
 // so the mount point has to match or every page renders unstyled.
