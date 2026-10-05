@@ -59,7 +59,7 @@ tar czf - --exclude=bin --exclude=obj \
 
 echo "== 2/3 build + recreate (remote, credentials read from the live container) =="
 "$SSH" "$HOST" "TREE='${TREE}' sh -s" <<'REMOTE'
-set -e
+set -eo pipefail
 cd "$TREE"
 docker build -t logaimonitor-cs:latest . 2>&1 | tail -1
 
