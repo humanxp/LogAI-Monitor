@@ -33,9 +33,11 @@ internal static class UsersApi
             var ids = await store.Db.SetMembersAsync(Keys.Users);
             var users = new List<Dictionary<string, object?>>(ids.Length);
 
-            foreach (var id in ids)
+            // 一批取回所有用户哈希:原来逐条 HGETALL,用户越多页面开得越慢。
+            var hashes = await store.HashGetAllBatchAsync(ids);
+            for (int i = 0; i < ids.Length; i++)
             {
-                var hash = await store.Db.HashGetAllAsync(id.ToString());
+                var hash = hashes[i];
                 if (hash.Length == 0) continue;
 
                 var stored = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);

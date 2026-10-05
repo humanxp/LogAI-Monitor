@@ -154,10 +154,13 @@ internal static class ReadApi
                     : await store.Db.SortedSetRangeByRankAsync(
                           scanKey, offset, offset + limit - 1, Order.Descending);
 
+                // 一批取回整页哈希:逐条 HGETALL 是 N 次串行往返(limit=1000 实测
+                // 0.10s,几乎全是等待);500 条一批后同样的页只剩毫秒级。
+                var hashes = await store.HashGetAllBatchAsync(ids);
                 var entries = new List<Dictionary<string, object?>>(ids.Length);
-                foreach (var id in ids)
+                for (int i = 0; i < ids.Length; i++)
                 {
-                    var hash = await store.Db.HashGetAllAsync(id.ToString());
+                    var hash = hashes[i];
                     var entry = new Dictionary<string, object?>(StringComparer.Ordinal);
                     foreach (var field in hash)
                     {
@@ -214,9 +217,11 @@ internal static class ReadApi
             var ids = await store.Db.SetMembersAsync(Keys.Filters);
             var list = new List<Dictionary<string, object?>>(ids.Length);
 
-            foreach (var id in ids)
+            // 与 /api/logs 同一做法:整页一批取回,不再逐条往返。
+            var hashes = await store.HashGetAllBatchAsync(ids);
+            for (int i = 0; i < ids.Length; i++)
             {
-                var hash = await store.Db.HashGetAllAsync(id.ToString());
+                var hash = hashes[i];
                 if (hash.Length == 0) continue;
 
                 var entry = new Dictionary<string, object?>(StringComparer.Ordinal);
@@ -279,13 +284,33 @@ internal static class ReadApi
         foreach (string name in hostNames)
             if (IsIp(name)) ips.Add(name);
 
-        var groups = new List<HostEntry>(ips.Count);
+        // 2) Names with no sender IP behind them, minus parser artifacts: a
+        //    program tag in the hostname slot must never name a device.
+        //    (Computed before the count reads so that all ZCARDs can share one batch.)
+        var plainNames = new List<string>();
+        foreach (string name in hostNames)
+            if (!IsIp(name) && !absorbed.Contains(name) && !LooksLikeProgramTag(name))
+                plainNames.Add(name);
+
+        // 所有计数一次批量取回:原来每个 IP / 主机名各一次 ZCARD,53 个来源
+        // 就是 53 次串行往返,页面每次打开都在等 Redis。
+        var batch = store.Db.CreateBatch();
+        var ipCounts = new Task<long>[ips.Count];
+        int i = 0;
+        foreach (string ip in ips) ipCounts[i++] = batch.SortedSetLengthAsync(Keys.LogSource(ip));
+        var nameCounts = new Task<long>[plainNames.Count];
+        i = 0;
+        foreach (string name in plainNames) nameCounts[i++] = batch.SortedSetLengthAsync(Keys.LogHost(name));
+        batch.Execute();
+
+        var groups = new List<HostEntry>(ips.Count + plainNames.Count);
+        i = 0;
         foreach (string ip in ips)
         {
             mapping.TryGetValue(ip, out string? name);
             string label = string.IsNullOrEmpty(name) ? ip : ShortHostLabel(name);
-            long count = await store.Db.SortedSetLengthAsync(Keys.LogSource(ip));
-            groups.Add(new HostEntry(count, string.IsNullOrEmpty(name) ? ip : $"{name} ({ip})", "ip", label, ip));
+            groups.Add(new HostEntry(await ipCounts[i++],
+                string.IsNullOrEmpty(name) ? ip : $"{name} ({ip})", "ip", label, ip));
         }
 
         // Duplicate short labels (one hostname seen from two IPs) are
@@ -293,21 +318,16 @@ internal static class ReadApi
         var seen = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var group in groups)
             seen[group.label] = seen.GetValueOrDefault(group.label) + 1;
-        for (int i = 0; i < groups.Count; i++)
+        for (int j = 0; j < groups.Count; j++)
         {
-            if (seen[groups[i].label] <= 1 || groups[i].kind != "ip") continue;
-            string octet = groups[i].value.Split('.').Last();
-            groups[i] = groups[i] with { label = $"{groups[i].label} (.{octet})" };
+            if (seen[groups[j].label] <= 1 || groups[j].kind != "ip") continue;
+            string octet = groups[j].value.Split('.').Last();
+            groups[j] = groups[j] with { label = $"{groups[j].label} (.{octet})" };
         }
 
-        // 2) Names with no sender IP behind them, minus parser artifacts: a
-        //    program tag in the hostname slot must never name a device.
-        foreach (string name in hostNames)
-        {
-            if (IsIp(name) || absorbed.Contains(name) || LooksLikeProgramTag(name)) continue;
-            long count = await store.Db.SortedSetLengthAsync(Keys.LogHost(name));
-            groups.Add(new HostEntry(count, name, "host", ShortHostLabel(name), name));
-        }
+        i = 0;
+        foreach (string name in plainNames)
+            groups.Add(new HostEntry(await nameCounts[i++], name, "host", ShortHostLabel(name), name));
 
         groups.Sort((a, b) => string.CompareOrdinal(a.label.ToLowerInvariant(), b.label.ToLowerInvariant()));
         return groups;

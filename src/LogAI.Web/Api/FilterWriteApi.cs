@@ -48,6 +48,8 @@ internal static class FilterWriteApi
             entries.AddRange(Encode(payload));
             await store.Db.HashSetAsync(id, entries.ToArray());
             await store.Db.SetAddAsync(Keys.Filters, id);
+            // 规则集变了:失效采集路径的过滤器缓存,下一条日志立即用新规则。
+            AppHost.InvalidateFilterCache();
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -72,6 +74,7 @@ internal static class FilterWriteApi
             entries.Add(new HashEntry("updated_at",
                 DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffzzz", CultureInfo.InvariantCulture)));
             await store.Db.HashSetAsync(key, entries.ToArray());
+            AppHost.InvalidateFilterCache();
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok" });
         });
 
@@ -85,6 +88,7 @@ internal static class FilterWriteApi
 
             await store.Db.KeyDeleteAsync(key);
             await store.Db.SetRemoveAsync(Keys.Filters, key);
+            AppHost.InvalidateFilterCache();
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok" });
         });
     }

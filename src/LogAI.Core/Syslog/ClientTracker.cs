@@ -49,41 +49,49 @@ public sealed class ClientTracker(RedisStore store)
         string key = "syslog:client:" + sourceIp;
         var db = store.Db;
 
-        if (!await db.KeyExistsAsync(key))
+        // 整条流水线并成一个批:原来是"EXISTS + 条件 HSET + HSET + SADD +
+        // HINCRBY + ZADD + ZREMRANGEBYSCORE + ZADD"约 8 次串行往返,采集高峰时
+        // 这些等待全部落在日志入库的路径上。
+        // 首见初始化改用字段级 HSETNX:三个字段只在不存在时写入,与原来
+        // "整键不存在才补写 first_seen/message_count=0/error_count=0"的数据
+        // 形状完全一致,而且消除了原来 EXISTS 与 HSET 之间两个 worker 同时
+        // 首见同一客户端的竞态。
+        var batch = db.CreateBatch();
+        var pending = new List<Task>(9)
         {
-            await db.HashSetAsync(key,
+            batch.HashSetAsync(key, "first_seen", timestamp, When.NotExists),
+            batch.HashSetAsync(key, "message_count", 0, When.NotExists),
+            batch.HashSetAsync(key, "error_count", 0, When.NotExists),
+            batch.HashSetAsync(key,
             [
-                new HashEntry("first_seen", timestamp),
-                new HashEntry("message_count", 0),
-                new HashEntry("error_count", 0),
-            ]);
-        }
-
-        await db.HashSetAsync(key,
-        [
-            new HashEntry("last_seen", timestamp),
-            new HashEntry("hostname", hostname),
-        ]);
-
-        if (protocol.Length > 0) await db.SetAddAsync(key + ":protocols", protocol);
+                new HashEntry("last_seen", timestamp),
+                new HashEntry("hostname", hostname),
+            ]),
+            batch.SortedSetAddAsync(Keys.ClientsIndex, sourceIp, now),
+        };
+        if (protocol.Length > 0) pending.Add(batch.SetAddAsync(key + ":protocols", protocol));
 
         if (error)
         {
             // A failed message is not counted towards the rate, but it still
-            // refreshes the activity index below.
-            await db.HashIncrementAsync(key, "error_count");
-            await db.HashSetAsync(key, [new HashEntry("last_error", errorMessage ?? ""),
-                                       new HashEntry("last_error_time", timestamp)]);
+            // refreshes the activity index above.
+            pending.Add(batch.HashIncrementAsync(key, "error_count"));
+            pending.Add(batch.HashSetAsync(key,
+            [
+                new HashEntry("last_error", errorMessage ?? ""),
+                new HashEntry("last_error_time", timestamp),
+            ]));
         }
         else
         {
-            await db.HashIncrementAsync(key, "message_count");
+            pending.Add(batch.HashIncrementAsync(key, "message_count"));
             string recent = key + ":recent";
-            await db.SortedSetAddAsync(recent, now.ToString(CultureInfo.InvariantCulture), now);
-            await db.SortedSetRemoveRangeByScoreAsync(recent, 0, now - WindowSeconds);
+            pending.Add(batch.SortedSetAddAsync(recent,
+                now.ToString(CultureInfo.InvariantCulture), now));
+            pending.Add(batch.SortedSetRemoveRangeByScoreAsync(recent, 0, now - WindowSeconds));
         }
-
-        await db.SortedSetAddAsync(Keys.ClientsIndex, sourceIp, now);
+        batch.Execute();
+        await Task.WhenAll(pending);
     }
 
     /// <summary>True when a record existed; removes all four keys.</summary>

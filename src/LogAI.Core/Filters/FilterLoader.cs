@@ -20,6 +20,15 @@ public static class FilterLoader
         // matched nothing, so alerts never fired.
         string key = filterId.StartsWith("filter:", StringComparison.Ordinal) ? filterId : Keys.Filter(filterId);
         var hash = await store.Db.HashGetAllAsync(key);
+        return FromHash(filterId, hash);
+    }
+
+    /// <summary>
+    /// 已取回哈希的解码入口(批量读取共用):键名规则与 LoadAsync 相同,
+    /// 只是哈希由调用方批量取回,不再逐条往返。
+    /// </summary>
+    public static FilterRule? FromHash(string filterId, StackExchange.Redis.HashEntry[] hash)
+    {
         if (hash.Length == 0) return null;
 
         var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);

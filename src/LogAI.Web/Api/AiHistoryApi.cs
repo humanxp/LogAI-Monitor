@@ -148,9 +148,12 @@ internal static class AiHistoryApi
                       Keys.AiHistoryTimeline, offset, offset + limit - 1, Order.Descending);
 
             var history = new List<Dictionary<string, object?>>(ids.Length);
-            foreach (var id in ids)
+            // 整页哈希一批取回(与上面 stats 端点同一做法):原来逐条 HGETALL,
+            // limit=1000 实测 0.13s,几乎全是串行往返的等待。
+            var hashes = await store.HashGetAllBatchAsync(ids);
+            for (int i = 0; i < ids.Length; i++)
             {
-                var hash = await store.Db.HashGetAllAsync(id.ToString());
+                var hash = hashes[i];
                 if (hash.Length == 0) continue;
                 var stored = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
@@ -159,7 +162,7 @@ internal static class AiHistoryApi
                     ["analysis"] = stored.TryGetValue("analysis", out string? analysis)
                         ? ReadApi.ParseSortedObject(analysis)
                         : new Dictionary<string, object?>(StringComparer.Ordinal),
-                    ["id"] = id.ToString(),
+                    ["id"] = ids[i].ToString(),
                     ["logs_analyzed"] = int.TryParse(stored.GetValueOrDefault("logs_analyzed"), out int count) ? count : 0,
                     ["timestamp"] = stored.GetValueOrDefault("timestamp") ?? "",
                     ["type"] = stored.GetValueOrDefault("type") ?? "",

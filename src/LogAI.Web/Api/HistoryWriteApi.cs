@@ -45,11 +45,20 @@ internal static class HistoryWriteApi
                 return ReadApi.JsonBody(new { error = "Access denied" }, 403);
 
             var ids = await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1);
+            // 删除分批管道化:原来逐条 DEL,1.5 万条历史就是 1.5 万次串行往返。
+            // 计数保持原语义:时间线上取到的每条都计入 deleted。
             long deleted = 0;
-            foreach (var id in ids)
+            const int Chunk = 500;
+            for (int offset = 0; offset < ids.Length; offset += Chunk)
             {
-                await store.Db.KeyDeleteAsync(id.ToString());
-                deleted++;
+                int size = Math.Min(Chunk, ids.Length - offset);
+                var batch = store.Db.CreateBatch();
+                var deletes = new Task<bool>[size];
+                for (int i = 0; i < size; i++)
+                    deletes[i] = batch.KeyDeleteAsync(ids[offset + i].ToString());
+                batch.Execute();
+                await Task.WhenAll(deletes);
+                deleted += size;
             }
             await store.Db.KeyDeleteAsync(Keys.AiHistoryTimeline);
 

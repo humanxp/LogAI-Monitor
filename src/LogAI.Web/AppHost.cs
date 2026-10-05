@@ -123,13 +123,11 @@ internal static class AppHost
         // deployment has no user at all, so without this nobody could ever sign in.
         // Idempotent: it only acts when no account with role=admin exists.
         bool hasAdmin = false;
-        foreach (var value in await store.Db.SetMembersAsync("users:all"))
-        {
-            var fields = await store.Db.HashGetAllAsync(value.ToString());
-            foreach (var f in fields)
+        var userIds = await store.Db.SetMembersAsync("users:all");
+        var userHashes = await store.HashGetAllBatchAsync(userIds);
+        for (int i = 0; i < userIds.Length && !hasAdmin; i++)
+            foreach (var f in userHashes[i])
                 if (f.Name == "role" && f.Value == "admin") { hasAdmin = true; break; }
-            if (hasAdmin) break;
-        }
         if (!hasAdmin)
         {
             string adminId = "user:" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
@@ -187,10 +185,10 @@ internal static class AppHost
             await tracker.TrackAsync(entry.Source, protocol, entry.Hostname ?? entry.Source,
                                      cancellationToken: cancellationToken);
 
-            // 过滤器在每条日志上重新读取（规则很少，代价可接受），但这意味着
-            // "一条都没匹配" 与 "根本没加载到规则" 在日志里无法区分。默认只在
-            // 有匹配时打点；需要排查时设 FILTER_TRACE=1，则每一条日志都记录
-            // 本轮的规则数与命中数，用来区分"没进循环""进了但没匹配""匹配了"。
+            // 过滤器用进程内短 TTL 缓存(见 LoadFiltersAsync):规则集变化频率极低,
+            // 而这里每条日志都会读一遍。同一进程里的过滤写接口会主动失效缓存
+            // (改完立即生效);直接改 Redis 的外部写入最多 2 秒后生效——与
+            // /api/stats 的可用性探测、筛选交集缓存同一哲学。
             bool filterTrace = Environment.GetEnvironmentVariable("FILTER_TRACE") == "1";
             var rules = await LoadFiltersAsync(store);
             int matched = 0;
@@ -638,14 +636,47 @@ internal static class AppHost
 
     private static readonly Dictionary<string, double> _healthLastAlert = new(StringComparer.Ordinal);
 
+    // ---- 过滤器规则缓存 -------------------------------------------------
+    // 规则集每条日志读一遍(OnStored),但变化频率极低:进程内缓存 + 2 秒 TTL,
+    // 写接口(同进程的 FilterWriteApi)在每次写后主动失效,界面改完立即生效;
+    // 外部直接改 Redis 的场景最多等一个 TTL。规则对象只读不改,缓存共享安全。
+    private static readonly object FilterCacheLock = new();
+    private static List<FilterRule>? _filterCache;
+    private static DateTimeOffset _filterCacheAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan FilterCacheTtl = TimeSpan.FromSeconds(2);
+
+    /// <summary>过滤写接口改动了规则集之后调用,让下一条日志立即用上新规则。</summary>
+    internal static void InvalidateFilterCache()
+    {
+        lock (FilterCacheLock) { _filterCache = null; }
+    }
+
     private static async Task<List<FilterRule>> LoadFiltersAsync(RedisStore store)
     {
-        var ids = await store.Db.SetMembersAsync(Keys.Filters);
-        var rules = new List<FilterRule>(ids.Length);
-        foreach (var id in ids)
+        List<FilterRule>? cached;
+        lock (FilterCacheLock)
         {
-            var rule = await FilterLoader.LoadAsync(store, id.ToString());
+            cached = _filterCache;
+            if (cached is not null
+                && DateTimeOffset.UtcNow - _filterCacheAt < FilterCacheTtl)
+                return cached;
+        }
+
+        var ids = await store.Db.SetMembersAsync(Keys.Filters);
+        // 规则哈希一批取回:原来逐条 HGETALL,规则一多每条日志都要串行等一遍。
+        var hashes = await store.HashGetAllBatchAsync(ids);
+        var rules = new List<FilterRule>(ids.Length);
+        for (int i = 0; i < ids.Length; i++)
+        {
+            if (hashes[i].Length == 0) continue;
+            var rule = FilterLoader.FromHash(ids[i].ToString(), hashes[i]);
             if (rule is not null && rule.Enabled) rules.Add(rule);
+        }
+
+        lock (FilterCacheLock)
+        {
+            _filterCache = rules;
+            _filterCacheAt = DateTimeOffset.UtcNow;
         }
         return rules;
     }

@@ -88,15 +88,27 @@ internal static class StatsApi
                 });
             }
 
-            long lastDay = await db.SortedSetLengthAsync(Keys.Timeline, now - 86400, now);
-            long lastHour = await db.SortedSetLengthAsync(Keys.Timeline, now - 3600, now);
-            long totalLogs = await db.SortedSetLengthAsync(Keys.Timeline);
-            long totalAlerts = await db.SortedSetLengthAsync(Keys.AlertsTimeline);
-            long totalFilters = await db.SetLengthAsync(Keys.Filters);
+            // 七个计数/索引读取并成一个批:这个 payload 每个页面都会拉,
+            // 实时推送每 2 秒也构建一次,原来七次串行往返都是纯等待。
+            var countBatch = db.CreateBatch();
+            var lastDayTask = countBatch.SortedSetLengthAsync(Keys.Timeline, now - 86400, now);
+            var lastHourTask = countBatch.SortedSetLengthAsync(Keys.Timeline, now - 3600, now);
+            var totalLogsTask = countBatch.SortedSetLengthAsync(Keys.Timeline);
+            var totalAlertsTask = countBatch.SortedSetLengthAsync(Keys.AlertsTimeline);
+            var totalFiltersTask = countBatch.SetLengthAsync(Keys.Filters);
+            var severitiesTask = countBatch.SetMembersAsync(Keys.SeveritiesIndex);
+            var sourcesTask = countBatch.SetMembersAsync(Keys.SourcesIndex);
+            countBatch.Execute();
 
-            var severities = (await db.SetMembersAsync(Keys.SeveritiesIndex))
+            long lastDay = await lastDayTask;
+            long lastHour = await lastHourTask;
+            long totalLogs = await totalLogsTask;
+            long totalAlerts = await totalAlertsTask;
+            long totalFilters = await totalFiltersTask;
+
+            var severities = (await severitiesTask)
                 .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
-            var sources = (await db.SetMembersAsync(Keys.SourcesIndex))
+            var sources = (await sourcesTask)
                 .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
 
             // One round trip instead of one per alert: the previous shape was N+1 and

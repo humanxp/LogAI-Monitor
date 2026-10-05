@@ -60,54 +60,75 @@ internal static class DiagnosticsApi
             var clients = new List<Dictionary<string, object?>>();
             int active = 0, withIssues = 0;
 
-            foreach (var ipValue in ips)
+            // 每个客户端三读(hash + protocols + per-minute),原来是 3×N 次串行往返;
+            // 500 个客户端一批取回,一批一次往返。now 在循环外取一次,与原实现一致,
+            // 所有客户端的窗口共用同一个时刻。
+            const int Chunk = 500;
+            for (int offset = 0; offset < ips.Length; offset += Chunk)
             {
-                string ip = ipValue.ToString();
-                var hash = await db.HashGetAllAsync("syslog:client:" + ip);
-                if (hash.Length == 0) continue;                       // stale index entry
-                var stats = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
-
-                double lastSeen = Number(stats, "last_seen");
-                double firstSeen = Number(stats, "first_seen");
-                double lastErrorTime = Number(stats, "last_error_time");
-                long secondsSinceLast = lastSeen > 0 ? (long)(now - lastSeen) : 1_000_000_000;
-
-                var protocols = (await db.SetMembersAsync("syslog:client:" + ip + ":protocols"))
-                    .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
-                long perMinute = await db.SortedSetLengthAsync("syslog:client:" + ip + ":recent", now - 60, now);
-                long messageCount = (long)Number(stats, "message_count");
-                long errorCount = (long)Number(stats, "error_count");
-                string lastError = stats.GetValueOrDefault("last_error") ?? "";
-
-                string status = secondsSinceLast < 60 ? "active"
-                    : secondsSinceLast < 300 ? "idle" : "stale";
-
-                var issues = new List<string>();
-                if (errorCount > 0) issues.Add("Errors: " + errorCount);
-                if (lastError.Length > 0)
-                    issues.Add("Last error: " + (lastError.Length <= 80 ? lastError : lastError[..80]));
-                if (secondsSinceLast > 600)
-                    issues.Add("No messages for " + (secondsSinceLast / 60) + " minutes");
-
-                if (status == "active") active++;
-                if (errorCount > 0) withIssues++;
-
-                clients.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                int size = Math.Min(Chunk, ips.Length - offset);
+                var batch = db.CreateBatch();
+                var hashes = new Task<HashEntry[]>[size];
+                var protocolSets = new Task<RedisValue[]>[size];
+                var perMinutes = new Task<long>[size];
+                for (int i = 0; i < size; i++)
                 {
-                    ["error_count"] = errorCount,
-                    ["first_seen"] = Iso(firstSeen),
-                    ["hostname"] = stats.GetValueOrDefault("hostname") is { Length: > 0 } host ? host : ip,
-                    ["ip"] = ip,
-                    ["issues"] = issues,
-                    ["last_error"] = lastError.Length > 0 ? lastError : null,
-                    ["last_error_time"] = Iso(lastErrorTime),
-                    ["last_seen"] = Iso(lastSeen),
-                    ["message_count"] = messageCount,
-                    ["messages_per_minute"] = perMinute,
-                    ["protocols"] = protocols,
-                    ["seconds_since_last"] = secondsSinceLast,
-                    ["status"] = status,
-                });
+                    string ip = ips[offset + i].ToString();
+                    hashes[i] = batch.HashGetAllAsync("syslog:client:" + ip);
+                    protocolSets[i] = batch.SetMembersAsync("syslog:client:" + ip + ":protocols");
+                    perMinutes[i] = batch.SortedSetLengthAsync("syslog:client:" + ip + ":recent", now - 60, now);
+                }
+                batch.Execute();
+
+                for (int i = 0; i < size; i++)
+                {
+                    string ip = ips[offset + i].ToString();
+                    var hash = await hashes[i];
+                    if (hash.Length == 0) continue;                       // stale index entry
+                    var stats = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+
+                    double lastSeen = Number(stats, "last_seen");
+                    double firstSeen = Number(stats, "first_seen");
+                    double lastErrorTime = Number(stats, "last_error_time");
+                    long secondsSinceLast = lastSeen > 0 ? (long)(now - lastSeen) : 1_000_000_000;
+
+                    var protocols = (await protocolSets[i])
+                        .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
+                    long perMinute = await perMinutes[i];
+                    long messageCount = (long)Number(stats, "message_count");
+                    long errorCount = (long)Number(stats, "error_count");
+                    string lastError = stats.GetValueOrDefault("last_error") ?? "";
+
+                    string status = secondsSinceLast < 60 ? "active"
+                        : secondsSinceLast < 300 ? "idle" : "stale";
+
+                    var issues = new List<string>();
+                    if (errorCount > 0) issues.Add("Errors: " + errorCount);
+                    if (lastError.Length > 0)
+                        issues.Add("Last error: " + (lastError.Length <= 80 ? lastError : lastError[..80]));
+                    if (secondsSinceLast > 600)
+                        issues.Add("No messages for " + (secondsSinceLast / 60) + " minutes");
+
+                    if (status == "active") active++;
+                    if (errorCount > 0) withIssues++;
+
+                    clients.Add(new Dictionary<string, object?>(StringComparer.Ordinal)
+                    {
+                        ["error_count"] = errorCount,
+                        ["first_seen"] = Iso(firstSeen),
+                        ["hostname"] = stats.GetValueOrDefault("hostname") is { Length: > 0 } host ? host : ip,
+                        ["ip"] = ip,
+                        ["issues"] = issues,
+                        ["last_error"] = lastError.Length > 0 ? lastError : null,
+                        ["last_error_time"] = Iso(lastErrorTime),
+                        ["last_seen"] = Iso(lastSeen),
+                        ["message_count"] = messageCount,
+                        ["messages_per_minute"] = perMinute,
+                        ["protocols"] = protocols,
+                        ["seconds_since_last"] = secondsSinceLast,
+                        ["status"] = status,
+                    });
+                }
             }
 
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)

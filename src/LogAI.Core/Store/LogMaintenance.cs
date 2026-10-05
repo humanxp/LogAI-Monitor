@@ -30,9 +30,16 @@ public static class LogMaintenance
         await db.KeyDeleteAsync(Keys.SeveritiesIndex);
         await db.KeyDeleteAsync(Keys.ClientsIndex);
 
-        foreach (var source in sources) await db.KeyDeleteAsync(Keys.LogSource(source.ToString()));
-        foreach (var host in hosts) await db.KeyDeleteAsync(Keys.LogHost(host.ToString()));
-        foreach (var severity in severities) await db.KeyDeleteAsync(Keys.LogSeverity(severity.ToString()));
+        // 三个维度索引的删除并成一个批:原来逐键串行,来源/主机一多就逐个等。
+        {
+            var batch = db.CreateBatch();
+            var deletes = new List<Task>(sources.Length + hosts.Length + severities.Length);
+            foreach (var source in sources) deletes.Add(batch.KeyDeleteAsync(Keys.LogSource(source.ToString())));
+            foreach (var host in hosts) deletes.Add(batch.KeyDeleteAsync(Keys.LogHost(host.ToString())));
+            foreach (var severity in severities) deletes.Add(batch.KeyDeleteAsync(Keys.LogSeverity(severity.ToString())));
+            batch.Execute();
+            await Task.WhenAll(deletes);
+        }
 
         Console.WriteLine("[Logs] cleared all " + count + " log(s)");
         return count;
@@ -48,29 +55,74 @@ public static class LogMaintenance
         {
             // The source index may be missing the entry; fall back to scanning the
             // timeline so a host can still be removed from the UI.
+            // 扫描也分批管道化:原来对整条时间线逐条 HGET(300 万条就是 300 万次
+            // 串行往返,一次回退扫描能占住端点几分钟);500 条一批后同样的扫描
+            // 只是几百次往返。
             var all = await db.SortedSetRangeByRankAsync(Keys.Timeline, 0, -1);
             var matching = new List<RedisValue>();
-            foreach (var id in all)
-                if ((await db.HashGetAsync(id.ToString(), "source")).ToString() == source)
-                    matching.Add(id);
+            const int ScanChunk = 500;
+            for (int offset = 0; offset < all.Length; offset += ScanChunk)
+            {
+                int size = Math.Min(ScanChunk, all.Length - offset);
+                var batch = db.CreateBatch();
+                var reads = new Task<RedisValue>[size];
+                for (int i = 0; i < size; i++)
+                    reads[i] = batch.HashGetAsync(all[offset + i].ToString(), "source");
+                batch.Execute();
+                var loaded = await Task.WhenAll(reads);
+                for (int i = 0; i < size; i++)
+                    if (loaded[i].ToString() == source)
+                        matching.Add(all[offset + i]);
+            }
             ids = matching.ToArray();
         }
 
         long removed = 0;
-        foreach (var idValue in ids)
+        // 删除同样分批:先一批取回哈希(hostname/severity 决定要清哪些维度索引),
+        // 再把 DEL + 各维度的 ZREM 并进同一个批;同一维度的多个 id 合并成
+        // 一次 ZREM(原来每个 id 五次串行往返)。
+        const int DeleteChunk = 500;
+        for (int offset = 0; offset < ids.Length; offset += DeleteChunk)
         {
-            string id = idValue.ToString();
-            var hash = await db.HashGetAllAsync(id);
-            var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+            int size = Math.Min(DeleteChunk, ids.Length - offset);
+            var chunkIds = new RedisValue[size];
+            for (int i = 0; i < size; i++) chunkIds[i] = ids[offset + i];
+            var hashes = await store.HashGetAllBatchAsync(chunkIds);
 
-            await db.KeyDeleteAsync(id);
-            await db.SortedSetRemoveAsync(Keys.Timeline, id);
-            await db.SortedSetRemoveAsync(Keys.Unanalyzed, id);
-            if (fields.TryGetValue("hostname", out string? hostname))
-                await db.SortedSetRemoveAsync(Keys.LogHost(hostname), id);
-            if (fields.TryGetValue("severity", out string? severity))
-                await db.SortedSetRemoveAsync(Keys.LogSeverity(severity), id);
-            removed++;
+            var batch = db.CreateBatch();
+            var pending = new List<Task>();
+            var timelineIds = new List<RedisValue>(size);
+            var unanalyzedIds = new List<RedisValue>(size);
+            var byHost = new Dictionary<string, List<RedisValue>>(StringComparer.Ordinal);
+            var bySeverity = new Dictionary<string, List<RedisValue>>(StringComparer.Ordinal);
+            for (int i = 0; i < size; i++)
+            {
+                string id = chunkIds[i].ToString();
+                var fields = hashes[i].ToDictionary(
+                    h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+                pending.Add(batch.KeyDeleteAsync(id));
+                timelineIds.Add(id);
+                unanalyzedIds.Add(id);
+                if (fields.TryGetValue("hostname", out string? hostname))
+                {
+                    if (!byHost.TryGetValue(hostname, out var hostGroup)) { hostGroup = []; byHost[hostname] = hostGroup; }
+                    hostGroup.Add(id);
+                }
+                if (fields.TryGetValue("severity", out string? severity))
+                {
+                    if (!bySeverity.TryGetValue(severity, out var sevGroup)) { sevGroup = []; bySeverity[severity] = sevGroup; }
+                    sevGroup.Add(id);
+                }
+                removed++;
+            }
+            pending.Add(batch.SortedSetRemoveAsync(Keys.Timeline, timelineIds.ToArray()));
+            pending.Add(batch.SortedSetRemoveAsync(Keys.Unanalyzed, unanalyzedIds.ToArray()));
+            foreach (var pair in byHost)
+                pending.Add(batch.SortedSetRemoveAsync(Keys.LogHost(pair.Key), pair.Value.ToArray()));
+            foreach (var pair in bySeverity)
+                pending.Add(batch.SortedSetRemoveAsync(Keys.LogSeverity(pair.Key), pair.Value.ToArray()));
+            batch.Execute();
+            await Task.WhenAll(pending);
         }
 
         // The source itself disappears once its last log is gone.

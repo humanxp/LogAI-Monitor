@@ -176,6 +176,33 @@ public sealed class RedisStore : IDisposable
         _ => value.ToString() ?? "",
     };
 
+    // ------------------------------------------------------------ batched reads
+
+    /// <summary>
+    /// 分批管道化读取一批哈希:一批一次往返,替代逐条 HGETALL 的 N 次串行往返。
+    /// 实测 /api/logs 在 limit=1000 时 0.10s、/api/ai-history 0.13s,几乎全部
+    /// 花在逐条往返的等待上;与 /api/ai-history/stats 修复时确立的
+    /// "500 条一批"同一做法(整批结果与逐条读完全一致,只是不再逐条等待)。
+    /// </summary>
+    public async Task<HashEntry[][]> HashGetAllBatchAsync(
+        IReadOnlyList<RedisValue> ids, int chunkSize = 500)
+    {
+        var hashes = new HashEntry[ids.Count][];
+        for (int offset = 0; offset < ids.Count; offset += chunkSize)
+        {
+            int size = Math.Min(chunkSize, ids.Count - offset);
+            var batch = Db.CreateBatch();
+            var reads = new Task<HashEntry[]>[size];
+            for (int i = 0; i < size; i++)
+                reads[i] = batch.HashGetAllAsync(ids[offset + i].ToString());
+            batch.Execute();
+            var loaded = await Task.WhenAll(reads);
+            for (int i = 0; i < size; i++)
+                hashes[offset + i] = loaded[i];
+        }
+        return hashes;
+    }
+
     // ------------------------------------------------------------ counters
 
     public Task<long> TotalLogsAsync() => Db.SortedSetLengthAsync(Keys.Timeline);

@@ -51,11 +51,12 @@ public sealed class LogWriter(RedisStore store, int retentionHours)
         if (!string.IsNullOrEmpty(entry.MsgId)) hash.Add(new HashEntry("msg_id", entry.MsgId));
 
         var db = store.Db;
-        await db.HashSetAsync(id, hash.ToArray());
-
+        // 哈希与五个索引写入并成一个批:原来是"HSET 等完 → 再发一批索引"两次往返,
+        // 批内命令按序执行(HSET 最先),结果与原来完全一致,只少等一次往返。
         var batch = db.CreateBatch();
-        var pending = new List<Task>
+        var pending = new List<Task>(10)
         {
+            batch.HashSetAsync(id, hash.ToArray()),
             batch.SortedSetAddAsync(Keys.Timeline, id, score),
             batch.SortedSetAddAsync(Keys.Unanalyzed, id, score),
             batch.SortedSetAddAsync(Keys.LogSource(entry.Source), id, score),

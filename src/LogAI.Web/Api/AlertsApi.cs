@@ -39,10 +39,12 @@ internal static class AlertsApi
             {
                 var pageIds = await store.Db.SortedSetRangeByRankAsync(
                     Keys.AlertsTimeline, offset, offset + limit - 1, Order.Descending);
+                // 整页哈希一批取回:逐条 HGETALL 是纯往返等待(见 RedisStore 的做法)。
+                var hashes = await store.HashGetAllBatchAsync(pageIds);
                 var page = new List<Dictionary<string, object?>>(pageIds.Length);
-                foreach (var id in pageIds)
+                for (int i = 0; i < pageIds.Length; i++)
                 {
-                    var entry = await BuildEntryAsync(store, id.ToString());
+                    var entry = BuildEntry(hashes[i]);
                     if (entry is not null) page.Add(entry);
                 }
                 return ReadApi.JsonBody(page);
@@ -58,10 +60,12 @@ internal static class AlertsApi
             var ids = await store.Db.SortedSetRangeByRankAsync(
                 Keys.AlertsTimeline, 0, scanCount - 1, Order.Descending);
 
+            // 扫描窗口内的哈希同样一批取回:原来逐条 HGETALL,扫描上限越大等得越久。
+            var scanHashes = await store.HashGetAllBatchAsync(ids);
             var matched = new List<Dictionary<string, object?>>();
-            foreach (var id in ids)
+            for (int i = 0; i < ids.Length; i++)
             {
-                var entry = await BuildEntryAsync(store, id.ToString());
+                var entry = BuildEntry(scanHashes[i]);
                 if (entry is null) continue;
                 if (entry["acknowledged"] is bool ack && ack != wanted.Value) continue;
                 matched.Add(entry);
@@ -77,9 +81,8 @@ internal static class AlertsApi
     /// 读一条告警并归一化为 API 形状：acknowledged 变成真正的布尔，
     /// 键按字母序排列（Flask 的 sort_keys）。哈希不存在时返回 null。
     /// </summary>
-    private static async Task<Dictionary<string, object?>?> BuildEntryAsync(RedisStore store, string id)
+    private static Dictionary<string, object?>? BuildEntry(HashEntry[] hash)
     {
-        var hash = await store.Db.HashGetAllAsync(id);
         if (hash.Length == 0) return null;
 
         var fields = new Dictionary<string, object?>(StringComparer.Ordinal);
