@@ -1891,8 +1891,10 @@ async function loadSettings() {
             uiThemeEl.value = settings.ui_theme || 'default';
         }
         
-        // Load Ollama models
-        await loadOllamaModels();
+        // Load Ollama models in the background: /api/ollama/status 会实时探测 AI
+        // 端点(192.168.50.23:8000，10s 超时)，AI 慢/忙时若 await 会把整个设置页
+        // 卡住。表单已填好，模型下拉等它返回后再填充即可。
+        loadOllamaModels();
         
     } catch (error) {
         console.error('Error loading settings:', error);
