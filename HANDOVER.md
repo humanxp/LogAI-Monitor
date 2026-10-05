@@ -501,6 +501,20 @@ logaimonitor-cs:pre-archive logaimonitor-cs:latest` + 按 3.7 重建容器（去
 另：SQLite 驱动是同步的，逐行 `await ExecuteNonQueryAsync` 会叠加 Task.Run 调度
 开销，5000 行批量插入应同步 `ExecuteNonQuery()`。
 
+### 3.17 /api/ai-history/stats 提速 —— ✅ 已完成（2026-10-06）
+**根因**：统计端点每次页面加载都 HGET 全部 1.8 万条记录的 `type`+`analysis`
+（约 94MB）再逐个解析 JSON 分类，116ms 且随记录数线性增长。
+**修法**：`AiHistoryWriter` 提交时预存一个 ~10B 的 `status` 分类字段（新
+`AiStatusClassifier`，口径与统计端点一致），统计只读 `status`（5000 条一批）；
+全量（无时间窗）统计加 **30s 进程内缓存**；新增 `--backfill-ai-status` 回填存量。
+**结果**：冷 ~62ms、缓存命中 **1.4ms**，分类与旧逻辑逐字节一致。
+
+**踩坑（两处）**：① `JsonNode` 对 `string` 有隐式转换，分类器的字符串重载若
+依赖它，会把整串 JSON 变成单个 JsonValue（非 JsonObject）→ 全部误判 `other`，
+必须显式 `JsonNode.Parse`；② 缓存返回用元组 PascalCase 属性名，会把 API 契约的
+小写键（critical/healthy/other/total/warning）变成大写——匿名类型必须显式写
+`critical = cached.Critical` 这类小写属性名。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
