@@ -407,6 +407,27 @@ alerts/filters/ai-history 等 ASCII 端点。（计时上收益取决于 payload
 另：容器重建后 ASP.NET 需数秒绑定端口，verify 步骤必须轮询（单次 curl 会误报
 `health=000`，看起来像部署失败、实际已成功）。
 
+### 3.13 告警详情 Message 内容夜间看不清 —— ✅ 已完成（2026-10-05）
+**现象**：Alert Detail 弹窗里 Message 字段的内容文字看不清（夜间主题）。
+**根因**：`showAlertDetail`（app.js）给 Message 块写了硬编码内联样式
+`background:#f8f9fa`（浅灰底）却未设文字色；夜间主题下文字继承 `--lm-ink`
+（#e8ecf2 近白）→ **浅字压浅底**。这类"JS 生成的内联样式写死颜色、不走主题
+令牌"是 3.11 之后漏掉的一类，弹窗内容是运行时填充、静态 CSS 覆盖不到。
+
+**修复**：Message 块改用令牌（`background: var(--lm-subtle)` + `color: var(--lm-ink)`
++ `border: var(--lm-line)`），并顺手把同一弹窗流程里的其余硬编码色收敛：
+AI 结果分隔线 `#e9ecef`→`var(--lm-line)`、注释 `#888`→`var(--lm-ink-3)`、
+失败红字 `#c62828`→`var(--lm-danger-ink)`、受影响主机徽标
+`var(--lm-accent)`→`var(--lm-nav-active-bg)`（夜间 #58a6ff 白字仅 2.53:1）。
+
+**验证**：扩展 `.preview/modal.js` 覆盖 `alertDetailModal`（此前只测
+logDetailModal），审计 `alerts.alertDetailModal` 的 default/night 均为
+**0 低对比度**。
+
+**教训**：弹窗/抽屉等"打开才现填"的界面，颜色必须走令牌；写死十六进制色在
+夜里会悄悄坏掉，而静态 CSS 审计看不见运行时填的内容——所以 modal 审计的
+harness 也要跟着真实填充逻辑走。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
