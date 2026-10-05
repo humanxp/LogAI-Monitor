@@ -132,11 +132,7 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    fetchLogs();
-    loadSources();
-});
-</script>
-{% endblock %}
+{# 数据加载由全局 app.js 按路径分发（/logs -> loadLogsPage(1) + loadHosts），
+   这里不再重复注册（fetchLogs 与 loadLogsPage、loadSources 与 loadHosts 是同一份，
+   重复会请求两次、渲染两遍）。 #}
+

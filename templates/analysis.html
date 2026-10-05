@@ -121,14 +121,8 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Mark current page for renderLogs function
-    if (typeof state !== 'undefined') {
-        state.currentPage = 'analysis';
-    }
-    
-    // Fetch more logs for better context
-    fetchLogs({ limit: 50 });
-    fetchAlerts(); // Fetch alerts so AI chat has access to them
+    // 数据加载（logs limit=50 + alerts）由全局 app.js 的 /analysis 分支负责，
+    // 这里只绑定本页特有的 UI，避免日志/告警被请求两次、渲染两遍。
     
     // Setup info toggle button
     const toggleBtn = document.getElementById('toggleAnalysisInfoBtn');

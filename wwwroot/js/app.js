@@ -2658,10 +2658,13 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchContainers();
     } else if (path === '/analysis') {
         state.currentPage = 'analysis';
-        // Load hide duplicates setting first, then fetch logs
+        // Load hide duplicates setting first, then fetch logs (limit=50 for more
+        // context) and alerts (so the AI chat has access to them). 原页面内联脚本
+        // 也各自调过这些，已收敛到这里，避免双重请求/渲染。
         loadHideDuplicatesDefault().then(() => {
-            fetchLogs({ limit: 20 });
+            fetchLogs({ limit: 50 });
         });
+        fetchAlerts();
     } else if (path === '/settings') {
         state.currentPage = 'settings';
         loadSettings();
