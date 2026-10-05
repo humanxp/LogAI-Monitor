@@ -13,6 +13,7 @@
 //     nested objects too), and logs_analyzed becomes a real integer.
 
 using System.Text.Json;
+using LogAI.Core.Ai;
 using LogAI.Core.Store;
 using StackExchange.Redis;
 
@@ -20,6 +21,14 @@ namespace LogAI.Web.Api;
 
 internal static class AiHistoryApi
 {
+    // 全量统计（无时间窗）是 O(N) 的：要拉取全部 1.8 万条 id + status。它是汇总，
+    // 无需实时（分析每 ~2 分钟才提交一条），短 TTL 缓存即可把后续加载降到毫秒级。
+    // 带时间窗的筛选很快（几 ms）且窗口每次不同，不缓存。
+    private static readonly object StatsCacheLock = new();
+    private static (int Critical, int Healthy, int Warning, int Other, int Total)? _statsCache;
+    private static DateTimeOffset _statsCacheAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan StatsCacheTtl = TimeSpan.FromSeconds(30);
+
     /// <summary>Buckets every stored analysis by its overall_status.</summary>
     public static void Map(WebApplication app, RedisStore store)
     {
@@ -30,30 +39,71 @@ internal static class AiHistoryApi
         {
             var (startTime, endTime) = ParseWindow(request, out bool hasWindow);
 
+            // 全量统计走缓存（见类头注释）。
+            if (!hasWindow)
+            {
+                lock (StatsCacheLock)
+                {
+                    if (_statsCache is { } cached && DateTimeOffset.UtcNow - _statsCacheAt < StatsCacheTtl)
+                        // 匿名类型的属性名必须是小写（契约：critical/healthy/other/total/warning），
+                        // 直接用 cached.Critical 会把键名变成 PascalCase。
+                        return ReadApi.JsonBody(new
+                        {
+                            critical = cached.Critical,
+                            healthy = cached.Healthy,
+                            other = cached.Other,
+                            total = cached.Total,
+                            warning = cached.Warning,
+                        });
+                }
+            }
+
             RedisValue[] ids = hasWindow
                 ? await store.Db.SortedSetRangeByScoreAsync(Keys.AiHistoryTimeline, startTime, endTime)
                 : await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1);
 
             int critical = 0, healthy = 0, warning = 0, other = 0;
 
-            // 一批取回 type + analysis：原来每个 id 一次 HGET，全量 1.5 万条
-            // 就是 1.5 万次往返（页面每次加载都跑一遍）。
             const int Chunk = 500;
-            for (int offset = 0; offset < ids.Length; offset += Chunk)
+            // 第一遍只读 status 小字段（新记录在写入时就已归好类）；无 status 的
+            // 旧记录收进回退列表。status 极小（~10B），批次可以很大，把往返从
+            // 38 次压到 4 次（这才是主要耗时：往返而非数据量）。
+            const int StatusChunk = 5000;
+            var fallback = new List<string>();
+            for (int offset = 0; offset < ids.Length; offset += StatusChunk)
             {
-                int size = Math.Min(Chunk, ids.Length - offset);
+                int size = Math.Min(StatusChunk, ids.Length - offset);
                 var batch = store.Db.CreateBatch();
-                var tasks = new Task<RedisValue[]>[size];
+                var tasks = new Task<RedisValue>[size];
+                for (int i = 0; i < size; i++)
+                    tasks[i] = batch.HashGetAsync(ids[offset + i].ToString(), "status");
+                batch.Execute();
+                var loaded = await Task.WhenAll(tasks);
                 for (int i = 0; i < size; i++)
                 {
-                    var id = ids[offset + i];
-                    tasks[i] = batch.HashGetAsync(id.ToString(), ["type", "analysis"]);
+                    switch (loaded[i].ToString())
+                    {
+                        case "critical": critical++; break;
+                        case "warning": warning++; break;
+                        case "healthy": healthy++; break;
+                        case "": fallback.Add(ids[offset + i].ToString()); break;   // 旧记录
+                        default: other++; break;
+                    }
                 }
-                batch.Execute();
+            }
 
-                foreach (var task in tasks)
+            // 第二遍：无 status 的旧记录回退到 type+analysis 解析。回填后此列表为空。
+            foreach (var chunk in fallback.Chunk(Chunk))
+            {
+                var batch = store.Db.CreateBatch();
+                var tasks = new Task<RedisValue[]>[chunk.Length];
+                for (int i = 0; i < chunk.Length; i++)
+                    tasks[i] = batch.HashGetAsync(chunk[i], ["type", "analysis"]);
+                batch.Execute();
+                var loaded = await Task.WhenAll(tasks);
+                for (int i = 0; i < chunk.Length; i++)
                 {
-                    RedisValue[] fields = await task;
+                    RedisValue[] fields = loaded[i];
                     switch (Classify(fields[0].ToString(), fields[1].ToString()))
                     {
                         case "critical": critical++; break;
@@ -61,6 +111,15 @@ internal static class AiHistoryApi
                         case "healthy": healthy++; break;
                         default: other++; break;
                     }
+                }
+            }
+
+            if (!hasWindow)
+            {
+                lock (StatsCacheLock)
+                {
+                    _statsCache = (critical, healthy, warning, other, ids.Length);
+                    _statsCacheAt = DateTimeOffset.UtcNow;
                 }
             }
 
@@ -78,50 +137,11 @@ internal static class AiHistoryApi
     /// <summary>
     /// 分类口径：single 记录看 is_critical，否则看 category；
     /// batch 记录看 overall_status，退回 category。healthy 与 info 同桶，
-    /// critical 与 error 同桶——只看 overall_status 会把 single/info/error
-    /// 全部算进 other，汇总卡片因此与列表内容对不上。
+    /// critical 与 error 同桶。逻辑在 AiStatusClassifier 里（写入时也用它），
+    /// 这里只做字符串解析的适配。
     /// </summary>
-    private static string Classify(string type, string analysisRaw)
-    {
-        if (analysisRaw.Length == 0) return "other";
-        try
-        {
-            using var document = JsonDocument.Parse(analysisRaw);
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return "other";
-            var root = document.RootElement;
-
-            string status;
-            if (string.Equals(type, "single", StringComparison.Ordinal))
-            {
-                status = root.TryGetProperty("is_critical", out var isCritical)
-                         && isCritical.ValueKind == JsonValueKind.True
-                    ? "critical"
-                    : Text(root, "category");
-            }
-            else
-            {
-                status = Text(root, "overall_status");
-                if (status.Length == 0) status = Text(root, "category");
-            }
-
-            return status.ToLowerInvariant() switch
-            {
-                "healthy" or "info" => "healthy",
-                "warning" => "warning",
-                "critical" or "error" => "critical",
-                _ => "other",
-            };
-        }
-        catch (JsonException)
-        {
-            return "other";
-        }
-    }
-
-    private static string Text(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString() ?? ""
-            : "";
+    private static string Classify(string type, string analysisRaw) =>
+        AiStatusClassifier.Classify(type, analysisRaw);
 
     /// <summary>Newest-first page of analysis records.</summary>
     public static void MapList(WebApplication app, RedisStore store)

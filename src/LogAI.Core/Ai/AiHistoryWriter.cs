@@ -45,6 +45,9 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
             new HashEntry("type", type),
             new HashEntry("logs_analyzed", logIds.Count.ToString()),
             new HashEntry("fail_count", failCount.ToString()),
+            // 内部字段：分类结果落一条小字段，/api/ai-history/stats 只读它即可
+            // 汇总，不必每次解析整份 analysis JSON（见 AiStatusClassifier）。
+            new HashEntry("status", AiStatusClassifier.Classify(type, analysis)),
         };
         if (extra is not null)
             foreach (var pair in extra) entries.Add(new HashEntry(pair.Key, pair.Value));

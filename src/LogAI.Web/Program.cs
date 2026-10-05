@@ -404,6 +404,45 @@ if (args.Length >= 2 && args[0] == "--purge-sources")
     Console.WriteLine("[purge] remaining sources: " + await purgeStore.Db.SetLengthAsync(LogAI.Core.Store.Keys.SourcesIndex));
     Environment.Exit(0);
 }
+
+// 一次性回填：给存量 ai_history 记录补上 status 分类字段（见 AiStatusClassifier），
+// 让 /api/ai-history/stats 不必再读 + 解析整份 analysis JSON。幂等：重复跑无害。
+if (args.Length >= 1 && args[0] == "--backfill-ai-status")
+{
+    var bfStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    var bfIds = await bfStore.Db.SortedSetRangeByRankAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, 0, -1);
+    int bfUpdated = 0;
+    const int BfChunk = 500;
+    for (int offset = 0; offset < bfIds.Length; offset += BfChunk)
+    {
+        int size = Math.Min(BfChunk, bfIds.Length - offset);
+        var readBatch = bfStore.Db.CreateBatch();
+        var reads = new Task<StackExchange.Redis.RedisValue[]>[size];
+        for (int i = 0; i < size; i++)
+            reads[i] = readBatch.HashGetAsync(bfIds[offset + i].ToString(), ["type", "analysis"]);
+        readBatch.Execute();
+        var loaded = await Task.WhenAll(reads);
+
+        var writeBatch = bfStore.Db.CreateBatch();
+        var writes = new List<Task>(size);
+        for (int i = 0; i < size; i++)
+        {
+            string status = LogAI.Core.Ai.AiStatusClassifier.Classify(
+                loaded[i][0].ToString(), loaded[i][1].ToString());
+            writes.Add(writeBatch.HashSetAsync(bfIds[offset + i].ToString(), "status", status));
+            bfUpdated++;
+        }
+        writeBatch.Execute();
+        await Task.WhenAll(writes);
+    }
+    Console.WriteLine("[backfill] set status on " + bfUpdated + " ai_history records");
+    Environment.Exit(0);
+}
 app.Run();
 
 // --------------------------------------------------------------- helpers
