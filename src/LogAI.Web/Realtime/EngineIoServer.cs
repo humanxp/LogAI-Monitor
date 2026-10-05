@@ -17,6 +17,7 @@ using LogAI.Web.Api;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 
 namespace LogAI.Web.Realtime;
 
@@ -34,6 +35,7 @@ public sealed class EngineIoServer
 
     private readonly ConcurrentDictionary<string, Session> _sessions = new(StringComparer.Ordinal);
     private Func<HttpContext, bool> _isAuthenticated = _ => false;
+    private Timer? _sweeper;
 
     /// <summary>The live instance, so background jobs can publish events.</summary>
     public static EngineIoServer? Current { get; private set; }
@@ -42,6 +44,13 @@ public sealed class EngineIoServer
     {
         Current = this;
         _isAuthenticated = isAuthenticated;
+        // 周期回收僵尸会话：不能只在握手时扫（空闲时没有握手，泄漏就一直留着）。
+        // 15s 周期 + 30s 阈值 => 残留会话最多 ~45s 内被清掉。
+        _sweeper ??= new Timer(
+            _ => SweepStaleSessions(),
+            null,
+            TimeSpan.FromSeconds(15),
+            TimeSpan.FromSeconds(15));
         // Block bodies with an explicit return: an expression-bodied async lambda
         // converts to RequestDelegate (Func<HttpContext, Task>) and silently
         // DISCARDS the IResult, which produced 200 responses with an empty body
@@ -65,6 +74,27 @@ public sealed class EngineIoServer
         session.NamespaceConnected = false;
         while (session.Outbox.TryDequeue(out _)) { }
         _sessions.TryRemove(sid, out _);
+    }
+
+    /// <summary>
+    /// 兜底回收：正常客户端每 ~20s（long-poll 期限）必会再来轮询；超过 30s 没动静的
+    /// 会话就是残留（导航离开但 RequestAborted 没触发、或网络半开），直接移除。
+    /// 在新握手时顺带执行，迭代成本随会话数线性、量级很小。
+    /// </summary>
+    private void SweepStaleSessions()
+    {
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow.AddSeconds(-30);
+        int removed = 0;
+        foreach (var kv in _sessions)
+        {
+            if (kv.Value.LastSeen < cutoff)
+            {
+                RetireSession(kv.Key, kv.Value);
+                removed++;
+            }
+        }
+        if (removed > 0)
+            Console.WriteLine($"[Realtime] swept {removed} stale session(s), {_sessions.Count} remain");
     }
 
     public void Broadcast(string eventName, object? payload)
@@ -107,6 +137,9 @@ public sealed class EngineIoServer
 
         if (string.IsNullOrEmpty(sid))
         {
+            // 新握手时顺带回收超时未轮询的僵尸会话（浏览器导航/断网后残留）。
+            SweepStaleSessions();
+
             var session = new Session { Sid = NewSid() };
             _sessions[session.Sid] = session;
             // Field order matches the captured handshake byte for byte.
@@ -130,7 +163,13 @@ public sealed class EngineIoServer
         var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
         while (existing.Outbox.IsEmpty && DateTimeOffset.UtcNow < deadline)
         {
-            if (http.RequestAborted.IsCancellationRequested) return Text("");
+            if (http.RequestAborted.IsCancellationRequested)
+            {
+                // 客户端关闭了轮询（页面已导航离开/断网）——立即回收，别让僵尸会话
+                // 攒到 Outbox 上限(256)才被 Broadcast 回收（约 73 秒的泄漏窗口）。
+                RetireSession(sid, existing);
+                return Text("");
+            }
             await Task.Delay(100, http.RequestAborted).ContinueWith(_ => { }, TaskScheduler.Default);
         }
 
@@ -175,6 +214,10 @@ public sealed class EngineIoServer
             else if (packet == "2")
             {
                 session.Outbox.Enqueue("3");            // ping -> pong
+            }
+            else if (packet == "41")
+            {
+                RetireSession(sid, session);            // 客户端主动断开命名空间
             }
         }
 
