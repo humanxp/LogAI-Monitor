@@ -34,6 +34,11 @@ internal static class AppHost
         var store = app.Services.GetRequiredService<RedisStore>();
         var settings = await store.GetSettingsAsync();
 
+        // 保留期的唯一来源是设置页的 log_retention_hours（默认 720h=30 天）。
+        // 注意：环境变量 LOG_RETENTION_HOURS 对主采集路径不生效——它只在
+        // Program.cs 里被 HTTP ingest 旁路的 LogWriter 读取。两个来源曾同时
+        // 存在且取值不同（settings=720 vs 部署脚本 -e LOG_RETENTION_HOURS=12），
+        // 造成"部署写着 12 小时、实际留 30 天"的困惑；部署脚本里的死配置已移除。
         int retentionHours = IntSetting(settings, "log_retention_hours", 720);
         int analysisMinutes = Math.Max(1, IntSetting(settings, "analysis_interval", 2));
         // 单批分析量的取值来源必须唯一，否则会出现"设置页改了却不起作用"：

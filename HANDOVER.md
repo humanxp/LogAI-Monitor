@@ -428,6 +428,27 @@ logDetailModal），审计 `alerts.alertDetailModal` 的 default/night 均为
 夜里会悄悄坏掉，而静态 CSS 审计看不见运行时填的内容——所以 modal 审计的
 harness 也要跟着真实填充逻辑走。
 
+### 3.14 内存诊断 + 保留期死配置清理 —— ✅ 已完成（2026-10-05）
+**现状**：应用容器 276 MiB（正常）；Redis 7.04 GiB / maxmemory 9 GiB（占宿主
+内存 61%）。日志 328 万条 × ~2.1KB/条 ≈ 6.9GB，ai_history 18764 条 ≈ 130MB。
+
+**发现（保留期配置打架）**：主采集路径的保留期只认 settings 里的
+`log_retention_hours`（现为 720h=30 天）；部署脚本却一直带着
+`-e LOG_RETENTION_HOURS=12`，而这个环境变量只在 `Program.cs` 的 HTTP ingest
+旁路 LogWriter 里被读——于是"部署写着 12 小时、实际留 30 天"，且 HTTP 旁路的
+TTL(12h) 与主路径(720h) 还不一致。
+
+**本次清理**：从 `deploy-cs.sh` 与 `deploy-cs-password.sh` 删掉死配置
+`LOG_RETENTION_HOURS=12`（旁路自动回退到 720，与主路径一致）；在 `AppHost.cs`
+保留期读取处加注释说明唯一来源是 settings。**保留期仍为 720h，未改**（用户
+明确要求保持 30 天）。
+
+**遗留隐患（待决策）**：按当前 ~3.8 条/秒 ≈ 690MB/天 增长，Redis 会在约 3 天
+内撞上 9G maxmemory，届时 `volatile-lru` 会静默淘汰最旧日志（日志写入后不再被
+读，LRU≈最旧），实际保留期被压到 ~13 天——「保持 30 天」会被内存上限架空。
+选项：A) 继续观察；B) 上调 Redis maxmemory 到 ~11G（宿主尚有 ~4GB 余量，才能真
+留满 30 天）；C) 接受更短保留期（内存降到 0.5–2GB，可控可预期）。当前按 A 观察。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）

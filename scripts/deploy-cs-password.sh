@@ -83,7 +83,6 @@ run_cmd() {
     -e AI_BASE_URL=http://192.168.50.23:8000/v1 \
     -e BATCH_SAMPLE_LIMIT=100 \
     -e REDIS_HOST=redis -e REDIS_PORT=6379 \
-    -e LOG_RETENTION_HOURS=12 \
     -e OLLAMA_MODEL=Llama-3.2-3B-Instruct-4bit \
     -e OLLAMA_HOST=http://host.docker.internal:11434 \
     -e HEALTH_DAILY_SUMMARY=1 -e AI_READ_TIMEOUT=600 -e MAX_LOGS_PER_ANALYSIS=500 \
