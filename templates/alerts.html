@@ -65,10 +65,6 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    fetchAlerts();
-});
-</script>
-{% endblock %}
+{# 数据加载由全局 app.js 的 DOMContentLoaded 按路径分发（/alerts -> fetchAlerts），
+   这里不再重复注册，否则同一函数触发两次、表格渲染两遍，打开页面会卡一下。 #}
+

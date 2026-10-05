@@ -123,10 +123,5 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    fetchFilters();
-});
-</script>
-{% endblock %}
+{# 数据加载由全局 app.js 按路径分发（/filters -> fetchFilters），不重复注册。 #}
+

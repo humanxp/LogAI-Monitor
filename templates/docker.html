@@ -73,10 +73,5 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    fetchContainers();
-});
-</script>
-{% endblock %}
+{# 数据加载由全局 app.js 按路径分发（/docker -> fetchContainers），不重复注册。 #}
+
