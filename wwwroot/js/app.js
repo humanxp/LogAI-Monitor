@@ -11,9 +11,14 @@ const state = {
     alerts: [],
     connected: false,
     currentPage: 'dashboard',
+    alertsOffset: 0,         // 告警列表当前页起始偏移
+    alertsTotal: 0,          // 告警总数（来自 /api/alerts/stats）
     seenMessages: new Map(), // Track seen messages for duplicate detection: "host::message" -> {count, elementId}
     hideDuplicates: false    // Global flag for hiding duplicates
 };
+
+// 告警每页条数。告警条目多，整列表一次拉 100 条既慢又要滚很久。
+const ALERTS_PAGE_SIZE = 25;
 
 // Theme Management
 //
@@ -991,25 +996,64 @@ async function fetchAlertStats() {
         set('alertStatInfo', s.info);
         set('alertStatDebug', s.debug);
         set('alertStatOther', s.other);
+        // 翻页条需要总数（列表端点返回的是数组，不含 total）
+        state.alertsTotal = Number(s.total) || 0;
+        renderAlertsPager();
     } catch (error) {
         console.error('Error fetching alert stats:', error);
     }
 }
 
 // Fetch alerts
-async function fetchAlerts() {
+async function fetchAlerts(offset) {
+    if (typeof offset === 'number') state.alertsOffset = Math.max(0, offset);
     try {
-        const response = await fetch('/api/alerts?limit=100');
+        const response = await fetch(
+            `/api/alerts?limit=${ALERTS_PAGE_SIZE}&offset=${state.alertsOffset}`);
         let alerts = await response.json();
         // Keep the in-memory list bounded so repeated socket alerts can never
         // grow it (and the table rebuild) without limit.
         state.alerts = alerts.slice(0, ALERT_STATE_CAP);
         renderAlerts();
+        renderAlertsPager();
         return state.alerts;
     } catch (error) {
         console.error('Error fetching alerts:', error);
         throw error;
     }
+}
+
+// 翻页条：显示"第 X-Y 条 / 共 N 条"与上一页/下一页。
+// 总数来自 /api/alerts/stats（列表端点返回的是数组，不含 total）。
+function renderAlertsPager() {
+    const el = document.getElementById('alertsPager');
+    if (!el) return;
+    const total = state.alertsTotal || 0;
+    const offset = state.alertsOffset || 0;
+    const from = total === 0 ? 0 : offset + 1;
+    const to = Math.min(offset + ALERTS_PAGE_SIZE, total);
+    const hasPrev = offset > 0;
+    const hasNext = to < total;
+    el.innerHTML = `
+        <div class="pager-info">第 ${from}-${to} 条 / 共 ${total} 条（每页 ${ALERTS_PAGE_SIZE}）</div>
+        <div class="pager-buttons">
+            <button type="button" class="btn btn-outline btn-sm" ${hasPrev ? '' : 'disabled'}
+                    onclick="goToAlertsPage(-1)">
+                <i class="fas fa-chevron-left"></i> 上一页
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" ${hasNext ? '' : 'disabled'}
+                    onclick="goToAlertsPage(1)">
+                下一页 <i class="fas fa-chevron-right"></i>
+            </button>
+        </div>
+    `;
+}
+
+function goToAlertsPage(delta) {
+    const next = (state.alertsOffset || 0) + delta * ALERTS_PAGE_SIZE;
+    if (next < 0) return;
+    if (state.alertsTotal && next >= state.alertsTotal) return;
+    fetchAlerts(next);
 }
 
 // Refresh with visible feedback (spinner + result count)
@@ -1288,6 +1332,9 @@ async function clearAcknowledgedAlerts() {
             state.alerts = state.alerts.filter(a => !a.acknowledged);
             renderAlerts();
             fetchStats();
+            // 删除后总数变小，回到第一页，避免停在一个已空的页上
+            state.alertsOffset = 0;
+            fetchAlerts(0);
             fetchAlertStats();
         }
     } catch (error) {

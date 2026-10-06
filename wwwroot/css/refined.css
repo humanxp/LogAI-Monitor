@@ -989,3 +989,57 @@ table tbody tr { transition: background-color 0.1s ease; }
 }
 .settings-guide b { color: var(--lm-ink); }
 .settings-guide > :last-child { margin-bottom: 0; }
+
+/* --------------------------------------------------- 告警页：紧凑统计卡片 */
+/* 8 张按级别统计的卡片，默认 .stats-grid 的 minmax(200px) 会折成两行；
+   这里强制一行排下，图标/字号同步收小。 */
+.stats-grid.compact {
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+.stats-grid.compact .stat-card {
+  padding: 0.55rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.stats-grid.compact .stat-icon {
+  width: 22px;
+  height: 22px;
+  font-size: 0.68rem;
+  border-radius: 6px;
+  margin-bottom: 0.15rem;
+}
+.stats-grid.compact .stat-info { min-width: 0; }
+.stats-grid.compact .stat-info h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+.stats-grid.compact .stat-info p {
+  font-size: 0.66rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--lm-ink-3);
+}
+@media (max-width: 900px) { .stats-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .stats-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* --------------------------------------------------------- 告警页：翻页条 */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.7rem var(--lm-space-4);
+  border-top: 1px solid var(--lm-line);
+}
+.pager-info { color: var(--lm-ink-2); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.pager-buttons { display: flex; gap: 0.4rem; }
+.pager-buttons .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
