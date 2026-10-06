@@ -306,6 +306,35 @@ public sealed class LogArchive
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
+    /// <summary>
+    /// 更新一条已归档哈希的单个字段（值为空则删除该字段）。供一次性回填使用
+    /// （如补齐历史遗留的空 timestamp）。读改写 JSON，低频操作，开销可忽略。
+    /// </summary>
+    public async Task UpdateHashFieldAsync(string key, string name, string value, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        string? existing = null;
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = "SELECT fields FROM hashes WHERE key = $key;";
+            read.Parameters.AddWithValue("$key", key);
+            using var reader = await read.ExecuteReaderAsync(ct);
+            if (await reader.ReadAsync(ct)) existing = reader.GetString(0);
+        }
+        if (existing is null) return;   // 未归档
+
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(existing);
+        if (dict is null) return;
+        if (value.Length == 0) dict.Remove(name);
+        else dict[name] = value;
+
+        using var upd = conn.CreateCommand();
+        upd.CommandText = "UPDATE hashes SET fields = $fields WHERE key = $key;";
+        upd.Parameters.AddWithValue("$fields", JsonSerializer.Serialize(dict));
+        upd.Parameters.AddWithValue("$key", key);
+        await upd.ExecuteNonQueryAsync(ct);
+    }
+
     private static string SerializeHash(HashEntry[] fields)
     {
         var dict = new Dictionary<string, string>(fields.Length, StringComparer.Ordinal);

@@ -460,6 +460,53 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status")
     Console.WriteLine("[backfill] set status on " + bfUpdated + " ai_history records");
     Environment.Exit(0);
 }
+
+// 一次性回填：补齐历史遗留的空 timestamp（早期版本未写该字段，前端曾渲染成
+// "Invalid Date"）。从 id（ai_history:<epoch ms>）推导写入时间，Redis 热记录
+// HSET、已归档记录改 SQLite。幂等：重复跑无害。
+if (args.Length >= 1 && args[0] == "--backfill-ai-timestamp")
+{
+    var bfStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    var bfArchive = new LogAI.Core.Store.LogArchive(
+        Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
+    var bfIds = await bfStore.Db.SortedSetRangeByRankAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, 0, -1);
+    int bfFixed = 0;
+    var bfCi = System.Globalization.CultureInfo.InvariantCulture;
+    foreach (var id in bfIds)
+    {
+        string sid = id.ToString();
+        long ms = long.Parse(sid.Split(':')[1], bfCi);
+        string ts = DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.ffffff'+00:00'", bfCi);
+
+        if (await bfStore.Db.KeyExistsAsync(sid))
+        {
+            var cur = await bfStore.Db.HashGetAsync(sid, "timestamp");
+            if (cur.ToString().Length == 0)
+            {
+                await bfStore.Db.HashSetAsync(sid, "timestamp", ts);
+                bfFixed++;
+            }
+        }
+        else
+        {
+            var hashes = await bfArchive.GetHashesBatchAsync([sid]);
+            var hash = hashes[0];
+            if (hash.Length == 0) continue;
+            var dict = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(dict.GetValueOrDefault("timestamp") ?? "")) continue;
+            await bfArchive.UpdateHashFieldAsync(sid, "timestamp", ts);
+            bfFixed++;
+        }
+    }
+    Console.WriteLine("[backfill] set timestamp on " + bfFixed + " ai_history records");
+    Environment.Exit(0);
+}
 app.Run();
 
 // --------------------------------------------------------------- helpers
