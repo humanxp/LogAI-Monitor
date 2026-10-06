@@ -39,9 +39,28 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">AI 分析汇总推送状态</label>
+                <div style="display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:0.35rem;">
+                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                        <input type="checkbox" class="form-check-input" id="summaryStatusCritical"> critical（严重）
+                    </label>
+                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                        <input type="checkbox" class="form-check-input" id="summaryStatusWarning"> warning（警告）
+                    </label>
+                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                        <input type="checkbox" class="form-check-input" id="summaryStatusHealthy"> healthy（健康）
+                    </label>
+                    <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">
+                        <input type="checkbox" class="form-check-input" id="summaryStatusOther"> other（其他）
+                    </label>
+                </div>
+                <small style="color: var(--lm-ink-2);">AI 批量分析得到这些状态时，把汇总推送到 Telegram。默认只推 critical。一个都不勾 = 不推送任何汇总。改动下一轮分析生效。</small>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label" for="analysisSummaryCooldown">AI 汇总冷却（分钟）</label>
                 <input type="number" class="form-control" id="analysisSummaryCooldown" value="30" min="0">
-                <small style="color: var(--lm-ink-2);">分析结果为 critical 时推送 Telegram 汇总的最小间隔，避免几分钟一条刷屏。设为 0 表示不限制（每次 critical 都推送）。</small>
+                <small style="color: var(--lm-ink-2);">上面勾选的状态推送汇总时的最小间隔，避免几分钟一条刷屏。设为 0 表示不限制。</small>
             </div>
             
             <button type="button" class="btn btn-outline" id="testTelegramBtn" onclick="testTelegram()">

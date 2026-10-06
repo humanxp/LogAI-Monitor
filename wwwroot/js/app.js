@@ -1873,6 +1873,12 @@ async function loadSettings() {
         document.getElementById('telegramChatId').value = settings.telegram_chat_id || '';
         document.getElementById('telegramCooldown').value = settings.telegram_cooldown_minutes ?? 60;
         document.getElementById('analysisSummaryCooldown').value = settings.analysis_summary_cooldown_min ?? 30;
+        // 汇总推送状态（逗号分隔）→ 勾选对应复选框；默认 critical
+        const summaryStatuses = (settings.analysis_summary_status || 'critical').split(',');
+        document.getElementById('summaryStatusCritical').checked = summaryStatuses.includes('critical');
+        document.getElementById('summaryStatusWarning').checked = summaryStatuses.includes('warning');
+        document.getElementById('summaryStatusHealthy').checked = summaryStatuses.includes('healthy');
+        document.getElementById('summaryStatusOther').checked = summaryStatuses.includes('other');
         document.getElementById('ollamaEnabled').checked = settings.ollama_enabled !== false;
         document.getElementById('ollamaHost').value = settings.ollama_host || 'http://localhost:11434';
         document.getElementById('ollamaModel').value = settings.ollama_model || 'llama3.2';
@@ -1939,6 +1945,9 @@ async function saveSettings() {
         telegram_bot_token: document.getElementById('telegramBotToken').value,
         telegram_chat_id: document.getElementById('telegramChatId').value,
         analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
+        analysis_summary_status: ['critical', 'warning', 'healthy', 'other']
+            .filter(s => document.getElementById('summaryStatus' + s.charAt(0).toUpperCase() + s.slice(1))?.checked)
+            .join(','),
         telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,
         ollama_enabled: document.getElementById('ollamaEnabled').checked,
         ollama_host: document.getElementById('ollamaHost').value,

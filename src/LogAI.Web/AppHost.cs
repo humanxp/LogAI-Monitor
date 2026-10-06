@@ -361,28 +361,33 @@ internal static class AppHost
                         }
                         LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete", payload);
 
-                        // The summary is sent to Telegram whenever an analysis comes
-                        // back critical ("Send Telegram summary if critical issues found");
-                        // that path was missing here. It has no throttle upstream, so an
-                        // independent cooldown keeps a critical-every-few-minutes stream
-                        // from flooding the chat. 0 disables the throttle.
+                        // 分析汇总推送到 Telegram：推送哪些状态由设置页
+                        // analysis_summary_status 决定（逗号分隔，默认 critical）。
+                        // 分类口径与页面/stats 一致（AiStatusClassifier 归四桶）。
+                        // 冷却独立，避免连续同状态刷屏；0 表示不限。
                         if (analysisRaw is not null)
                         {
                             try
                             {
                                 var analysisNode = System.Text.Json.Nodes.JsonNode.Parse(analysisRaw);
-                                if (analysisNode?["overall_status"]?.ToString() == "critical"
+                                string bucket = LogAI.Core.Ai.AiStatusClassifier.Classify("batch", analysisNode);
+                                var summarySettings = await store.GetSettingsAsync();
+                                string rawWanted = LogAI.Core.Store.RedisStore.ToText(
+                                    summarySettings.GetValueOrDefault("analysis_summary_status"));
+                                string[] wanted = rawWanted.Length > 0
+                                    ? rawWanted.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                    : ["critical"];
+                                if (Array.Exists(wanted, s => string.Equals(s, bucket, StringComparison.OrdinalIgnoreCase))
                                     && await LogAI.Core.Notify.TelegramState.EnsureAsync(store, ct))
                                 {
-                                    int summaryCooldown = IntSetting(
-                                        await store.GetSettingsAsync(), "analysis_summary_cooldown_min", 30);
+                                    int summaryCooldown = IntSetting(summarySettings, "analysis_summary_cooldown_min", 30);
                                     bool maySend = summaryCooldown <= 0
                                         || await store.Db.StringSetAsync("notify:cooldown:analysis_summary",
                                                "1", TimeSpan.FromMinutes(summaryCooldown),
                                                StackExchange.Redis.When.NotExists);
                                     if (!maySend)
                                     {
-                                        Console.WriteLine("[Telegram] critical summary skipped (cooldown "
+                                        Console.WriteLine("[Telegram] " + bucket + " summary skipped (cooldown "
                                             + summaryCooldown + "m)");
                                     }
                                     else
@@ -395,14 +400,14 @@ internal static class AppHost
                                         bool sent = await notifier.SendAsync(
                                             LogAI.Core.Notify.TelegramState.BotToken,
                                             LogAI.Core.Notify.TelegramState.ChatId, text, ct);
-                                        if (sent) Console.WriteLine("[Telegram] critical analysis summary sent");
+                                        if (sent) Console.WriteLine("[Telegram] " + bucket + " analysis summary sent");
                                     }
                                 }
                             }
                             catch (Exception ex) when (ex is not OperationCanceledException)
                             {
                                 // A notification failure must never break the scheduler.
-                                Console.Error.WriteLine("[Telegram] critical summary failed: " + ex.Message);
+                                Console.Error.WriteLine("[Telegram] analysis summary failed: " + ex.Message);
                             }
                         }
                     }
