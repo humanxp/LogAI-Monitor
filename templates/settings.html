@@ -333,37 +333,66 @@
         <h3><i class="fas fa-book"></i> Configuration Guide</h3>
     </div>
     <div class="card-body">
-        <h4>Setting up Telegram Notifications</h4>
+        <h4><i class="fab fa-telegram"></i> Telegram 通知</h4>
         <ol>
-            <li>Open Telegram and search for <code>@BotFather</code></li>
-            <li>Send <code>/newbot</code> and follow the instructions to create a bot</li>
-            <li>Copy the bot token and paste it above</li>
-            <li>To get your Chat ID:
-                <ul>
-                    <li>Send a message to your bot</li>
-                    <li>Visit <code>https://api.telegram.org/bot&lt;YOUR_TOKEN&gt;/getUpdates</code></li>
-                    <li>Find the <code>chat.id</code> in the response</li>
-                </ul>
-            </li>
-            <li>Click "Test Connection" to verify</li>
+            <li>在 Telegram 搜 <code>@BotFather</code>，发 <code>/newbot</code> 按提示建机器人</li>
+            <li>把拿到的 <b>Bot Token</b> 填进本页「Telegram 通知 → Bot Token」</li>
+            <li>拿 <b>Chat ID</b>：给机器人发一条消息，再访问
+                <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code>，其中的 <code>chat.id</code> 就是</li>
+            <li>填好后点 <b>Test Connection</b> 验证</li>
+            <li>勾上 <b>Enable Telegram notifications</b> —— 不勾就<b>完全不发</b>（发通知前会检查这个开关）</li>
         </ol>
-        
-        <h4 style="margin-top: 1.5rem;">Setting up Ollama</h4>
+        <p style="color: var(--lm-ink-2); margin-bottom: 0.35rem;">两类通知分别控制，互不影响：</p>
+        <ul>
+            <li><b>告警（Alert）</b>：由「告警最低推送级别」决定。选 <code>error</code> = 只推 critical + error，
+                warning 及以下<b>不推但仍会入库</b>。单条过滤规则勾了「任意级别」则绕过该门限。</li>
+            <li><b>AI 分析汇总</b>：由「AI 分析汇总推送状态」的 4 个勾选框决定，默认只勾 <code>critical</code>。
+                勾得越少越安静；一个都不勾 = 不推。「AI 汇总冷却」限制同类汇总的推送间隔。</li>
+        </ul>
+
+        <h4 style="margin-top: 1.5rem;"><i class="fas fa-brain"></i> AI 分析</h4>
         <ol>
-            <li>Set an OpenAI-compatible endpoint (AI_BASE_URL, e.g. http://192.168.50.23:8000/v1)</li>
-            <li>Provide its API key (AI_API_KEY) and a served model (OLLAMA_MODEL)</li>
-            <li>AI_PROVIDER=openai uses the remote OpenAI-compatible server</li>
-            <li>Verify it's running at <code>http://localhost:11434</code></li>
+            <li><b>AI Protocol</b>：<code>OpenAI-compatible</code>（vLLM / SGLang / Ollama 的 <code>/v1</code>）
+                或 <code>Ollama</code>（原生 API）</li>
+            <li><b>AI Endpoint</b>：形如 <code>http://192.168.50.23:8000/v1</code>（可省略 <code>/v1</code>，会自动补全）</li>
+            <li><b>Model</b>：点 <b>Refresh</b> 从 <code>/v1/models</code> 拉取后选择</li>
         </ol>
-        
-        <h4 style="margin-top: 1.5rem;">Rsyslog Configuration</h4>
-        <p>Add this to your rsyslog configuration to send logs to LogAI Monitor:</p>
+        <p style="color: var(--lm-danger-ink);">
+            <b>⚠️ AI Endpoint 留空即可</b>——留空时会用部署时 env 里的
+            <code>AI_BASE_URL</code>。千万不要在留空状态下手动填
+            <code>http://localhost:11434</code>：本容器里没有本地 Ollama，会让全部分析报
+            <code>Connection refused</code>（线上踩过这个坑）。
+        </p>
+
+        <h4 style="margin-top: 1.5rem;"><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
+        <ul>
+            <li><b>Log Retention (days)</b>：日志 <b>和</b> AI 分析历史的保留天数（两者共用），到期自动清理。</li>
+            <li><b>Redis Hot Data Window (days)</b>：超过此时长的日志/分析/告警哈希会归档到 SQLite（冷存储），
+                Redis 只留索引。<b>设为 0 表示关闭归档。</b></li>
+            <li><b>Alert Retention (days)</b>：告警记录的保留天数。</li>
+            <li><b>Clear All Logs</b> / <b>Run Cleanup Now</b>：清理会<b>同时作用于 Redis 与 SQLite 两个库</b>，且不可撤销。</li>
+        </ul>
+
+        <h4 style="margin-top: 1.5rem;"><i class="fas fa-clock"></i> 各项改动何时生效</h4>
+        <ul>
+            <li><b>约 10 秒内</b>：自动分析开关、告警最低推送级别、分析间隔、Telegram 通知开关（Enable）</li>
+            <li><b>下一次巡检</b>：巡检间隔 / 积压阈值 / 告警冷却 / 巡检日报</li>
+            <li><b>下一轮分析</b>：每轮取多少条日志、送模型多少条、AI 汇总推送状态</li>
+            <li><b>下一次归档任务（≤5 分钟）</b>：Redis 热数据窗口</li>
+            <li><b>对之后新写入的数据生效</b>：日志保留期、告警保留期</li>
+            <li><b>需要重启容器</b>：AI Endpoint / AI Protocol（启动时读取）；Telegram 凭据内部有 5 分钟缓存</li>
+        </ul>
+
+        <h4 style="margin-top: 1.5rem;"><i class="fas fa-network-wired"></i> Rsyslog 接入</h4>
+        <p>在被采集的机器上加一行（本机监听 <b>UDP 514 / TCP 515</b>）：</p>
         <pre>
 # /etc/rsyslog.d/99-logaimonitor.conf
-*.* @logaimonitor-host:5514  # UDP
-# OR
-*.* @@logaimonitor-host:5515 # TCP
+*.* @192.168.50.6:514     # UDP
+# 或
+*.* @@192.168.50.6:515    # TCP（可靠传输，推荐）
         </pre>
+        <p style="color: var(--lm-ink-2);">改完执行 <code>systemctl restart rsyslog</code>。
+            若 rsyslog 跑在容器里，目标地址写宿主 IP 或 <code>host.docker.internal</code>。</p>
     </div>
 </div>
 
