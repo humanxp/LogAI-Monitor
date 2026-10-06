@@ -507,6 +507,65 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-timestamp")
     Console.WriteLine("[backfill] set timestamp on " + bfFixed + " ai_history records");
     Environment.Exit(0);
 }
+
+// 清掉"没用的"分析历史：analysis 里既无 overall_status、无 category、无 summary、
+// 也无 issues_found（页面显示 unknown + No issues found 的空分析）。
+// 默认干跑（只统计），加 --confirm 才真删。Redis 热记录删哈希、已归档删 SQLite，
+// 时间线 ZSET 一并摘除。
+if (args.Length >= 1 && args[0] == "--purge-empty-ai-history")
+{
+    bool confirm = args.Length >= 2 && args[1] == "--confirm";
+    var pgStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    var pgArchive = new LogAI.Core.Store.LogArchive(
+        Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
+    var pgIds = await pgStore.Db.SortedSetRangeByRankAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, 0, -1);
+    int pgUseless = 0, pgDeleted = 0;
+    foreach (var id in pgIds)
+    {
+        string sid = id.ToString();
+        StackExchange.Redis.HashEntry[] hash;
+        bool inRedis = await pgStore.Db.KeyExistsAsync(sid);
+        if (inRedis) hash = await pgStore.Db.HashGetAllAsync(sid);
+        else { var h = await pgArchive.GetHashesBatchAsync([sid]); hash = h[0]; }
+        if (hash.Length == 0) continue;
+
+        var dict = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+        if (!IsUselessAnalysis(dict.GetValueOrDefault("analysis") ?? "")) continue;
+        pgUseless++;
+
+        if (!confirm) continue;
+        if (inRedis) await pgStore.Db.KeyDeleteAsync(sid);
+        else await pgArchive.DeleteHashAsync(sid);
+        await pgStore.Db.SortedSetRemoveAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, sid);
+        pgDeleted++;
+    }
+    Console.WriteLine(confirm
+        ? $"[purge] deleted {pgDeleted} useless ai_history records"
+        : $"[purge] dry-run: found {pgUseless} useless ai_history records (no delete, add --confirm)");
+    Environment.Exit(0);
+}
+
+// 判断 analysis 是否"空分析"：四个关键字段(overall_status/category/summary/issues_found)
+// 全缺失或空。页面会显示 unknown + No issues found，没有保留价值。
+static bool IsUselessAnalysis(string analysisRaw)
+{
+    if (string.IsNullOrEmpty(analysisRaw)) return true;
+    try
+    {
+        var node = System.Text.Json.Nodes.JsonNode.Parse(analysisRaw);
+        if (node is not System.Text.Json.Nodes.JsonObject obj) return true;
+        bool Has(string k) => obj[k] is System.Text.Json.Nodes.JsonValue v && v.ToString().Length > 0;
+        bool HasArr(string k) => obj[k] is System.Text.Json.Nodes.JsonArray arr && arr.Count > 0;
+        return !Has("overall_status") && !Has("category") && !Has("summary") && !HasArr("issues_found");
+    }
+    catch { return true; }
+}
+
 app.Run();
 
 // --------------------------------------------------------------- helpers
