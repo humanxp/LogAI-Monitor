@@ -306,6 +306,20 @@ public sealed class LogArchive
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
+    /// <summary>
+    /// 某条哈希是否在冷归档里。删除单条记录时守卫必须同时看冷库：归档后的条目在
+    /// Redis 里已经没有 key，只查 Redis 会返回 404 且什么都不删（那条就永远留在
+    /// SQLite 与时间线里）。
+    /// </summary>
+    public async Task<bool> HashExistsAsync(string key, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM hashes WHERE key = $key LIMIT 1;";
+        cmd.Parameters.AddWithValue("$key", key);
+        return await cmd.ExecuteScalarAsync(ct) is not null;
+    }
+
     // ------------------------------------------------ 管理动作：清空/按条件删
     // Web 端的 "Clear All Logs" / "delete-source" / "Clear All History" 以前只清
     // Redis，冷归档里的数据会留下来（界面看不见、但占着磁盘）。下面几个方法让这些

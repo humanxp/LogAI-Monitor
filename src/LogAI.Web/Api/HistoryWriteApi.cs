@@ -29,10 +29,14 @@ internal static class HistoryWriteApi
             var session = AuthApi.CurrentUser(http, cookies);
             if (session is null) return Login(http);
 
-            if (!await store.Db.KeyExistsAsync(historyId))
+            // 守卫必须同时看冷库：归档后的条目在 Redis 里已经没有 key，只查 Redis 会
+            // 直接返回 404 且什么都不删——实测那条会永远留在 SQLite 与时间线里。
+            bool inRedis = await store.Db.KeyExistsAsync(historyId);
+            bool inArchive = await archive.HashExistsAsync(historyId);
+            if (!inRedis && !inArchive)
                 return ReadApi.JsonBody(new { error = "History entry not found" }, 404);
 
-            await store.Db.KeyDeleteAsync(historyId);
+            if (inRedis) await store.Db.KeyDeleteAsync(historyId);
             await store.Db.SortedSetRemoveAsync(Keys.AiHistoryTimeline, historyId);
             // 独立状态哈希 + 冷归档里的同一条也要删，否则残留。
             await store.Db.HashDeleteAsync(Keys.AiHistoryStatus, historyId);
