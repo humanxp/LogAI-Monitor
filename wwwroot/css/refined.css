@@ -1041,8 +1041,9 @@ table tbody tr { transition: background-color 0.1s ease; }
 .pager-buttons { display: flex; gap: 0.4rem; }
 .pager-buttons .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
-/* --------------------------------------------- 仪表盘：AI token 用量明细 */
-/* 参考 oMLX 的用量分析粒度：提示/生成/缓存分开，另给今日、近 7 天与平均每次。 */
+/* ------------------------------------------- 仪表盘：AI token 用量（单行） */
+/* 参考 oMLX 的用量分析粒度：提示/生成/缓存分开，另给今日、近 7 天与平均每次。
+   强制排成一行：字段之间用细分隔线串起来，放不下时横向滚动而不是换行。 */
 .token-usage {
   margin-top: 0.85rem;
   padding-top: 0.7rem;
@@ -1051,26 +1052,44 @@ table tbody tr { transition: background-color 0.1s ease; }
 .token-usage-head {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.55rem;
+  gap: 0.6rem;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  min-width: 0;
 }
-.token-usage-head > i { color: var(--lm-accent); }
-.token-usage-title { font-weight: 600; color: var(--lm-ink); font-size: 0.92rem; }
-.token-usage-head .btn { margin-left: auto; }
-.token-usage-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: 0.45rem 0.9rem;
-}
-.token-usage-grid > div { display: flex; flex-direction: column; min-width: 0; }
-.token-usage-grid span {
-  font-size: 0.7rem;
-  color: var(--lm-ink-3);
-  letter-spacing: 0.02em;
+.token-usage-head > i { color: var(--lm-accent); flex: 0 0 auto; }
+.token-usage-title {
+  font-weight: 600;
+  color: var(--lm-ink);
+  font-size: 0.9rem;
   white-space: nowrap;
+  flex: 0 0 auto;
 }
-.token-usage-grid b {
-  font-size: 0.95rem;
+.token-usage-items {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+}
+.token-usage-items .tu {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28rem;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  padding-left: 0.6rem;
+  border-left: 1px solid var(--lm-line);
+}
+.token-usage-items .tu:first-child { border-left: 0; padding-left: 0; }
+.token-usage-items .tu i {
+  font-style: normal;
+  font-size: 0.72rem;
+  color: var(--lm-ink-3);
+}
+.token-usage-items .tu b {
+  font-size: 0.92rem;
   color: var(--lm-ink);
   font-variant-numeric: tabular-nums;
 }
+.token-usage-head .btn { margin-left: auto; flex: 0 0 auto; }

@@ -56,26 +56,27 @@
                 <span class="status-dot offline"></span> Telegram: Checking...
             </div>
         </div>
-        <!-- AI token 用量：字段来自 /api/stats 的 ai_tokens_*（后端每次调用后累计） -->
+        <!-- AI token 用量：字段来自 /api/stats 的 ai_tokens_*（后端每次调用后累计）。
+             强制单行：字段用细分隔线串起来，窄屏改为横向滚动而不是换行。 -->
         <div class="token-usage" id="aiTokenUsage">
             <div class="token-usage-head">
                 <i class="fas fa-coins"></i>
                 <span class="token-usage-title">AI Token 用量</span>
+                <div class="token-usage-items">
+                    <span class="tu"><i>总用量</i><b id="aiTokensTotal">—</b></span>
+                    <span class="tu"><i>今日</i><b id="aiTokensToday">—</b></span>
+                    <span class="tu"><i>近7天</i><b id="aiTokensWeek">—</b></span>
+                    <span class="tu"><i>提示</i><b id="aiTokensPrompt">—</b></span>
+                    <span class="tu"><i>生成</i><b id="aiTokensCompletion">—</b></span>
+                    <span class="tu"><i>缓存</i><b id="aiTokensCached">—</b></span>
+                    <span class="tu"><i>调用</i><b id="aiCalls">—</b></span>
+                    <span class="tu"><i>均次</i><b id="aiTokensAvg">—</b></span>
+                    <span class="tu"><i>更新</i><b id="aiTokensUpdated">—</b></span>
+                </div>
                 <button type="button" class="btn btn-outline btn-sm" id="resetTokenUsageBtn"
                         onclick="resetTokenUsage()" title="清零累计与所有日用量，不可撤销">
-                    <i class="fas fa-rotate-left"></i> 复位清零
+                    <i class="fas fa-rotate-left"></i> 复位
                 </button>
-            </div>
-            <div class="token-usage-grid">
-                <div><span>总用量</span><b id="aiTokensTotal">—</b></div>
-                <div><span>今日</span><b id="aiTokensToday">—</b></div>
-                <div><span>近 7 天</span><b id="aiTokensWeek">—</b></div>
-                <div><span>提示 tokens</span><b id="aiTokensPrompt">—</b></div>
-                <div><span>生成 tokens</span><b id="aiTokensCompletion">—</b></div>
-                <div><span>缓存命中</span><b id="aiTokensCached">—</b></div>
-                <div><span>调用次数</span><b id="aiCalls">—</b></div>
-                <div><span>平均每次</span><b id="aiTokensAvg">—</b></div>
-                <div><span>最近更新</span><b id="aiTokensUpdated">—</b></div>
             </div>
         </div>
     </div>
