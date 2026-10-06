@@ -377,8 +377,19 @@ function renderHistory() {
     `;
 }
 
+// 早期版本写入的记录没有 timestamp 字段（空字符串），此时从 id 里的写入时间戳
+// （ai_history:<epoch ms>）回退，避免页面出现 "Invalid Date"。
+function historyTimestamp(entry) {
+    if (entry.timestamp) {
+        const d = new Date(entry.timestamp);
+        if (!isNaN(d.getTime())) return d.toLocaleString();
+    }
+    const ms = Number(String(entry.id || '').split(':')[1]);
+    return isNaN(ms) ? '—' : new Date(ms).toLocaleString();
+}
+
 function renderHistoryRow(entry) {
-    const timestamp = new Date(entry.timestamp).toLocaleString();
+    const timestamp = historyTimestamp(entry);
     // 'auto' (periodic/batch trigger) and 'batch' records are batch analyses;
     // only 'single' is a single-log analysis.
     const type = entry.type === 'single' ? '📝 Single' : '📊 Batch';
@@ -488,7 +499,7 @@ function showHistoryDetail(historyId) {
     document.getElementById('historyDetailContent').innerHTML = `
         <div class="form-group">
             <label class="form-label">Timestamp</label>
-            <p>${new Date(entry.timestamp).toLocaleString()}</p>
+            <p>${historyTimestamp(entry)}</p>
         </div>
         <div class="form-group">
             <label class="form-label">Analysis Type</label>
