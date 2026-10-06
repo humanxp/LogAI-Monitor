@@ -86,15 +86,22 @@ public static partial class PromptBuilder
     }
 
     /// <summary>
-    /// 批量提示词。**静态指令必须排在日志之前**——这不是风格问题：
-    /// omlx/vLLM 的前缀缓存按 256 token 的块对齐，只有"从第一个 token 起完全
-    /// 相同的前缀"才可能命中，且共享前缀不足 256 token 时命中为 0。原先把整块
-    /// JSON schema 放在日志之后，两次分析之间可复用的前缀只有开头那一行
-    /// （约 14 token）→ 实测命中率 0%；把整块指令（约 450 token）挪到前面后，
-    /// 每批至少稳定命中一个 256 块（实测 6.9%）。
+    /// 批量提示词。**指令刻意排在日志之后，这个顺序是被实测验证过的产品决策，不要
+    /// 为了缓存命中率把它挪到前面**：
+    /// omlx/vLLM 的前缀缓存按 256 token 块对齐、不足 256 不命中，把整块 schema 提前
+    /// 确实能每批多命中一个 256 块（约 +7% 预填充，每次省 ~0.85s）；但同一批日志
+    /// （30 条真实日志、本质健康：12 条是例行 crond 记录 + 一次无害的
+    /// ERROR_FILE_NOT_FOUND）各跑 15 次的判定差异很大：
+    ///   指令在末尾 → healthy 9 / warning 6
+    ///   指令在前   → warning 13 / healthy 2
+    ///   指令进 system message → warning 15
+    /// 即那点缓存是用"把健康批次误判成 warning"换来的，不划算。
     /// </summary>
     public static string BatchPrompt(string logSummary) => $"""
-You are a syslog security/health analyzer.
+You are a syslog security/health analyzer. Assess the logs below.
+
+LOGS:
+{logSummary}
 
 Reply with ONLY a JSON object having exactly these keys:
 - "overall_status": rate the batch by its SINGLE WORST issue, one of "healthy", "warning", "critical".
@@ -109,11 +116,6 @@ Reply with ONLY a JSON object having exactly these keys:
 - "alert_message": short admin alert if critical, else ""
 
 Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
-
-Assess the logs below.
-
-LOGS:
-{logSummary}
 """;
 
     /// <summary>Second attempt sent when the first reply could not be parsed.</summary>
@@ -132,12 +134,17 @@ LOGS:
 public static partial class PromptBuilderSingle
 {
     /// <summary>
-    /// 单条日志的提示词。同样把静态指令放在日志字段之前（理由见 BatchPrompt 的注释）。
-    /// 注意：单条路径的静态块只有 ~120 token，够不到 256 的缓存块门槛，所以它本身
-    /// 命中不了缓存——但顺序统一更利于以后调整，且不会因此变差。
+    /// 单条日志的提示词。顺序与 BatchPrompt 保持一致（字段在前、指令在后），
+    /// 理由见 BatchPrompt 的注释。
     /// </summary>
     public static string Build(IReadOnlyDictionary<string, string> log) => $"""
-You are a syslog security/health analyzer.
+You are a syslog security/health analyzer. Assess this single log entry.
+
+Hostname/IP: {PromptBuilder.Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120)}
+Source: {PromptBuilder.Safe(Field(log, "source", "unknown"), 120)}
+Severity: {PromptBuilder.Safe(Field(log, "severity", "unknown"), 32)}
+Program: {PromptBuilder.Safe(Field(log, "program", "unknown"), 60)}
+Message: {PromptBuilder.Safe(Field(log, "message", ""), 1200)}
 
 Reply with ONLY a JSON object having exactly these keys:
 - "is_critical": boolean (true if it needs immediate attention)
@@ -146,15 +153,7 @@ Reply with ONLY a JSON object having exactly these keys:
 - "recommendation": short action to take based only on this log, or ""
 - "alert_user": boolean (true if the user should be notified)
 
-No markdown, no extra text, only JSON. Base everything ONLY on the log given.
-
-Assess this single log entry:
-
-Hostname/IP: {PromptBuilder.Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120)}
-Source: {PromptBuilder.Safe(Field(log, "source", "unknown"), 120)}
-Severity: {PromptBuilder.Safe(Field(log, "severity", "unknown"), 32)}
-Program: {PromptBuilder.Safe(Field(log, "program", "unknown"), 60)}
-Message: {PromptBuilder.Safe(Field(log, "message", ""), 1200)}
+No markdown, no extra text, only JSON.
 """;
 
     private static string Field(IReadOnlyDictionary<string, string> log, string name, string fallback) =>
