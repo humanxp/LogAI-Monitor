@@ -46,13 +46,23 @@ internal static class PromptSelfTest
         Check("hostname falls back to source", summary.Contains("[10.10.10.7]", StringComparison.Ordinal));
 
         string prompt = PromptBuilder.BatchPrompt(summary);
-        Check("prompt starts with the exact opening line",
-            prompt.StartsWith("You are a syslog security/health analyzer. Assess the logs below.\n\nLOGS:\n", StringComparison.Ordinal),
+        // 结构是**契约**，不是风格：静态指令必须排在日志之前，这样两次调用之间才有
+        // 一个够长的公共前缀供 omlx/vLLM 的前缀缓存复用（256 token 块对齐，不足
+        // 256 命中为 0）。把 schema 放回日志之后会让命中率掉到 0。
+        Check("prompt starts with the opening line",
+            prompt.StartsWith("You are a syslog security/health analyzer.\n", StringComparison.Ordinal),
             prompt[..Math.Min(80, prompt.Length)]);
-        Check("prompt embeds the summary verbatim", prompt.Contains(expectedSummary, StringComparison.Ordinal));
-        Check("prompt ends with the exact closing sentence",
-            prompt.EndsWith("Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.", StringComparison.Ordinal),
+        Check("static instruction block comes BEFORE the logs (cacheable prefix)",
+            prompt.IndexOf("Reply with ONLY a JSON object", StringComparison.Ordinal) <
+            prompt.IndexOf("LOGS:", StringComparison.Ordinal),
+            "schema must precede the logs");
+        Check("logs come last",
+            prompt.EndsWith(expectedSummary, StringComparison.Ordinal),
             prompt[^60..]);
+        Check("prompt embeds the summary verbatim", prompt.Contains(expectedSummary, StringComparison.Ordinal));
+        Check("prompt keeps the closing rules sentence before the logs",
+            prompt.Contains("Base everything ONLY on the logs given. Keep the JSON compact.", StringComparison.Ordinal),
+            "missing grounding sentence");
         Check("prompt carries every required key name",
             new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
                 .All(key => prompt.Contains('"' + key + '"', StringComparison.Ordinal)),
