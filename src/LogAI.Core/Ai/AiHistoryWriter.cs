@@ -3,12 +3,13 @@
 // The stored record and the API representation differ deliberately, and both
 // shapes are verified against real stored records:
 //
-//   stored (7 fields): id analysis log_ids timestamp type logs_analyzed fail_count
+//   stored (8 fields): id analysis log_ids timestamp type logs_analyzed fail_count status
 //   served (5 fields): analysis id logs_analyzed timestamp type
 //
 // log_ids holds up to ~500 identifiers and is therefore never served; fail_count
-// drives batch retirement and is internal state. /api/ai-history reads its five
-// fields from this record, so the writer must not add or drop any.
+// drives batch retirement, and status is the 7-tier classification used by the
+// stats endpoint — all three are internal state. /api/ai-history reads its five
+// fields from this record, so the writer must not add or drop any served field.
 
 using System.Text.Json.Nodes;
 using LogAI.Core.Store;

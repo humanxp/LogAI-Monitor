@@ -1875,10 +1875,13 @@ async function loadSettings() {
         const alertMinEl = document.getElementById('alertMinSeverity');
         if (alertMinEl) alertMinEl.value = settings.alert_min_severity || 'error';
         document.getElementById('analysisSummaryCooldown').value = settings.analysis_summary_cooldown_min ?? 30;
-        // 汇总推送状态（逗号分隔）→ 勾选对应复选框；默认 critical
+        // 汇总推送状态（逗号分隔的 7 档）→ 勾选对应复选框；默认 critical（最重要、最不吵）
         const summaryStatuses = (settings.analysis_summary_status || 'critical').split(',');
         document.getElementById('summaryStatusCritical').checked = summaryStatuses.includes('critical');
+        document.getElementById('summaryStatusError').checked = summaryStatuses.includes('error');
         document.getElementById('summaryStatusWarning').checked = summaryStatuses.includes('warning');
+        document.getElementById('summaryStatusNotice').checked = summaryStatuses.includes('notice');
+        document.getElementById('summaryStatusInfo').checked = summaryStatuses.includes('info');
         document.getElementById('summaryStatusHealthy').checked = summaryStatuses.includes('healthy');
         document.getElementById('summaryStatusOther').checked = summaryStatuses.includes('other');
         document.getElementById('ollamaEnabled').checked = settings.ollama_enabled !== false;
@@ -1947,7 +1950,7 @@ async function saveSettings() {
         telegram_bot_token: document.getElementById('telegramBotToken').value,
         telegram_chat_id: document.getElementById('telegramChatId').value,
         analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
-        analysis_summary_status: ['critical', 'warning', 'healthy', 'other']
+        analysis_summary_status: ['critical', 'error', 'warning', 'notice', 'info', 'healthy', 'other']
             .filter(s => document.getElementById('summaryStatus' + s.charAt(0).toUpperCase() + s.slice(1))?.checked)
             .join(','),
         telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,

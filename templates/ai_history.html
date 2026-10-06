@@ -7,30 +7,12 @@
 <!-- Stats Cards -->
 <div class="stats-grid" style="margin-bottom: 1.5rem;">
     <div class="stat-card">
-        <div class="stat-icon" style="background-color: var(--lm-accent-soft);">
-            <i class="fas fa-history" style="color: var(--lm-accent);"></i>
+        <div class="stat-icon primary">
+            <i class="fas fa-history"></i>
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
             <p>Total Analyses</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon success">
-            <i class="fas fa-check-circle"></i>
-        </div>
-        <div class="stat-info">
-            <h3 id="healthyCount">0</h3>
-            <p>Healthy Status</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon warning">
-            <i class="fas fa-exclamation-triangle"></i>
-        </div>
-        <div class="stat-info">
-            <h3 id="warningCount">0</h3>
-            <p>Warning Status</p>
         </div>
     </div>
     <div class="stat-card">
@@ -39,7 +21,61 @@
         </div>
         <div class="stat-info">
             <h3 id="criticalCount">0</h3>
-            <p>Critical Status</p>
+            <p>Critical</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon danger">
+            <i class="fas fa-exclamation-circle"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="errorCount">0</h3>
+            <p>Error</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon warning">
+            <i class="fas fa-exclamation-triangle"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="warningCount">0</h3>
+            <p>Warning</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon primary">
+            <i class="fas fa-bell"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="noticeCount">0</h3>
+            <p>Notice</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon primary">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="infoCount">0</h3>
+            <p>Info</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon success">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="healthyCount">0</h3>
+            <p>Healthy</p>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">
+            <i class="fas fa-question-circle"></i>
+        </div>
+        <div class="stat-info">
+            <h3 id="otherCount">0</h3>
+            <p>Other</p>
         </div>
     </div>
 </div>
@@ -319,9 +355,13 @@ async function fetchHistoryStats(seq) {
         // summary cards always match the rows currently on screen.
         if (seq !== undefined && seq !== _historyFetchSeq) return;
         document.getElementById('totalAnalyses').textContent = s.total ?? historyTotal;
-        document.getElementById('healthyCount').textContent = s.healthy || 0;
-        document.getElementById('warningCount').textContent = s.warning || 0;
         document.getElementById('criticalCount').textContent = s.critical || 0;
+        document.getElementById('errorCount').textContent = s.error || 0;
+        document.getElementById('warningCount').textContent = s.warning || 0;
+        document.getElementById('noticeCount').textContent = s.notice || 0;
+        document.getElementById('infoCount').textContent = s.info || 0;
+        document.getElementById('healthyCount').textContent = s.healthy || 0;
+        document.getElementById('otherCount').textContent = s.other || 0;
     } catch (error) {
         console.error('Error fetching history stats:', error);
     }
@@ -440,9 +480,11 @@ function getEntryStatus(analysis, type) {
 function getStatusClass(status) {
     switch(status) {
         case 'healthy': return 'info';
+        case 'info': return 'info';
+        case 'notice': return 'warning';
         case 'warning': return 'warning';
-        case 'critical': return 'critical';
         case 'error': return 'error';
+        case 'critical': return 'critical';
         default: return 'info';
     }
 }
@@ -450,9 +492,11 @@ function getStatusClass(status) {
 function getStatusIcon(status) {
     switch(status) {
         case 'healthy': return '✅';
+        case 'info': return 'ℹ️';
+        case 'notice': return '🔔';
         case 'warning': return '⚠️';
-        case 'critical': return '🔴';
         case 'error': return '❌';
+        case 'critical': return '🔴';
         default: return '📋';
     }
 }

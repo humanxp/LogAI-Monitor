@@ -92,7 +92,7 @@ LOGS:
 {logSummary}
 
 Reply with ONLY a JSON object having exactly these keys:
-- "overall_status": one of "healthy", "warning", "critical"
+- "overall_status": the batch's overall health, pick the SINGLE most fitting level from (most severe first): "critical" (outage / security breach needing immediate action), "error" (errors present, service degraded), "warning" (warnings worth attention), "notice" (unusual but not harmful), "info" (routine informational), "healthy" (all normal), "other" (cannot judge)
 - "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). Do NOT copy raw log lines; summarize each distinct pattern in one short line (max 150 chars). Empty array if none
 - "critical_count": integer, count of DISTINCT critical problems, 0 if none
 - "recommendations": array of short "[HOST] action" strings (actions to fix the issues), at most 5. Empty array if none

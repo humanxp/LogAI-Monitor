@@ -36,8 +36,8 @@ internal static class AiHistorySelfTest
         var hash = await store.Db.HashGetAllAsync(id);
         var stored = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
-        string[] expected = ["analysis", "fail_count", "id", "log_ids", "logs_analyzed", "timestamp", "type"];
-        Check("stored record has exactly the seven fields",
+        string[] expected = ["analysis", "fail_count", "id", "log_ids", "logs_analyzed", "status", "timestamp", "type"];
+        Check("stored record has exactly the eight fields",
             stored.Count == expected.Length && expected.All(stored.ContainsKey),
             string.Join(",", stored.Keys.OrderBy(k => k)));
         Check("id field equals the key", stored.GetValueOrDefault("id") == id, id);
@@ -58,11 +58,11 @@ internal static class AiHistorySelfTest
             && roundTrip?["issues_found"] is JsonArray { Count: 2 },
             stored["analysis"] ?? "");
 
-        // The API serves five of these seven fields; the extra two must stay internal.
+        // The API serves five of these eight fields; the rest must stay internal.
         string[] served = ["analysis", "id", "logs_analyzed", "timestamp", "type"];
-        Check("the two internal fields are exactly fail_count and log_ids",
+        Check("the internal fields are exactly fail_count, log_ids and status",
             expected.Except(served, StringComparer.Ordinal).OrderBy(x => x, StringComparer.Ordinal)
-                .SequenceEqual(["fail_count", "log_ids"]),
+                .SequenceEqual(["fail_count", "log_ids", "status"]),
             string.Join(",", expected.Except(served, StringComparer.Ordinal)));
 
         Check("analysis indexed on the timeline",

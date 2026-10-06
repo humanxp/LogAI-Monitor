@@ -25,7 +25,7 @@ internal static class AiHistoryApi
     // 无需实时（分析每 ~2 分钟才提交一条），短 TTL 缓存即可把后续加载降到毫秒级。
     // 带时间窗的筛选很快（几 ms）且窗口每次不同，不缓存。
     private static readonly object StatsCacheLock = new();
-    private static (int Critical, int Healthy, int Warning, int Other, int Total)? _statsCache;
+    private static (Dictionary<string, int> Counts, int Total)? _statsCache;
     private static DateTimeOffset _statsCacheAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan StatsCacheTtl = TimeSpan.FromSeconds(30);
 
@@ -45,16 +45,7 @@ internal static class AiHistoryApi
                 lock (StatsCacheLock)
                 {
                     if (_statsCache is { } cached && DateTimeOffset.UtcNow - _statsCacheAt < StatsCacheTtl)
-                        // 匿名类型的属性名必须是小写（契约：critical/healthy/other/total/warning），
-                        // 直接用 cached.Critical 会把键名变成 PascalCase。
-                        return ReadApi.JsonBody(new
-                        {
-                            critical = cached.Critical,
-                            healthy = cached.Healthy,
-                            other = cached.Other,
-                            total = cached.Total,
-                            warning = cached.Warning,
-                        });
+                        return ReadApi.JsonBody(StatsPayload(cached.Counts, cached.Total));
                 }
             }
 
@@ -62,7 +53,14 @@ internal static class AiHistoryApi
                 ? await store.Db.SortedSetRangeByScoreAsync(Keys.AiHistoryTimeline, startTime, endTime)
                 : await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1);
 
-            int critical = 0, healthy = 0, warning = 0, other = 0;
+            // 7 档严重程度各自计数（critical/error/warning/notice/info/healthy/other）。
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (string s in AiStatusClassifier.Statuses) counts[s] = 0;
+            void Bump(string s)
+            {
+                if (counts.TryGetValue(s, out int c)) counts[s] = c + 1;
+                else counts["other"]++;
+            }
 
             const int Chunk = 500;
             // 第一遍读独立的状态小哈希 ai_history:status（id → 分类结果）。它不随归档
@@ -82,18 +80,13 @@ internal static class AiHistoryApi
                 var loaded = await Task.WhenAll(tasks);
                 for (int i = 0; i < size; i++)
                 {
-                    switch (loaded[i].ToString())
-                    {
-                        case "critical": critical++; break;
-                        case "warning": warning++; break;
-                        case "healthy": healthy++; break;
-                        case "": fallback.Add(ids[offset + i].ToString()); break;   // 未回填的旧记录
-                        default: other++; break;
-                    }
+                    string s = loaded[i].ToString();
+                    if (s.Length == 0) fallback.Add(ids[offset + i].ToString());   // 未回填的旧记录
+                    else Bump(s);
                 }
             }
 
-            // 第二遍：无 status 的旧记录 + 已归档记录回退。已归档记录的哈希在 SQLite，
+            // 第二遍：无 status 的旧记录回退。已归档记录的哈希在 SQLite，
             // 用 HydrateHashesAsync 一并取回（Redis 缺失 → SQLite）。
             foreach (var chunk in fallback.Chunk(Chunk))
             {
@@ -102,18 +95,12 @@ internal static class AiHistoryApi
                 for (int i = 0; i < chunk.Length; i++)
                 {
                     var hash = hashes[i];
-                    if (hash.Length == 0) { other++; continue; }
+                    if (hash.Length == 0) { Bump("other"); continue; }
                     var dict = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
                     string status = dict.GetValueOrDefault("status") ?? "";
                     if (status.Length == 0)
                         status = Classify(dict.GetValueOrDefault("type") ?? "", dict.GetValueOrDefault("analysis") ?? "");
-                    switch (status)
-                    {
-                        case "critical": critical++; break;
-                        case "warning": warning++; break;
-                        case "healthy": healthy++; break;
-                        default: other++; break;
-                    }
+                    Bump(status);
                 }
             }
 
@@ -121,19 +108,12 @@ internal static class AiHistoryApi
             {
                 lock (StatsCacheLock)
                 {
-                    _statsCache = (critical, healthy, warning, other, ids.Length);
+                    _statsCache = (counts, ids.Length);
                     _statsCacheAt = DateTimeOffset.UtcNow;
                 }
             }
 
-            return ReadApi.JsonBody(new
-            {
-                critical,
-                healthy,
-                other,
-                total = ids.Length,
-                warning,
-            });
+            return ReadApi.JsonBody(StatsPayload(counts, ids.Length));
         });
     }
 
@@ -145,6 +125,16 @@ internal static class AiHistoryApi
     /// </summary>
     private static string Classify(string type, string analysisRaw) =>
         AiStatusClassifier.Classify(type, analysisRaw);
+
+    /// <summary>统计响应：7 档各自计数 + total（键排序由序列化统一处理）。</summary>
+    private static Dictionary<string, object?> StatsPayload(IReadOnlyDictionary<string, int> counts, int total)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (string s in AiStatusClassifier.Statuses)
+            payload[s] = counts.TryGetValue(s, out int v) ? v : 0;
+        payload["total"] = total;
+        return payload;
+    }
 
     /// <summary>Newest-first page of analysis records.</summary>
     public static void MapList(WebApplication app, RedisStore store, LogArchive archive)
