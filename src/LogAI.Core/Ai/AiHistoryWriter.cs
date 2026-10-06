@@ -57,11 +57,15 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
         double score = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
         await store.Db.SortedSetAddAsync(Keys.AiHistoryTimeline, id, score);
 
-        // History is kept for as long as the configured log retention
-        // (store_analysis_history calls expire with _history_ttl_seconds()).
-        // Without this the records accumulate forever.
-        if (retentionHours > 0)
-            await store.Db.KeyExpireAsync(id, TimeSpan.FromHours(retentionHours));
+        // 保留期跟着 log_retention_hours 走（手动改设置也同步，不必重启）。
+        // 设置缺失/非法时回退到构造函数参数（默认 720 = 30 天）。
+        var settings = await store.GetSettingsAsync();
+        int hours = retentionHours;
+        if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("log_retention_hours")), out int configured)
+            && configured > 0)
+            hours = configured;
+        if (hours > 0)
+            await store.Db.KeyExpireAsync(id, TimeSpan.FromHours(hours));
 
         return id;
     }
