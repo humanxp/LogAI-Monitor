@@ -56,14 +56,27 @@
                 <span class="status-dot offline"></span> Telegram: Checking...
             </div>
         </div>
-        <!-- AI token 用量：由 app.js 按 /api/stats 的 ai_tokens_* 字段填充 -->
-        <div class="token-usage" id="aiTokenUsage" title="累计自本功能上线；每次调用模型后由后端累加">
-            <i class="fas fa-coins"></i>
-            <span>Token 用量</span>
-            <b id="aiTokensTotal">—</b>
-            <span class="token-usage-sub">（今日 <b id="aiTokensToday">—</b>）</span>
-            <span class="token-usage-sub">提示 <b id="aiTokensPrompt">—</b> / 生成 <b id="aiTokensCompletion">—</b></span>
-            <span class="token-usage-sub"><b id="aiCalls">—</b> 次调用</span>
+        <!-- AI token 用量：字段来自 /api/stats 的 ai_tokens_*（后端每次调用后累计） -->
+        <div class="token-usage" id="aiTokenUsage">
+            <div class="token-usage-head">
+                <i class="fas fa-coins"></i>
+                <span class="token-usage-title">AI Token 用量</span>
+                <button type="button" class="btn btn-outline btn-sm" id="resetTokenUsageBtn"
+                        onclick="resetTokenUsage()" title="清零累计与所有日用量，不可撤销">
+                    <i class="fas fa-rotate-left"></i> 复位清零
+                </button>
+            </div>
+            <div class="token-usage-grid">
+                <div><span>总用量</span><b id="aiTokensTotal">—</b></div>
+                <div><span>今日</span><b id="aiTokensToday">—</b></div>
+                <div><span>近 7 天</span><b id="aiTokensWeek">—</b></div>
+                <div><span>提示 tokens</span><b id="aiTokensPrompt">—</b></div>
+                <div><span>生成 tokens</span><b id="aiTokensCompletion">—</b></div>
+                <div><span>缓存命中</span><b id="aiTokensCached">—</b></div>
+                <div><span>调用次数</span><b id="aiCalls">—</b></div>
+                <div><span>平均每次</span><b id="aiTokensAvg">—</b></div>
+                <div><span>最近更新</span><b id="aiTokensUpdated">—</b></div>
+            </div>
         </div>
     </div>
 </div>

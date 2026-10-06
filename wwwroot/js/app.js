@@ -226,17 +226,53 @@ function updateStatsDisplay() {
 
 // AI token 用量（后端每次调用后累计，见 AiUsage）。数字用千分位，读起来才不费劲。
 function updateTokenUsage() {
-    const fmt = (v) => (v === undefined || v === null || isNaN(Number(v)))
+    const fmt = (v) => (v === undefined || v === null || v === '' || isNaN(Number(v)))
         ? '—' : Number(v).toLocaleString();
     const set = (id, value) => {
         const el = document.getElementById(id);
-        if (el) el.textContent = fmt(value);
+        if (el) el.textContent = value;
     };
-    set('aiTokensTotal', state.stats.ai_tokens_total);
-    set('aiTokensToday', state.stats.ai_tokens_today);
-    set('aiTokensPrompt', state.stats.ai_tokens_prompt);
-    set('aiTokensCompletion', state.stats.ai_tokens_completion);
-    set('aiCalls', state.stats.ai_calls);
+    const total = Number(state.stats.ai_tokens_total || 0);
+    const calls = Number(state.stats.ai_calls || 0);
+
+    set('aiTokensTotal', fmt(total));
+    set('aiTokensToday', fmt(state.stats.ai_tokens_today));
+    set('aiTokensWeek', fmt(state.stats.ai_tokens_week));
+    set('aiTokensPrompt', fmt(state.stats.ai_tokens_prompt));
+    set('aiTokensCompletion', fmt(state.stats.ai_tokens_completion));
+    set('aiTokensCached', fmt(state.stats.ai_tokens_cached));
+    set('aiCalls', fmt(calls));
+    set('aiTokensAvg', calls > 0 ? fmt(Math.round(total / calls)) : '—');
+
+    const updated = Number(state.stats.ai_tokens_updated_at || 0);
+    set('aiTokensUpdated', updated > 0
+        ? new Date(updated * 1000).toLocaleString(undefined,
+            { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '—');
+}
+
+// 复位清零：清掉累计与所有日用量（管理员限定，不可撤销）。
+async function resetTokenUsage() {
+    if (!confirm('确定清零 AI Token 用量统计吗？\n\n累计与所有日用量都会被删除，不可撤销。')) return;
+    const btn = document.getElementById('resetTokenUsageBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清零中...'; }
+    try {
+        const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
+        if (response.ok) {
+            const data = await response.json();
+            showToast('Success', `Token 用量已清零（删除 ${data.deleted} 个键）`, 'success');
+            await fetchStats();
+        } else if (response.status === 403) {
+            showToast('Access denied', '只有管理员可以清零用量统计', 'error');
+        } else {
+            showToast('Error', '清零失败', 'error');
+        }
+    } catch (error) {
+        console.error('Error resetting token usage:', error);
+        showToast('Error', '清零失败', 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 复位清零'; }
+    }
 }
 
 function updateServiceStatus(elementId, serviceName, status) {

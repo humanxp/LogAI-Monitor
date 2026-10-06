@@ -1041,18 +1041,36 @@ table tbody tr { transition: background-color 0.1s ease; }
 .pager-buttons { display: flex; gap: 0.4rem; }
 .pager-buttons .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
 
-/* --------------------------------------------- 仪表盘：AI token 用量一行 */
+/* --------------------------------------------- 仪表盘：AI token 用量明细 */
+/* 参考 oMLX 的用量分析粒度：提示/生成/缓存分开，另给今日、近 7 天与平均每次。 */
 .token-usage {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
   margin-top: 0.85rem;
   padding-top: 0.7rem;
   border-top: 1px solid var(--lm-line);
-  font-size: 0.88rem;
-  color: var(--lm-ink-2);
 }
-.token-usage > i { color: var(--lm-accent); }
-.token-usage b { color: var(--lm-ink); font-variant-numeric: tabular-nums; }
-.token-usage-sub { color: var(--lm-ink-3); font-size: 0.82rem; }
+.token-usage-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+.token-usage-head > i { color: var(--lm-accent); }
+.token-usage-title { font-weight: 600; color: var(--lm-ink); font-size: 0.92rem; }
+.token-usage-head .btn { margin-left: auto; }
+.token-usage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 0.45rem 0.9rem;
+}
+.token-usage-grid > div { display: flex; flex-direction: column; min-width: 0; }
+.token-usage-grid span {
+  font-size: 0.7rem;
+  color: var(--lm-ink-3);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.token-usage-grid b {
+  font-size: 0.95rem;
+  color: var(--lm-ink);
+  font-variant-numeric: tabular-nums;
+}

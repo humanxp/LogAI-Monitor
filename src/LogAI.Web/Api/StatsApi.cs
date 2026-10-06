@@ -8,6 +8,7 @@
 // here would change the rendered "checked N seconds ago" text.
 
 using LogAI.Core.Ai;
+using LogAI.Core.Auth;
 using LogAI.Core.Store;
 
 namespace LogAI.Web.Api;
@@ -27,10 +28,29 @@ internal static class StatsApi
     /// </summary>
     internal static LogArchive? Archive { get; set; }
 
-    public static void Map(WebApplication app, RedisStore store, LogArchive archive)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies)
     {
         Archive = archive;
         app.MapGet("/api/stats", async () => ReadApi.JsonBody(await BuildPayloadAsync(store)));
+
+        // POST /api/ai-usage/reset —— 仪表盘上"复位清零"按钮：清掉累计与所有日键。
+        // 管理员限定（会丢掉历史计数，不可撤销）。
+        app.MapPost("/api/ai-usage/reset", async (HttpContext http) =>
+        {
+            var session = AuthApi.CurrentUser(http, cookies);
+            if (session is null)
+                return Results.Redirect("/login?next=" + Uri.EscapeDataString(http.Request.Path));
+            if (!string.Equals(session.Role, "admin", StringComparison.Ordinal))
+                return ReadApi.JsonBody(new { error = "Access denied" }, 403);
+
+            long removed = await LogAI.Core.Ai.AiUsage.ResetAsync(store);
+            Console.WriteLine("[AiUsage] reset, " + removed + " key(s) deleted");
+            return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["deleted"] = removed,
+                ["status"] = "ok",
+            });
+        });
     }
 
     /// <summary>
@@ -155,10 +175,13 @@ internal static class StatsApi
             {
                 ["ai_calls"] = tokens.Calls,
                 ["ai_model"] = model,
+                ["ai_tokens_cached"] = tokens.Cached,
                 ["ai_tokens_completion"] = tokens.Completion,
                 ["ai_tokens_prompt"] = tokens.Prompt,
                 ["ai_tokens_today"] = tokens.Today,
                 ["ai_tokens_total"] = tokens.Total,
+                ["ai_tokens_updated_at"] = tokens.UpdatedAtUnix,
+                ["ai_tokens_week"] = tokens.Week,
                 ["logs_last_day"] = lastDay,
                 ["logs_last_hour"] = lastHour,
                 ["ollama_available"] = available,
