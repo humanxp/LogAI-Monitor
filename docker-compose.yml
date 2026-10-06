@@ -20,6 +20,9 @@ services:
       --maxmemory-samples 5
       --maxmemory-clients 5%
       --lazyfree-lazy-eviction yes
+      # 归档任务频繁 DEL 哈希会产生分配器碎片（实测 2.7G / 1.62 倍），
+      # 开启后台主动碎片整理，闲置时逐步回收，避免 RSS 比逻辑内存虚高一大截。
+      --activedefrag yes
       # RDB 快照频率：默认的 3600/300/60 会在 6GB 数据上每小时 fork 一次，
       # 每次约 31 秒打满一个核。开着 AOF 时重启只从 AOF 恢复（实测启动日志
       # 不读 dump.rdb），所以 RDB 只是"应急回退点"，降到每天一次即可，
