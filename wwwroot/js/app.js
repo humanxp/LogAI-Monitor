@@ -1872,6 +1872,8 @@ async function loadSettings() {
         document.getElementById('telegramBotToken').value = settings.telegram_bot_token || '';
         document.getElementById('telegramChatId').value = settings.telegram_chat_id || '';
         document.getElementById('telegramCooldown').value = settings.telegram_cooldown_minutes ?? 60;
+        const alertMinEl = document.getElementById('alertMinSeverity');
+        if (alertMinEl) alertMinEl.value = settings.alert_min_severity || 'error';
         document.getElementById('analysisSummaryCooldown').value = settings.analysis_summary_cooldown_min ?? 30;
         // 汇总推送状态（逗号分隔）→ 勾选对应复选框；默认 critical
         const summaryStatuses = (settings.analysis_summary_status || 'critical').split(',');
@@ -1949,6 +1951,7 @@ async function saveSettings() {
             .filter(s => document.getElementById('summaryStatus' + s.charAt(0).toUpperCase() + s.slice(1))?.checked)
             .join(','),
         telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,
+        alert_min_severity: document.getElementById('alertMinSeverity')?.value || 'error',
         ollama_enabled: document.getElementById('ollamaEnabled').checked,
         ollama_host: document.getElementById('ollamaHost').value,
         ollama_model: document.getElementById('ollamaModel').value,

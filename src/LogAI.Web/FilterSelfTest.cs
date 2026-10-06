@@ -44,16 +44,24 @@ internal static class FilterSelfTest
         Check("invalid regex matches nothing, does not throw",
             !FilterMatcher.Matches(new FilterRule { MessageRegex = "([unclosed" }, "a", "info", "x"));
 
-        // Telegram gate, mirroring the earlier verified behaviour.
+        // Telegram gate：门限是"最低推送级别"的 syslog 编码（3=error 默认）。
         var rule = new FilterRule { NotifyTelegram = true };
-        Check("gate blocks info by default", !FilterMatcher.TelegramAllowed(rule, "info", true, true));
-        Check("gate allows error", FilterMatcher.TelegramAllowed(rule, "error", true, true));
-        Check("gate allows critical", FilterMatcher.TelegramAllowed(rule, "critical", true, true));
-        Check("gate respects alert_on_error=false", !FilterMatcher.TelegramAllowed(rule, "error", true, false));
+        const int ErrorGate = 3, CriticalGate = 2, WarningGate = 4;
+        Check("gate blocks info at error level", !FilterMatcher.TelegramAllowed(rule, "info", ErrorGate));
+        Check("gate blocks warning at error level", !FilterMatcher.TelegramAllowed(rule, "warning", ErrorGate));
+        Check("gate allows error", FilterMatcher.TelegramAllowed(rule, "error", ErrorGate));
+        Check("gate allows critical", FilterMatcher.TelegramAllowed(rule, "critical", ErrorGate));
+        Check("critical-only gate blocks error", !FilterMatcher.TelegramAllowed(rule, "error", CriticalGate));
+        Check("warning gate allows warning", FilterMatcher.TelegramAllowed(rule, "warning", WarningGate));
+        Check("warning gate blocks info", !FilterMatcher.TelegramAllowed(rule, "info", WarningGate));
+        Check("unknown severity never pushes", !FilterMatcher.TelegramAllowed(rule, "bogus", WarningGate));
+        Check("min severity name maps to code",
+            FilterMatcher.MinSeverityCode("critical") == 2 && FilterMatcher.MinSeverityCode("warning") == 4
+            && FilterMatcher.MinSeverityCode("garbage") == 3);
         Check("per-rule bypass ignores the gate",
             FilterMatcher.TelegramAllowed(new FilterRule { NotifyTelegram = true, NotifyAnySeverity = true },
-                                          "info", true, true));
-        Check("notify_telegram=false never pushes", !FilterMatcher.TelegramAllowed(new FilterRule(), "critical", true, true));
+                                          "info", CriticalGate));
+        Check("notify_telegram=false never pushes", !FilterMatcher.TelegramAllowed(new FilterRule(), "critical", ErrorGate));
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;

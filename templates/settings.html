@@ -39,6 +39,19 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label" for="alertMinSeverity">告警最低推送级别（Alert）</label>
+                <select class="form-control" id="alertMinSeverity">
+                    <option value="critical">critical（严重）—— 只推 emergency / alert / critical</option>
+                    <option value="error">error（错误）—— critical + error</option>
+                    <option value="warning">warning（警告）—— 含 warning</option>
+                    <option value="notice">notice（通知）—— 含 notice</option>
+                    <option value="info">info（信息）—— 含 info</option>
+                    <option value="debug">debug（调试）—— 全部级别</option>
+                </select>
+                <small style="color: var(--lm-ink-2);">匹配到的告警里，低于该级别的<b>不推送</b>到 Telegram（仍会入库）。单条规则若勾了「任意级别」则绕过此门限。改动最多 10 秒生效。</small>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">AI 分析汇总推送状态</label>
                 <div style="display:flex; gap:1.2rem; flex-wrap:wrap; margin-top:0.35rem;">
                     <label style="display:flex; align-items:center; gap:0.4rem; cursor:pointer;">

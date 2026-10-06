@@ -84,18 +84,45 @@ public static class FilterMatcher
         return true;
     }
 
-    /// <summary>The Telegram gate: global level settings plus the per-rule bypass.</summary>
-    public static bool TelegramAllowed(FilterRule rule, string severity, bool alertOnCritical, bool alertOnError)
+    /// <summary>syslog 严重级编码（RFC 5424）：数字越小越严重。</summary>
+    public static int SeverityCode(string severity) => severity.ToLowerInvariant() switch
+    {
+        "emergency" or "emerg" => 0,
+        "alert" => 1,
+        "critical" or "crit" or "fatal" => 2,
+        "error" or "err" => 3,
+        "warning" or "warn" => 4,
+        "notice" => 5,
+        "info" or "informational" => 6,
+        "debug" => 7,
+        _ => 99,   // 未知级别：保守处理，不推送
+    };
+
+    /// <summary>
+    /// 把设置里的"最低推送级别"名称转成 syslog 编码阈值：低于（更轻微）它的不推送。
+    /// 无法识别时回退 error(3)，与历史默认行为一致。
+    /// </summary>
+    public static int MinSeverityCode(string name) => name.ToLowerInvariant().Trim() switch
+    {
+        "critical" => 2,
+        "error" => 3,
+        "warning" => 4,
+        "notice" => 5,
+        "info" => 6,
+        "debug" => 7,
+        _ => 3,
+    };
+
+    /// <summary>
+    /// The Telegram gate: per-rule opt-in plus the configured minimum severity.
+    /// minSeverityCode 是"最低推送级别"的 syslog 编码（数字越小越严重），级别编码
+    /// 大于它的（更轻微）不推送。单规则的"任意级别"旁路优先。
+    /// </summary>
+    public static bool TelegramAllowed(FilterRule rule, string severity, int minSeverityCode)
     {
         if (!rule.NotifyTelegram) return false;
         if (rule.NotifyAnySeverity) return true;
-
-        return severity.ToLowerInvariant() switch
-        {
-            "emergency" or "alert" or "critical" => alertOnCritical,
-            "error" => alertOnError,
-            _ => false,
-        };
+        return SeverityCode(severity) <= minSeverityCode;
     }
 
     public static bool ContainsIgnoreCase(string haystack, string needle) =>

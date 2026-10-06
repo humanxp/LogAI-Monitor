@@ -102,8 +102,8 @@ internal static class AppHost
         if (cooldownMinutes < 0) cooldownMinutes = IntSetting(settings, "alert_cooldown_minutes", 5);
         if (cooldownMinutes > 1440) cooldownMinutes = 1440;
         int warnThreshold = IntSetting(settings, "analysis_warn_threshold", 2000);
-        bool alertOnCritical = BoolSetting(settings, "alert_on_critical", true);
-        bool alertOnError = BoolSetting(settings, "alert_on_error", true);
+        // 告警 Telegram 级别门限（最低推送级别）改为动态读取（见 LoadAlertGateAsync），
+        // 不再在启动时固化 alert_on_critical/alert_on_error 两个布尔——改设置最多 10 秒生效。
 
         // 巡检看门狗：积压 / AI 后端 / 调度卡死
         // 三种条件各自按冷却时间推送 Telegram，恢复正常时补一条"已恢复"，
@@ -228,10 +228,11 @@ internal static class AppHost
                 string gate = "filter=" + rule.Id + " notify=" + rule.NotifyTelegram
                     + " any_severity=" + rule.NotifyAnySeverity + " severity=" + entry.Severity
                     + " host=" + entry.Hostname;
-                if (!FilterMatcher.TelegramAllowed(rule, entry.Severity, alertOnCritical, alertOnError))
+                int minSeverityCode = await LoadAlertGateAsync(store);
+                if (!FilterMatcher.TelegramAllowed(rule, entry.Severity, minSeverityCode))
                 {
                     Console.WriteLine("[Telegram] alert blocked by level gate (" + gate
-                        + " alert_on_critical=" + alertOnCritical + " alert_on_error=" + alertOnError + ")");
+                        + " min_severity_code=" + minSeverityCode + ")");
                     continue;
                 }
                 if (!await TelegramState.EnsureAsync(store, cancellationToken))
@@ -686,6 +687,31 @@ internal static class AppHost
     private static List<FilterRule>? _filterCache;
     private static DateTimeOffset _filterCacheAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan FilterCacheTtl = TimeSpan.FromSeconds(2);
+
+    // 告警 Telegram 级别门限（"最低推送级别"的 syslog 编码，数字越小越严重）。
+    // 进程内 10 秒 TTL 缓存：每条日志都读设置太贵，而"改完最多 10 秒生效"可接受。
+    private static readonly object AlertGateLock = new();
+    private static int _alertGateCode = 3;                       // 默认 error
+    private static DateTimeOffset _alertGateAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan AlertGateTtl = TimeSpan.FromSeconds(10);
+
+    internal static async Task<int> LoadAlertGateAsync(RedisStore store)
+    {
+        lock (AlertGateLock)
+        {
+            if (DateTimeOffset.UtcNow - _alertGateAt < AlertGateTtl) return _alertGateCode;
+        }
+        string name = "";
+        try
+        {
+            var raw = await store.Db.HashGetAsync(Keys.Settings, "alert_min_severity");
+            if (raw.HasValue) name = RedisStore.ToText(RedisStore.DecodeJson(raw.ToString()));
+        }
+        catch (Exception) { /* 读设置失败就用默认，门限不能把告警链路弄挂 */ }
+        int code = FilterMatcher.MinSeverityCode(name.Length > 0 ? name : "error");
+        lock (AlertGateLock) { _alertGateCode = code; _alertGateAt = DateTimeOffset.UtcNow; }
+        return code;
+    }
 
     /// <summary>过滤写接口改动了规则集之后调用,让下一条日志立即用上新规则。</summary>
     internal static void InvalidateFilterCache()
