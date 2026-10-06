@@ -21,7 +21,8 @@ namespace LogAI.Web.Api;
 
 internal static class AnalyzeApi
 {
-    public static void Map(WebApplication app, RedisStore store, SessionCookie cookies, AiHistoryWriter history)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies,
+                           AiHistoryWriter history)
     {
         app.MapPost("/api/ollama/analyze", async (HttpContext http) =>
         {
@@ -68,6 +69,13 @@ internal static class AnalyzeApi
             if (logId.Length > 0)
             {
                 var hash = await store.Db.HashGetAllAsync(logId);
+                if (hash.Length == 0)
+                {
+                    // 已归档的日志哈希在 SQLite；只读 Redis 会把"分析这条"变成
+                    // 404 Log not found（日志明明还在，只是搬去了冷存储）。
+                    var archived = await archive.GetFieldsBatchAsync([logId]);
+                    hash = archived[0];
+                }
                 if (hash.Length == 0) return ReadApi.JsonBody(new { error = "Log not found" }, 404);
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 

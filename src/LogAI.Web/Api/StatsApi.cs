@@ -18,8 +18,18 @@ internal static class StatsApi
     private static DateTimeOffset? _lastCheck;
     private static bool _available;
 
-    public static void Map(WebApplication app, RedisStore store)
+    /// <summary>
+    /// 冷库引用：统计"已确认告警"必须同时看 SQLite——告警参与冷热分层，归档后
+    /// Redis 里没有哈希，只读 Redis 会把它们永远算作未确认（"全部确认"后角标
+    /// 不归零）。PushIfNeeded 由采集/告警/历史等多处静态调用，逐层透传 archive 会
+    /// 污染整条链路，故按 EngineIoServer.Current / ReceiverState.Receiver 的先例在
+    /// 启动时注入一次。
+    /// </summary>
+    internal static LogArchive? Archive { get; set; }
+
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive)
     {
+        Archive = archive;
         app.MapGet("/api/stats", async () => ReadApi.JsonBody(await BuildPayloadAsync(store)));
     }
 
@@ -117,13 +127,23 @@ internal static class StatsApi
             var alertIds = await db.SortedSetRangeByRankAsync(Keys.AlertsTimeline, 0, -1);
             if (alertIds.Length > 0)
             {
-                var batch = db.CreateBatch();
-                var reads = new Task<StackExchange.Redis.RedisValue>[alertIds.Length];
-                for (int i = 0; i < alertIds.Length; i++)
-                    reads[i] = batch.HashGetAsync(alertIds[i].ToString(), "acknowledged");
-                batch.Execute();
-                foreach (var value in await Task.WhenAll(reads))
-                    if (value.ToString() != "true") unacknowledged++;
+                if (Archive is not null)
+                {
+                    // 归档告警的 acknowledged 存在冷库；只读 Redis 会把它们永远算作
+                    // 未确认，"全部确认"之后角标也就永远不归零。
+                    foreach (var state in await AlertMaintenance.ReadAckStatesAsync(store, Archive, alertIds))
+                        if (!state.Acknowledged) unacknowledged++;
+                }
+                else
+                {
+                    var batch = db.CreateBatch();
+                    var reads = new Task<StackExchange.Redis.RedisValue>[alertIds.Length];
+                    for (int i = 0; i < alertIds.Length; i++)
+                        reads[i] = batch.HashGetAsync(alertIds[i].ToString(), "acknowledged");
+                    batch.Execute();
+                    foreach (var value in await Task.WhenAll(reads))
+                        if (value.ToString() != "true") unacknowledged++;
+                }
             }
 
             bool telegramEnabled = await LogAI.Core.Notify.TelegramState.EnsureAsync(store);

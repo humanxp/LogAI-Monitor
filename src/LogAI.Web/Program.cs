@@ -247,7 +247,8 @@ engineIo.Map(app, http => LogAI.Web.Api.AuthApi.CurrentUser(http, sessionCookies
 
 LogAI.Web.Api.CurrentUserApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.OllamaApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
-LogAI.Web.Api.StatsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
+LogAI.Web.Api.StatsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
 LogAI.Web.Api.DockerContainersApi.Map(app);
 LogAI.Web.Api.DockerLogsApi.Map(app);
 LogAI.Web.Api.LogWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
@@ -264,7 +265,8 @@ LogAI.Web.Api.HistoryWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Cor
 LogAI.Web.Api.DiagnosticsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.MiscWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.ChatApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
-LogAI.Web.Api.AnalyzeApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies,
+LogAI.Web.Api.AnalyzeApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies,
     new LogAI.Core.Ai.AiHistoryWriter(app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>()));
 
 LogAI.Web.Api.ReadApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),

@@ -101,9 +101,9 @@ public static class AlertMaintenance
     /// <summary>
     /// 每条告警的 (是否已确认, 是否在 Redis)。归档的告警 Redis 里没有哈希，必须
     /// 落到冷库去读——否则它们的已确认状态永远读成 false，"全部确认"漏掉它们、
-    /// "清除已确认"也删不掉它们。
+    /// "清除已确认"也删不掉它们，/api/stats 的未确认角标同样永远归不了零。
     /// </summary>
-    private static async Task<(bool Acknowledged, bool InRedis)[]> ReadAckStatesAsync(
+    public static async Task<(bool Acknowledged, bool InRedis)[]> ReadAckStatesAsync(
         RedisStore store, LogArchive archive, RedisValue[] ids)
     {
         var states = new (bool Acknowledged, bool InRedis)[ids.Length];
