@@ -254,9 +254,12 @@ LogAI.Web.Api.AnalyzeApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Sto
 LogAI.Web.Api.ReadApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
     app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
 LogAI.Web.Api.UsersApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
-LogAI.Web.Api.AiHistoryApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
-LogAI.Web.Api.AiHistoryApi.MapList(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
-LogAI.Web.Api.AlertsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
+LogAI.Web.Api.AiHistoryApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
+LogAI.Web.Api.AiHistoryApi.MapList(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
+LogAI.Web.Api.AlertsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>());
 LogAI.Web.Api.FilterApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
 LogAI.Web.Api.IngestApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
     new LogAI.Core.Syslog.LogWriter(app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),

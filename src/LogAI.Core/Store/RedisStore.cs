@@ -42,6 +42,10 @@ public static class Keys
     /// 归档任务据此只处理"新变老"的一小段，无需每次全量重扫时间线。
     /// </summary>
     public const string ArchiveWatermark = "logs:archive:watermark";
+    /// <summary>分析历史归档水位（score-based，与 ai_history:timeline 分数一致）。</summary>
+    public const string AiHistoryArchiveWatermark = "ai_history:archive:watermark";
+    /// <summary>告警归档水位（score-based，与 alerts:timeline 分数一致）。</summary>
+    public const string AlertsArchiveWatermark = "alerts:archive:watermark";
 
     public static string Log(string id) => "log:" + id;
     public static string LogSource(string source) => "logs:source:" + source;

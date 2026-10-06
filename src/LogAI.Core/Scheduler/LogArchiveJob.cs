@@ -85,4 +85,64 @@ public static class LogArchiveJob
 
         return new Result(archived, watermark);
     }
+
+    /// <summary>
+    /// 归档任意时间线的哈希到通用 JSON 表（分析历史/告警共用）。逻辑与 RunAsync 相同，
+    /// 只是归档目标换成 hashes 表、且不摘除"未分析队列"（那是日志专属）。
+    /// </summary>
+    public static async Task<Result> RunHashesAsync(RedisStore store, LogArchive archive,
+        string timelineKey, string watermarkKey, int archiveHours,
+        int batchSize = DefaultBatchSize, CancellationToken cancellationToken = default)
+    {
+        var db = store.Db;
+        double now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
+        double cutoff = now - archiveHours * 3600.0;
+
+        double watermark = 0;
+        var raw = await db.StringGetAsync(watermarkKey);
+        if (raw.HasValue && double.TryParse(raw.ToString(), NumberStyles.Float,
+                CultureInfo.InvariantCulture, out double w))
+            watermark = w;
+
+        if (cutoff <= watermark) return new Result(0, watermark);
+
+        long archived = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var page = await db.SortedSetRangeByScoreWithScoresAsync(
+                timelineKey, watermark, cutoff, Exclude.Start, Order.Ascending, 0, batchSize);
+            if (page.Length == 0) break;
+
+            var ids = new RedisValue[page.Length];
+            for (int i = 0; i < page.Length; i++) ids[i] = page[i].Element;
+
+            var hashes = await store.HashGetAllBatchAsync(ids);
+
+            var rows = new List<(string Key, HashEntry[] Fields)>(page.Length);
+            for (int i = 0; i < page.Length; i++)
+            {
+                if (hashes[i].Length == 0) continue;   // 幂等安全网：已归档/已删除
+                rows.Add((page[i].Element.ToString(), hashes[i]));
+            }
+            if (rows.Count > 0)
+                await archive.ArchiveHashesAsync(rows, cancellationToken);
+
+            // 删哈希、留 ZSET 索引（时间线/统计不变）。
+            var batch = db.CreateBatch();
+            var pending = new List<Task>(page.Length);
+            for (int i = 0; i < page.Length; i++)
+                pending.Add(batch.KeyDeleteAsync(page[i].Element.ToString()));
+            batch.Execute();
+            await Task.WhenAll(pending);
+
+            archived += rows.Count;
+            watermark = page[^1].Score;
+            if (page.Length < batchSize) { watermark = cutoff; break; }
+        }
+
+        await db.StringSetAsync(watermarkKey,
+            watermark.ToString("0.000", CultureInfo.InvariantCulture));
+
+        return new Result(archived, watermark);
+    }
 }

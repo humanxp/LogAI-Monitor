@@ -10,7 +10,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 |---|---|
 | **syslog 采集** | UDP + TCP；RFC3164 / RFC5424 解析（PRI、facility/severity、程序名、消息），发送方省略主机名时**不把程序名误当主机名**；编码三级回退（UTF-8 → GB18030 → Latin-1，替换非法序列） |
 | **Docker 容器日志** | 通过 Docker Engine API（只读 unix socket）读取运行中容器日志；**排除列表**避免采集自身；8 字节帧解复用；按"最后一行"标记**跨轮询去重** |
-| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
+| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志/分析/告警哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
 | **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试 |
 | **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**级别门限**与单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
 | **Telegram 推送** | 固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
@@ -98,18 +98,19 @@ docker run -d --name logaimonitor \
 
 ### 冷热分层（日志哈希落盘 SQLite）
 
-Redis 里日志占内存的大头是**哈希本体**（~1.1 KB/条），而时间线/维度 ZSET 只占 ~70 B/条。
-冷热分层把"过了热窗口的老日志哈希"归档到 SQLite，Redis 只保留 ZSET 索引——过滤、翻页、
-按来源/主机/级别聚合照常工作，只有真正读取某条老日志时才从 SQLite 回填：
+Redis 里数据占内存的大头是**哈希本体**（日志 ~1.1 KB/条、分析结果 ~5 KB/条），而时间线/维度 ZSET 每条只有 ~70 字节。
+冷热分层把"过了热窗口的老哈希"归档到 SQLite，Redis 只保留 ZSET 索引——过滤、翻页、
+聚合照常工作，只有真正读取某条老记录时才从 SQLite 回填。三类数据都归档：**日志哈希**、
+**分析历史哈希**（含 analysis JSON）、**告警哈希**：
 
 | 设置键 | 默认 | 说明 |
 |---|---|---|
 | `archive_after_hours` | 168（7 天） | 超过该时长的日志哈希归档到 SQLite；设为 `0` 关闭归档 |
 | `log_retention_hours` | 720（30 天） | 总保留期：到期后从 Redis ZSET 与 SQLite 一并删除 |
 
-- 归档任务**幂等**：分数水位 `logs:archive:watermark` 驱动，跳过空哈希，重复跑无害
-- 读路径自动回填：`/api/logs`、`/api/logs/{id}` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）
-- 归档后 Redis 内存显著下降（实测 300 万条规模 7.2 GB → 4.3 GB），SQLite 体积约 0.27 KB/条
+- 归档任务**幂等**：分数水位驱动（`logs:archive:watermark` / `ai_history:archive:watermark` / `alerts:archive:watermark` 各自独立），跳过空哈希，重复跑无害
+- 读路径自动回填：`/api/logs`、`/api/logs/{id}`、`/api/ai-history`、`/api/alerts` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）；`/api/ai-history/stats` 的 status 字段同样回退
+- 归档后 Redis 内存显著下降（日志实测 300 万条 7.2 GB → 4.3 GB；分析历史 1.9 万条又省 ~70 MB），SQLite 体积约 0.27 KB/条
 - 回退：把 `archive_after_hours` 设为 `0` 即关闭归档；备份镜像 `logaimonitor-cs:pre-archive`
 
 ---

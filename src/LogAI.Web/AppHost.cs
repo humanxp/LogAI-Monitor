@@ -483,7 +483,8 @@ internal static class AppHost
                 // line, "the job ran and found nothing" and "the job never ran" look
                 // identical in the log, which is exactly how a data deletion can go
                 // unexplained.
-                Console.WriteLine("[Cleanup] removed " + cleanup.Removed + " expired logs, purged "
+                Console.WriteLine("[Cleanup] removed " + cleanup.Removed + " logs, "
+                    + cleanup.AiHistoryRemoved + " ai_history, " + cleanup.AlertsRemoved + " alerts, purged "
                     + cleanup.DeadPurged + " dead ids");
 
             },
@@ -503,7 +504,15 @@ internal static class AppHost
                 }
                 var result = await LogAI.Core.Scheduler.LogArchiveJob.RunAsync(
                     store, archive, hours, cancellationToken: ct);
-                Console.WriteLine("[Archive] archived " + result.Archived + " log(s), watermark="
+                // 分析历史 + 告警也纳入冷归档（通用 JSON 表，各走自己的水位）。
+                var aih = await LogAI.Core.Scheduler.LogArchiveJob.RunHashesAsync(
+                    store, archive, LogAI.Core.Store.Keys.AiHistoryTimeline,
+                    LogAI.Core.Store.Keys.AiHistoryArchiveWatermark, hours, cancellationToken: ct);
+                var alr = await LogAI.Core.Scheduler.LogArchiveJob.RunHashesAsync(
+                    store, archive, LogAI.Core.Store.Keys.AlertsTimeline,
+                    LogAI.Core.Store.Keys.AlertsArchiveWatermark, hours, cancellationToken: ct);
+                Console.WriteLine("[Archive] logs=" + result.Archived + " ai_history=" + aih.Archived
+                    + " alerts=" + alr.Archived + " watermark="
                     + result.Watermark.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
             },
             firstDelay: TimeSpan.FromSeconds(30));

@@ -12,7 +12,7 @@ namespace LogAI.Web.Api;
 
 internal static class AlertsApi
 {
-    public static void Map(WebApplication app, RedisStore store)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive)
     {
         app.MapGet("/api/alerts", async (HttpRequest request) =>
         {
@@ -40,7 +40,8 @@ internal static class AlertsApi
                 var pageIds = await store.Db.SortedSetRangeByRankAsync(
                     Keys.AlertsTimeline, offset, offset + limit - 1, Order.Descending);
                 // 整页哈希一批取回:逐条 HGETALL 是纯往返等待(见 RedisStore 的做法)。
-                var hashes = await store.HashGetAllBatchAsync(pageIds);
+                // 已归档告警从 SQLite 回填。
+                var hashes = await ReadApi.HydrateHashesAsync(store, archive, pageIds);
                 var page = new List<Dictionary<string, object?>>(pageIds.Length);
                 for (int i = 0; i < pageIds.Length; i++)
                 {
@@ -61,7 +62,8 @@ internal static class AlertsApi
                 Keys.AlertsTimeline, 0, scanCount - 1, Order.Descending);
 
             // 扫描窗口内的哈希同样一批取回:原来逐条 HGETALL,扫描上限越大等得越久。
-            var scanHashes = await store.HashGetAllBatchAsync(ids);
+            // 已归档告警从 SQLite 回填。
+            var scanHashes = await ReadApi.HydrateHashesAsync(store, archive, ids);
             var matched = new List<Dictionary<string, object?>>();
             for (int i = 0; i < ids.Length; i++)
             {

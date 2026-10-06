@@ -30,7 +30,7 @@ internal static class AiHistoryApi
     private static readonly TimeSpan StatsCacheTtl = TimeSpan.FromSeconds(30);
 
     /// <summary>Buckets every stored analysis by its overall_status.</summary>
-    public static void Map(WebApplication app, RedisStore store)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive)
     {
         // 这是带参数会改变行为的端点：/api/ai-history/stats 接受
         // start/end（AI 历史页的日期筛选要让汇总卡片跟着范围走），
@@ -92,19 +92,21 @@ internal static class AiHistoryApi
                 }
             }
 
-            // 第二遍：无 status 的旧记录回退到 type+analysis 解析。回填后此列表为空。
+            // 第二遍：无 status 的旧记录 + 已归档记录回退。已归档记录的哈希在 SQLite，
+            // 用 HydrateHashesAsync 一并取回（Redis 缺失 → SQLite）。
             foreach (var chunk in fallback.Chunk(Chunk))
             {
-                var batch = store.Db.CreateBatch();
-                var tasks = new Task<RedisValue[]>[chunk.Length];
-                for (int i = 0; i < chunk.Length; i++)
-                    tasks[i] = batch.HashGetAsync(chunk[i], ["type", "analysis"]);
-                batch.Execute();
-                var loaded = await Task.WhenAll(tasks);
+                var hashes = await ReadApi.HydrateHashesAsync(store, archive,
+                    Array.ConvertAll(chunk, x => (RedisValue)x));
                 for (int i = 0; i < chunk.Length; i++)
                 {
-                    RedisValue[] fields = loaded[i];
-                    switch (Classify(fields[0].ToString(), fields[1].ToString()))
+                    var hash = hashes[i];
+                    if (hash.Length == 0) { other++; continue; }
+                    var dict = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+                    string status = dict.GetValueOrDefault("status") ?? "";
+                    if (status.Length == 0)
+                        status = Classify(dict.GetValueOrDefault("type") ?? "", dict.GetValueOrDefault("analysis") ?? "");
+                    switch (status)
                     {
                         case "critical": critical++; break;
                         case "warning": warning++; break;
@@ -144,7 +146,7 @@ internal static class AiHistoryApi
         AiStatusClassifier.Classify(type, analysisRaw);
 
     /// <summary>Newest-first page of analysis records.</summary>
-    public static void MapList(WebApplication app, RedisStore store)
+    public static void MapList(WebApplication app, RedisStore store, LogArchive archive)
     {
         // The Analysis History page has a date filter. This endpoint used to read only
         // limit/offset, so choosing a range changed nothing. The timeline is scored by
@@ -169,8 +171,8 @@ internal static class AiHistoryApi
 
             var history = new List<Dictionary<string, object?>>(ids.Length);
             // 整页哈希一批取回(与上面 stats 端点同一做法):原来逐条 HGETALL,
-            // limit=1000 实测 0.13s,几乎全是串行往返的等待。
-            var hashes = await store.HashGetAllBatchAsync(ids);
+            // limit=1000 实测 0.13s,几乎全是串行往返的等待。已归档记录从 SQLite 回填。
+            var hashes = await ReadApi.HydrateHashesAsync(store, archive, ids);
             for (int i = 0; i < ids.Length; i++)
             {
                 var hash = hashes[i];

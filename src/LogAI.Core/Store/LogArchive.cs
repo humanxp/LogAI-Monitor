@@ -12,6 +12,7 @@
 // 线程模型：每次操作各开一条连接（SQLite 连接开销极小，归档/回退都是低频操作），
 // 避免单连接跨线程复用；WAL 模式让归档写与读回退可并发。
 
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using StackExchange.Redis;
 
@@ -73,6 +74,10 @@ public sealed class LogArchive
                     score REAL
                 );
                 CREATE INDEX IF NOT EXISTS idx_logs_score ON logs(score);
+                CREATE TABLE IF NOT EXISTS hashes (
+                    key TEXT PRIMARY KEY,
+                    fields TEXT NOT NULL
+                );
                 """;
             cmd.ExecuteNonQuery();
         }
@@ -203,5 +208,118 @@ public sealed class LogArchive
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM logs;";
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    // ------------------------------------------------------------ 通用哈希归档
+    // 分析历史（ai_history:*）与告警（alert:*）的字段集各不相同（且单条分析还带
+    // 额外字段），不适合像日志那样一张类型化表。这里用一张通用表存整条哈希的 JSON，
+    // 读回退按 key 反序列化回 HashEntry[]，与 Redis HashGetAll 形状一致。
+
+    /// <summary>批量归档任意哈希（幂等：主键冲突忽略）。整条哈希序列化为 JSON。</summary>
+    public async Task ArchiveHashesAsync(IReadOnlyList<(string Key, HashEntry[] Fields)> rows, CancellationToken ct = default)
+    {
+        if (rows.Count == 0) return;
+        using var conn = Open();
+        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "INSERT OR IGNORE INTO hashes (key, fields) VALUES ($key, $fields);";
+        var pk = cmd.CreateParameter(); pk.ParameterName = "$key"; cmd.Parameters.Add(pk);
+        var pf = cmd.CreateParameter(); pf.ParameterName = "$fields"; cmd.Parameters.Add(pf);
+        foreach (var (key, fields) in rows)
+        {
+            pk.Value = key;
+            pf.Value = SerializeHash(fields);
+            cmd.ExecuteNonQuery();   // 同步执行（同日志归档，避免逐行 await 的调度开销）
+        }
+        await tx.CommitAsync(ct);
+    }
+
+    /// <summary>批量取回已归档哈希，形状与 Redis HashGetAll 一致（缺失返回空数组）。</summary>
+    public async Task<HashEntry[][]> GetHashesBatchAsync(IReadOnlyList<string> keys, CancellationToken ct = default)
+    {
+        var result = new HashEntry[keys.Count][];
+        var byKey = new Dictionary<string, HashEntry[]>(StringComparer.Ordinal);
+
+        const int Chunk = 500;
+        for (int offset = 0; offset < keys.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, keys.Count - offset);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            var inClause = new string[size];
+            for (int i = 0; i < size; i++)
+            {
+                var prm = cmd.CreateParameter();
+                prm.ParameterName = "$p" + i;
+                prm.Value = keys[offset + i];
+                cmd.Parameters.Add(prm);
+                inClause[i] = prm.ParameterName;
+            }
+            cmd.CommandText = $"SELECT key, fields FROM hashes WHERE key IN ({string.Join(", ", inClause)});";
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+                byKey[reader.GetString(0)] = DeserializeHash(reader.GetString(1));
+        }
+
+        for (int i = 0; i < keys.Count; i++)
+            result[i] = byKey.TryGetValue(keys[i], out var f) ? f : [];
+        return result;
+    }
+
+    /// <summary>保留期到期：删除一条已归档哈希。</summary>
+    public async Task DeleteHashAsync(string key, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM hashes WHERE key = $key;";
+        cmd.Parameters.AddWithValue("$key", key);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>批量删除已归档哈希（保留期到期，清理任务每页调用一次）。</summary>
+    public async Task DeleteHashesBatchAsync(IReadOnlyList<string> keys, CancellationToken ct = default)
+    {
+        if (keys.Count == 0) return;
+        using var conn = Open();
+        using var tx = conn.BeginTransaction();
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = "DELETE FROM hashes WHERE key = $key;";
+        var p = cmd.CreateParameter();
+        p.ParameterName = "$key";
+        cmd.Parameters.Add(p);
+        foreach (var key in keys)
+        {
+            p.Value = key;
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
+    }
+
+    /// <summary>已归档哈希条数（诊断/心跳用）。</summary>
+    public async Task<long> CountHashesAsync(CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM hashes;";
+        return (long)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    private static string SerializeHash(HashEntry[] fields)
+    {
+        var dict = new Dictionary<string, string>(fields.Length, StringComparer.Ordinal);
+        foreach (var f in fields) dict[f.Name.ToString()] = f.Value.ToString();
+        return JsonSerializer.Serialize(dict);
+    }
+
+    private static HashEntry[] DeserializeHash(string json)
+    {
+        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+        if (dict is null) return [];
+        var fields = new HashEntry[dict.Count];
+        int i = 0;
+        foreach (var kv in dict) fields[i++] = new HashEntry(kv.Key, kv.Value);
+        return fields;
     }
 }

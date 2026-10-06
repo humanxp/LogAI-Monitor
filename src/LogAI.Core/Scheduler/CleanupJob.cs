@@ -33,7 +33,7 @@ public static class CleanupJob
     /// </summary>
     public const int DefaultPageSize = 1000;
 
-    public sealed record Result(int Removed, int DeadPurged, int Batches = 1);
+    public sealed record Result(int Removed, int DeadPurged, int AiHistoryRemoved, int AlertsRemoved, int Batches = 1);
 
     /// <summary>Epoch seconds before which a log is considered expired.</summary>
     public static double Cutoff(double nowSeconds, int retentionHours) =>
@@ -49,11 +49,14 @@ public static class CleanupJob
         double cutoff = Cutoff(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0, retentionHours);
 
         int removed = await RemoveExpiredAsync(db, archive, cutoff, pageSize, cancellationToken);
+        // 分析历史/告警只有一条时间线，没有维度索引/待分析队列，清理更简单。
+        int aihRemoved = await RemoveExpiredSimpleAsync(db, archive, Keys.AiHistoryTimeline, cutoff, pageSize, cancellationToken);
+        int alrRemoved = await RemoveExpiredSimpleAsync(db, archive, Keys.AlertsTimeline, cutoff, pageSize, cancellationToken);
         int deadPurged = await PurgeDeadQueuedAsync(db, pageSize, cancellationToken);
 
         await db.StringSetAsync(Keys.CleanupLastRun, DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffff+00:00"));
         await db.StringSetAsync(Keys.CleanupLastRemoved, removed.ToString());
-        return new Result(removed, deadPurged);
+        return new Result(removed, deadPurged, aihRemoved, alrRemoved);
     }
 
     /// <summary>
@@ -141,6 +144,40 @@ public static class CleanupJob
             await PurgeEmptyRegistriesAsync(db, affectedSources, affectedHosts, affectedSeverities, cancellationToken);
         }
 
+        return removed;
+    }
+
+    /// <summary>
+    /// 清理只有一条时间线的数据（分析历史/告警）：到期后摘除时间线 id、删 Redis 哈希、
+    /// 并删 SQLite 归档记录。无维度索引/待分析队列，比日志清理简单。
+    /// </summary>
+    private static async Task<int> RemoveExpiredSimpleAsync(IDatabase db, LogArchive? archive,
+        string timelineKey, double cutoff, int pageSize, CancellationToken cancellationToken)
+    {
+        int removed = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var page = await db.SortedSetRangeByScoreAsync(timelineKey, 0, cutoff,
+                                                           Exclude.None, Order.Ascending, 0, pageSize);
+            if (page.Length == 0) break;
+
+            var batch = db.CreateBatch();
+            var pending = new List<Task>(page.Length * 2);
+            for (int i = 0; i < page.Length; i++)
+            {
+                string id = page[i].ToString();
+                pending.Add(batch.KeyDeleteAsync(id));
+                pending.Add(batch.SortedSetRemoveAsync(timelineKey, id));
+            }
+            batch.Execute();
+            await Task.WhenAll(pending);
+
+            // 保留期到期：一并删除 SQLite 归档记录（未归档 id 是 no-op）。
+            if (archive is not null)
+                await archive.DeleteHashesBatchAsync(page.Select(p => p.ToString()).ToArray(), cancellationToken);
+
+            removed += page.Length;
+        }
         return removed;
     }
 

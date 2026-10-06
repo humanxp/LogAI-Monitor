@@ -288,6 +288,26 @@ internal static class ReadApi
         return hashes;
     }
 
+    /// <summary>
+    /// 通用哈希回退：分析历史/告警等任意哈希，Redis 缺失时从 SQLite 通用表取回。
+    /// 与 HydrateAsync 同构，只是归档目标换成 hashes 表。
+    /// </summary>
+    public static async Task<HashEntry[][]> HydrateHashesAsync(RedisStore store, LogArchive archive, RedisValue[] ids)
+    {
+        var hashes = await store.HashGetAllBatchAsync(ids);
+        var missing = new List<string>();
+        for (int i = 0; i < ids.Length; i++)
+            if (hashes[i].Length == 0) missing.Add(ids[i].ToString());
+        if (missing.Count > 0)
+        {
+            var archived = await archive.GetHashesBatchAsync(missing);
+            int k = 0;
+            for (int i = 0; i < ids.Length; i++)
+                if (hashes[i].Length == 0) hashes[i] = archived[k++];
+        }
+        return hashes;
+    }
+
     /// <summary>Sorted names from the registry set, exactly like _index_names().</summary>
     private static async Task<List<string>> IndexNamesAsync(RedisStore store, string prefix, string registry)
     {
