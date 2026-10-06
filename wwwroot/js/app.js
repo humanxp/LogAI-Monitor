@@ -241,6 +241,10 @@ function updateTokenUsage() {
     set('aiTokensPrompt', fmt(state.stats.ai_tokens_prompt));
     set('aiTokensCompletion', fmt(state.stats.ai_tokens_completion));
     set('aiTokensCached', fmt(state.stats.ai_tokens_cached));
+    // 后端（vLLM）目前永远报 cached_tokens=0（用同一提示词连发三次实测均为 0），
+    // 常驻一个 0 只是噪音；只有真出现缓存命中时才显示这一格。
+    const cachedCell = document.getElementById('aiTokensCached')?.closest('.tu');
+    if (cachedCell) cachedCell.style.display = Number(state.stats.ai_tokens_cached || 0) > 0 ? '' : 'none';
     set('aiCalls', fmt(calls));
     set('aiTokensAvg', calls > 0 ? fmt(Math.round(total / calls)) : '—');
 

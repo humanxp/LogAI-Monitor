@@ -30,8 +30,13 @@ public static class AiUsage
     /// <summary>日键保留天数。</summary>
     public const int DailyRetentionDays = 60;
 
+    /// <summary>
+    /// 当日键名。用**本地日期**而不是 UTC：容器 TZ=Asia/Shanghai，UTC 日期在本地
+    /// 08:00 才翻篇——那样"今日"在凌晨会显示成昨天的量，与界面上的时间/日志时间戳
+    /// 也对不上（日志时间戳早已统一成本地时区）。
+    /// </summary>
     public static string DailyKey(DateTimeOffset when) =>
-        DailyPrefix + when.UtcDateTime.ToString("yyyy-MM-dd");
+        DailyPrefix + when.ToLocalTime().ToString("yyyy-MM-dd");
 
     /// <summary>用量快照。</summary>
     public readonly record struct Snapshot(
