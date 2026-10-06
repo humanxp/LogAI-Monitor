@@ -1934,61 +1934,79 @@ async function loadSettings() {
     }
 }
 
-async function saveSettings() {
-    // Get current settings first to preserve Docker settings
-    let currentSettings = {};
-    try {
-        const currentResponse = await fetch('/api/settings');
-        currentSettings = await currentResponse.json();
-    } catch (e) {
-        // Ignore, will use defaults
-    }
-    
-    const settings = {
-        ...currentSettings,  // Preserve existing settings (including Docker)
+// 每个类目要提交的设置字段。saveSettings(section) 只提交该类目的字段——后端是
+// HSET（只更新提交的键），所以不会波及其他类目。以前是无参数整表单提交，界面上
+// 某个输入框显示的值（哪怕是写死的默认值）都会被一起写回去，AI Endpoint 就这么被
+// 覆盖成 localhost:11434 导致分析全挂。
+const SETTINGS_SECTIONS = {
+    telegram: () => ({
         telegram_enabled: document.getElementById('telegramEnabled').checked,
         telegram_bot_token: document.getElementById('telegramBotToken').value,
         telegram_chat_id: document.getElementById('telegramChatId').value,
-        analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
+        telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,
+        alert_min_severity: document.getElementById('alertMinSeverity')?.value || 'error',
         analysis_summary_status: ['critical', 'warning', 'healthy', 'other']
             .filter(s => document.getElementById('summaryStatus' + s.charAt(0).toUpperCase() + s.slice(1))?.checked)
             .join(','),
-        telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,
-        alert_min_severity: document.getElementById('alertMinSeverity')?.value || 'error',
+        analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
+    }),
+    ai: () => ({
         ollama_enabled: document.getElementById('ollamaEnabled').checked,
+        ai_provider: document.getElementById('aiProvider')?.value || 'openai',
         ollama_host: document.getElementById('ollamaHost').value,
         ollama_model: document.getElementById('ollamaModel').value,
-        ai_provider: document.getElementById('aiProvider')?.value || 'openai',
+        auto_analyze: document.getElementById('autoAnalyze').checked,
+    }),
+    theme: () => ({
+        ui_theme: document.getElementById('uiTheme')?.value || 'default',
+    }),
+    general: () => ({
         analysis_interval: parseInt(document.getElementById('analysisInterval').value) || 2,
-        log_retention_hours: (parseInt(document.getElementById('logRetention').value) || 30) * 24,
-        archive_after_hours: (parseInt(document.getElementById('archiveAfterHours')?.value) ?? 7) * 24,
-        alert_retention_days: parseInt(document.getElementById('alertRetentionDays')?.value) ?? 30,
         max_logs_per_analysis: parseInt(document.getElementById('maxLogsPerAnalysis').value) || 500,
         batch_sample_limit: parseInt(document.getElementById('batchSampleLimit').value) || 100,
+        hide_duplicates_default: document.getElementById('hideDuplicatesDefault')?.checked || false,
         health_watch_minutes: parseInt(document.getElementById('healthWatchMinutes')?.value) || 5,
         health_backlog_warn: parseInt(document.getElementById('healthBacklogWarn')?.value) || 2000,
         health_alert_cooldown_min: parseInt(document.getElementById('healthAlertCooldown')?.value) || 30,
         health_daily_summary: document.getElementById('healthDailySummary')?.checked ?? true,
-        auto_analyze: document.getElementById('autoAnalyze').checked,
-        hide_duplicates_default: document.getElementById('hideDuplicatesDefault')?.checked || false,
-        ui_theme: document.getElementById('uiTheme')?.value || 'default'
-    };
-    
+    }),
+    database: () => ({
+        log_retention_hours: (parseInt(document.getElementById('logRetention').value) || 30) * 24,
+        archive_after_hours: (parseInt(document.getElementById('archiveAfterHours')?.value) ?? 7) * 24,
+        alert_retention_days: parseInt(document.getElementById('alertRetentionDays')?.value) ?? 30,
+    }),
+};
+
+const SETTINGS_SECTION_LABELS = {
+    telegram: 'Telegram 通知', ai: 'AI 分析', theme: 'UI 主题',
+    general: '通用设置', database: '日志数据库',
+};
+
+async function saveSettings(section) {
+    const known = section && SETTINGS_SECTIONS[section];
+    let settings = {};
+    if (known) {
+        settings = SETTINGS_SECTIONS[section]();
+    } else {
+        // 无参数（或未知类目）：保存全部，合并各类目字段
+        for (const key of Object.keys(SETTINGS_SECTIONS)) Object.assign(settings, SETTINGS_SECTIONS[key]());
+    }
+
     try {
         const response = await fetch('/api/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(settings)
         });
-        
+
         if (response.ok) {
-            showToast('Success', 'Settings saved', 'success');
-            // Apply the new theme
-            applyTheme(settings.ui_theme);
-            // Reload the model list with the (possibly new) provider format
-            loadOllamaModels();
+            const label = known ? SETTINGS_SECTION_LABELS[section] : '全部设置';
+            showToast('Success', `已保存 ${label}（${Object.keys(settings).length} 项）`, 'success');
+            if (settings.ui_theme) applyTheme(settings.ui_theme);
+            if (!known || section === 'ai') loadOllamaModels();
         } else {
-            showToast('Error', 'Failed to save settings', 'error');
+            const body = await response.json().catch(() => ({}));
+            showToast('Error', body.error || 'Failed to save settings', 'error');
         }
     } catch (error) {
         console.error('Error saving settings:', error);

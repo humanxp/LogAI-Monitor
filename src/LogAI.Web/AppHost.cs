@@ -296,10 +296,24 @@ internal static class AppHost
         bool aiAvailable = false;
         DateTimeOffset? aiChecked = null;
 
+        // 设置页把这两项标成"立即生效"，所以间隔必须在每次 tick 重新读设置：调度器
+        // 确实每个 tick 重新求值 IntervalProvider，但此前 provider 里捕获的是启动时
+        // 读到的 analysisMinutes / healthWatchMinutes，改完设置要重启才生效（审计发现）。
+        TimeSpan AnalysisInterval()
+        {
+            var live = store.GetSettingsAsync().GetAwaiter().GetResult();
+            return TimeSpan.FromMinutes(Math.Max(1, IntSetting(live, "analysis_interval", 2)));
+        }
+        TimeSpan HealthInterval()
+        {
+            var live = store.GetSettingsAsync().GetAwaiter().GetResult();
+            return TimeSpan.FromMinutes(Math.Max(1, IntSetting(live, "health_watch_minutes", 5)));
+        }
+
         scheduler.Add("analysis",
             // 关闭"自动分析"时返回 null，调度器即跳过该任务——间隔每次 tick 重新
             // 求值，所以勾选框改完立即生效，不需要重启。手动分析不受此开关影响。
-            () => AutoAnalyzeEnabled() ? TimeSpan.FromMinutes(analysisMinutes) : null,
+            () => AutoAnalyzeEnabled() ? AnalysisInterval() : null,
             async ct =>
             {
                 try
@@ -424,10 +438,16 @@ internal static class AppHost
             },
             firstDelay: TimeSpan.FromSeconds(20));
 
-        // 巡检周期由 health_watch_minutes 决定（在启动时
-        // 读取一次，改完设置需要重启容器才生效）。
-        scheduler.Add("health", () => TimeSpan.FromMinutes(healthWatchMinutes), async ct =>
+        // 巡检周期和阈值都改成每次巡检重新读设置：设置页把这些键标成"即时/立即生效"，
+        // 而此前只用了启动时捕获的值，改完必须重启容器（审计发现的第三处不一致）。
+        scheduler.Add("health", () => HealthInterval(), async ct =>
         {
+            var liveHealth = await store.GetSettingsAsync();
+            int liveWarn = IntSettingAllowZero(liveHealth, "health_backlog_warn", warnThreshold);
+            int liveCooldown = Math.Max(1, IntSetting(liveHealth, "health_alert_cooldown_min", 30));
+            bool liveDaily = BoolSetting(liveHealth, "health_daily_summary", true);
+            int liveAnalysis = Math.Max(1, IntSetting(liveHealth, "analysis_interval", 2));
+
             if (aiChecked is null || (DateTimeOffset.UtcNow - aiChecked.Value).TotalSeconds > 60)
             {
                 aiAvailable = await client.IsAvailableAsync(ct);
@@ -441,18 +461,18 @@ internal static class AppHost
             HealthState.AiAvailable = aiAvailable;
             HealthState.AiModel = client.Model;
             HealthState.LastAnalysisAgeSeconds = age;
-            HealthState.WarnThreshold = healthWarn;
-            HealthState.AnalysisMinutes = analysisMinutes;
+            HealthState.WarnThreshold = liveWarn;
+            HealthState.AnalysisMinutes = liveAnalysis;
 
-            var inputs = new HealthInputs(backlog, total, aiAvailable, age, healthWarn, analysisMinutes);
+            var inputs = new HealthInputs(backlog, total, aiAvailable, age, liveWarn, liveAnalysis);
             bool ok = HealthCheck.IsOk(inputs);
 
             if (!ok)
                 Console.WriteLine("[Health] not ok: backlog=" + backlog + " total=" + total
-                    + " ai=" + aiAvailable + " age=" + age + " warn=" + healthWarn);
+                    + " ai=" + aiAvailable + " age=" + age + " warn=" + liveWarn);
 
             await RunHealthWatchdogAsync(store, notifier, backlog, total, aiAvailable, age,
-                healthWarn, healthAlertCooldownMinutes, healthDailySummary, analysisMinutes,
+                liveWarn, liveCooldown, liveDaily, liveAnalysis,
                 client.Model, client.BaseUrl, ct);
 
             // Positive heartbeat. The health job used to log only when something was
@@ -541,7 +561,10 @@ internal static class AppHost
         _ = scheduler.RunAsync(cancellationToken);
 
         Console.WriteLine("[AppHost] syslog udp=" + udpPort + " tcp=" + tcpPort
-            + " | analysis every " + analysisMinutes + "m | retention " + retentionHours + "h");
+            + " | analysis every " + analysisMinutes + "m | retention " + retentionHours + "h"
+            + " | health every " + healthWatchMinutes + "m backlog>" + healthWarn
+            + " cooldown " + healthAlertCooldownMinutes + "m daily=" + healthDailySummary
+            + " (这几项每次任务重读设置，改完无需重启)");
     }
 
     /// <summary>

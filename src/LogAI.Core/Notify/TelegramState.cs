@@ -35,6 +35,28 @@ public static class TelegramState
     /// <summary>Configures the channel when needed; returns whether it is usable.</summary>
     public static async Task<bool> EnsureAsync(RedisStore store, CancellationToken cancellationToken = default)
     {
+        // 设置页的 "Enable Telegram notifications" 必须先认：此前这个键只被回显到
+        // /api/stats，从不参与判断，于是取消勾选照样发通知（审计时实测确认）。
+        // 每次调用查一次（一次 HGET，告警本身很稀疏），关掉后立刻停发，不必等
+        // 下面那个 5 分钟的重试缓存过期。
+        try
+        {
+            var flag = await store.Db.HashGetAsync(Keys.Settings, "telegram_enabled");
+            if (flag.HasValue)
+            {
+                string text = RedisStore.ToText(RedisStore.DecodeJson(flag.ToString()));
+                if (text.Equals("false", StringComparison.OrdinalIgnoreCase))
+                {
+                    _configured = false;
+                    return false;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // 读不到开关就沿用上次状态：读失败不该把通知链路弄挂。
+        }
+
         if (_configured && DateTimeOffset.UtcNow - _lastAttempt < RetryAfter) return true;
 
         await Gate.WaitAsync(cancellationToken);

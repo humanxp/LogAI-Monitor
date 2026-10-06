@@ -5,8 +5,30 @@
 
 {% block content %}
 <form id="settingsForm" onsubmit="event.preventDefault(); saveSettings();">
+    <!-- 类目切换：一次只显示一个类目（见文件末尾的 showSettingsTab）。 -->
+    <div class="settings-tabs" id="settingsTabs">
+        <button type="button" class="settings-tab" data-tab-target="telegram">
+            <i class="fab fa-telegram"></i> Telegram 通知
+        </button>
+        <button type="button" class="settings-tab" data-tab-target="ai">
+            <i class="fas fa-brain"></i> AI 分析
+        </button>
+        <button type="button" class="settings-tab" data-tab-target="theme">
+            <i class="fas fa-palette"></i> UI 主题
+        </button>
+        <button type="button" class="settings-tab" data-tab-target="general">
+            <i class="fas fa-cog"></i> 通用设置
+        </button>
+        <button type="button" class="settings-tab" data-tab-target="database">
+            <i class="fas fa-database"></i> 日志数据库
+        </button>
+        <button type="button" class="settings-tab" data-tab-target="guide">
+            <i class="fas fa-book"></i> 配置指南
+        </button>
+    </div>
+
     <!-- Telegram Settings -->
-    <div class="card">
+    <div class="card" data-settings-tab="telegram">
         <div class="card-header">
             <h3><i class="fab fa-telegram"></i> Telegram Notifications</h3>
         </div>
@@ -79,11 +101,18 @@
             <button type="button" class="btn btn-outline" id="testTelegramBtn" onclick="testTelegram()">
                 <i class="fab fa-telegram"></i> Test Connection
             </button>
+
+            <div class="section-save">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('telegram')">
+                    <i class="fas fa-save"></i> 保存本类目（Save Section）
+                </button>
+                <span class="section-save-hint">只提交本类目的字段，不影响其他类目</span>
+            </div>
         </div>
     </div>
     
     <!-- Ollama Settings -->
-    <div class="card">
+    <div class="card" data-settings-tab="ai">
         <div class="card-header">
             <h3><i class="fas fa-brain"></i> AI Analysis Settings</h3>
         </div>
@@ -136,11 +165,18 @@
                     <span>Automatically analyze logs periodically</span>
                 </label>
             </div>
+
+            <div class="section-save">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('ai')">
+                    <i class="fas fa-save"></i> 保存本类目（Save Section）
+                </button>
+                <span class="section-save-hint">只提交本类目的字段，不影响其他类目</span>
+            </div>
         </div>
     </div>
     
     <!-- UI Theme Settings -->
-    <div class="card">
+    <div class="card" data-settings-tab="theme">
         <div class="card-header">
             <h3><i class="fas fa-palette"></i> UI Theme</h3>
         </div>
@@ -164,34 +200,23 @@
                 </button>
                 <small style="color: var(--lm-ink-2); display: block; margin-top: 0.5rem;">Press <kbd class="kbd">?</kbd> anywhere to view shortcuts</small>
             </div>
+
+            <div class="section-save">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('theme')">
+                    <i class="fas fa-save"></i> 保存本类目（Save Section）
+                </button>
+                <span class="section-save-hint">只提交本类目的字段，不影响其他类目</span>
+            </div>
         </div>
     </div>
     
     <!-- General Settings -->
-    <div class="card">
+    <div class="card" data-settings-tab="general">
         <div class="card-header">
             <h3><i class="fas fa-cog"></i> General Settings</h3>
         </div>
         <div class="card-body">
             <div class="form-group">
-                <label class="form-label" for="logRetention">Log Retention (days)</label>
-                <input type="number" class="form-control" id="logRetention" value="30" min="1">
-                <small style="color: var(--lm-ink-2);">How long to keep logs <b>and AI analysis history</b> (they share the same retention, in days). Logs older than this are cleaned up automatically.</small>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="archiveAfterHours">Redis Hot Data Window (days)</label>
-                <input type="number" class="form-control" id="archiveAfterHours" value="7" min="0" max="365">
-                <small style="color: var(--lm-ink-2);">超过此时长（天）的日志/分析/告警哈希会归档到 SQLite（冷存储），Redis 只留 ZSET 索引。设为 0 关闭归档。改动下一轮归档任务（≤5 分钟）生效。</small>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label" for="alertRetentionDays">Alert Retention (days)</label>
-                <input type="number" class="form-control" id="alertRetentionDays" value="30" min="1" max="3650">
-                <small style="color: var(--lm-ink-2);">告警记录的保留天数，到期自动清理（Redis TTL + 冷归档 SQLite 一并删）。改动对新写入的告警即时生效。</small>
-            </div>
-
-            <div class="form-group" style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--lm-line);">
                 <label class="form-label" for="analysisInterval">Auto Analysis Interval (minutes)</label>
                 <input type="number" class="form-control" id="analysisInterval" value="2" min="1" max="1440">
                 <small style="color: var(--lm-ink-2);">How often the scheduled batch analysis runs (e.g. 2). Applied immediately - no restart needed.</small>
@@ -243,15 +268,49 @@
                 </label>
                 <small style="color: var(--lm-ink-2);">One summary per 24h with totals / backlog / AI status (HEALTH_DAILY_SUMMARY).</small>
             </div>
+
+            <div class="section-save">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('general')">
+                    <i class="fas fa-save"></i> 保存本类目（Save Section）
+                </button>
+                <span class="section-save-hint">只提交本类目的字段，不影响其他类目</span>
+            </div>
         </div>
     </div>
     
     <!-- Log Database -->
-    <div class="card">
+    <div class="card" data-settings-tab="database">
         <div class="card-header">
             <h3><i class="fas fa-database"></i> Log Database</h3>
         </div>
         <div class="card-body">
+            <div class="form-group">
+                <label class="form-label" for="logRetention">Log Retention (days)</label>
+                <input type="number" class="form-control" id="logRetention" value="30" min="1">
+                <small style="color: var(--lm-ink-2);">How long to keep logs <b>and AI analysis history</b> (they share the same retention, in days). Logs older than this are cleaned up automatically.</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="archiveAfterHours">Redis Hot Data Window (days)</label>
+                <input type="number" class="form-control" id="archiveAfterHours" value="7" min="0" max="365">
+                <small style="color: var(--lm-ink-2);">超过此时长（天）的日志/分析/告警哈希会归档到 SQLite（冷存储），Redis 只留 ZSET 索引。设为 0 关闭归档。改动下一轮归档任务（≤5 分钟）生效。</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="alertRetentionDays">Alert Retention (days)</label>
+                <input type="number" class="form-control" id="alertRetentionDays" value="30" min="1" max="3650">
+                <small style="color: var(--lm-ink-2);">告警记录的保留天数，到期自动清理（Redis TTL + 冷归档 SQLite 一并删）。改动对新写入的告警即时生效。</small>
+            </div>
+
+            <div class="section-save">
+                <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('database')">
+                    <i class="fas fa-save"></i> 保存本类目（Save Section）
+                </button>
+                <span class="section-save-hint">只提交本类目的字段，不影响其他类目</span>
+            </div>
+
+            <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--lm-line);">
+            <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem;"><i class="fas fa-broom"></i> 清理操作</h4>
             <button type="button" class="btn btn-danger" id="clearAllLogsBtn" onclick="clearAllLogs()">
                 <i class="fas fa-trash-alt"></i> Clear All Logs
             </button>
@@ -263,19 +322,21 @@
             {% endif %}
             <small style="color: var(--lm-danger-ink); display: block; margin-top: 0.5rem;">Warning: This will permanently delete all logs from the database.</small>
             <small style="color: var(--lm-ink-2); display: block; margin-top: 0.25rem;">Note: It may take a few moments for the dashboard and counts to reflect the change.</small>
+            </div>
         </div>
     </div>
 
     <!-- Save Button -->
     <div style="margin-top: 1rem;">
         <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save"></i> Save Settings
+            <i class="fas fa-save"></i> Save All Settings（保存全部）
         </button>
+        <small style="color: var(--lm-ink-2); display: block; margin-top: 0.35rem;">一般用各类目下方的「保存本类目」即可；这个按钮会把所有类目一起提交。</small>
     </div>
 </form>
 
 <!-- Configuration Guide -->
-<div class="card" style="margin-top: 1.5rem;">
+<div class="card" data-settings-tab="guide" style="margin-top: 1.5rem;">
     <div class="card-header">
         <h3><i class="fas fa-book"></i> Configuration Guide</h3>
     </div>
@@ -313,11 +374,63 @@
         </pre>
     </div>
 </div>
+
+<script>
+// 尽早按当前类目设好显隐：这段内联脚本在卡片解析完之后立刻执行，避免整页先
+// 把所有类目都渲染出来再隐藏（会明显闪一下）。逻辑与 showSettingsTab 一致。
+(function () {
+    var cards = document.querySelectorAll('[data-settings-tab]');
+    if (!cards.length) return;
+    var want = (location.hash || '').replace(/^#/, '');
+    if (!want) { try { want = localStorage.getItem('settings_tab') || ''; } catch (e) {} }
+    var tabs = document.querySelectorAll('#settingsTabs .settings-tab');
+    var valid = Array.prototype.map.call(tabs, function (t) { return t.dataset.tabTarget; });
+    if (!valid.length || valid.indexOf(want) < 0) want = valid[0] || 'telegram';
+    Array.prototype.forEach.call(cards, function (el) {
+        el.style.display = el.dataset.settingsTab === want ? '' : 'none';
+    });
+    Array.prototype.forEach.call(tabs, function (t) {
+        t.classList.toggle('active', t.dataset.tabTarget === want);
+    });
+})();
+</script>
 {% endblock %}
 
 {% block scripts %}
 <!-- Settings page loaded via SPA router which calls loadSettings() -->
 <script>
+// ---------------------------------------------------------------- 类目切换
+// 一次只显示一个类目：顶部按键切换，活动类目记在 localStorage（刷新/返回后还在原页），
+// 也支持 /settings#ai 这样直达。各类目的字段一直留在 DOM 里，所以 loadSettings()、
+// saveSettings('ai') 这些按 id 取值的逻辑完全不受影响。
+function showSettingsTab(name, persist = true) {
+    const tabs = Array.from(document.querySelectorAll('#settingsTabs .settings-tab'));
+    if (!tabs.length) return;
+    const valid = tabs.map(t => t.dataset.tabTarget);
+    if (!valid.includes(name)) name = valid[0];
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tabTarget === name));
+    document.querySelectorAll('[data-settings-tab]').forEach(el => {
+        el.style.display = el.dataset.settingsTab === name ? '' : 'none';
+    });
+    if (persist) { try { localStorage.setItem('settings_tab', name); } catch (e) {} }
+}
+
+function initSettingsTabs() {
+    const tabs = document.querySelectorAll('#settingsTabs .settings-tab');
+    if (!tabs.length) return;
+    let want = (location.hash || '').replace(/^#/, '');
+    if (!want) { try { want = localStorage.getItem('settings_tab') || ''; } catch (e) {} }
+    showSettingsTab(want, false);
+    tabs.forEach(t => t.addEventListener('click', () => showSettingsTab(t.dataset.tabTarget)));
+    // 支持浏览器前进/后退切换类目
+    window.addEventListener('hashchange', () => {
+        const h = (location.hash || '').replace(/^#/, '');
+        if (h) showSettingsTab(h, false);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', initSettingsTabs);
+
 async function clearAllLogs() {
     if (!confirm('确定删除数据库中的全部日志吗？此操作不可撤销！\n\n同时会清空 Connected Clients 的主机记录（主机下次发日志会自动回来）。')) return;
     const btn = document.getElementById('clearAllLogsBtn');
