@@ -14,7 +14,8 @@ namespace LogAI.Core.Store;
 public static class LogMaintenance
 {
     /// <summary>Wipes every log plus the client records. Returns logs deleted.</summary>
-    public static async Task<long> ClearAllAsync(RedisStore store, CancellationToken cancellationToken = default)
+    public static async Task<long> ClearAllAsync(RedisStore store, LogArchive? archive = null,
+                                                 CancellationToken cancellationToken = default)
     {
         var db = store.Db;
         long count = await db.SortedSetLengthAsync(Keys.Timeline);
@@ -42,11 +43,19 @@ public static class LogMaintenance
         }
 
         Console.WriteLine("[Logs] cleared all " + count + " log(s)");
+        // 冷归档也要清：否则 SQLite 里还留着老日志（界面看不见，但占磁盘，
+        // 而且按 id 回读时还能命中）。
+        if (archive is not null)
+        {
+            long archived = await archive.ClearLogsAsync(cancellationToken);
+            Console.WriteLine("[Logs] also cleared " + archived + " archived row(s) from SQLite");
+        }
         return count;
     }
 
     /// <summary>Removes every log whose source equals the given value.</summary>
     public static async Task<long> DeleteBySourceAsync(RedisStore store, string source,
+                                                       LogArchive? archive = null,
                                                        CancellationToken cancellationToken = default)
     {
         var db = store.Db;
@@ -128,6 +137,13 @@ public static class LogMaintenance
         // The source itself disappears once its last log is gone.
         await db.KeyDeleteAsync(Keys.LogSource(source));
         await db.SetRemoveAsync(Keys.SourcesIndex, source);
+        // 冷归档里同一来源的老日志也要删（否则 SQLite 里仍有残留）。
+        if (archive is not null)
+        {
+            long archived = await archive.DeleteLogsBySourceAsync(source, cancellationToken);
+            if (archived > 0)
+                Console.WriteLine("[Logs] also deleted " + archived + " archived row(s) from SQLite");
+        }
         Console.WriteLine("[Logs] deleted " + removed + " log(s) from source " + source);
         return removed;
     }

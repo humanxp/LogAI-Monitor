@@ -306,6 +306,42 @@ public sealed class LogArchive
         return (long)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
+    // ------------------------------------------------ 管理动作：清空/按条件删
+    // Web 端的 "Clear All Logs" / "delete-source" / "Clear All History" 以前只清
+    // Redis，冷归档里的数据会留下来（界面看不见、但占着磁盘）。下面几个方法让这些
+    // 动作同时清 SQLite。
+
+    /// <summary>清空全部日志归档（配 "Clear All Logs"）。返回删除行数。</summary>
+    public async Task<long> ClearLogsAsync(CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM logs;";
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>按来源删归档日志（配 delete-source）。</summary>
+    public async Task<long> DeleteLogsBySourceAsync(string source, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM logs WHERE source = $source;";
+        cmd.Parameters.AddWithValue("$source", source);
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    /// <summary>按 key 前缀清空通用哈希归档（清空 AI 历史时传 "ai_history:"）。</summary>
+    public async Task<long> DeleteHashesByPrefixAsync(string prefix, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        // 前缀里的 LIKE 元字符要转义，避免 "ai_history:" 里的 "_" 被当通配符。
+        string escaped = prefix.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        cmd.CommandText = "DELETE FROM hashes WHERE key LIKE $prefix ESCAPE '\\';";
+        cmd.Parameters.AddWithValue("$prefix", escaped + "%");
+        return await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     /// <summary>
     /// 更新一条已归档哈希的单个字段（值为空则删除该字段）。供一次性回填使用
     /// （如补齐历史遗留的空 timestamp）。读改写 JSON，低频操作，开销可忽略。

@@ -19,13 +19,13 @@ namespace LogAI.Web.Api;
 
 internal static class LogWriteApi
 {
-    public static void Map(WebApplication app, RedisStore store, SessionCookie cookies)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies)
     {
         app.MapPost("/api/logs/clear", async (HttpContext http) =>
         {
             if (RequireAdmin(http, cookies) is { } denied) return denied;
 
-            long deleted = await LogMaintenance.ClearAllAsync(store);
+            long deleted = await LogMaintenance.ClearAllAsync(store, archive);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
             await LogMaintenance.DeleteAllClientsAsync(store);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -44,7 +44,7 @@ internal static class LogWriteApi
             string source = RedisStore.ToText(body.GetValueOrDefault("source")).Trim();
             if (source.Length == 0) return ReadApi.JsonBody(new { error = "source required" }, 400);
 
-            long deleted = await LogMaintenance.DeleteBySourceAsync(store, source);
+            long deleted = await LogMaintenance.DeleteBySourceAsync(store, source, archive);
             bool clientDeleted = await LogMaintenance.DeleteClientAsync(store, source);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
 

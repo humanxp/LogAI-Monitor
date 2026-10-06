@@ -250,14 +250,16 @@ LogAI.Web.Api.OllamaApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Stor
 LogAI.Web.Api.StatsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
 LogAI.Web.Api.DockerContainersApi.Map(app);
 LogAI.Web.Api.DockerLogsApi.Map(app);
-LogAI.Web.Api.LogWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
+LogAI.Web.Api.LogWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies);
 LogAI.Web.Api.HealthApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
 LogAI.Web.Api.AlertWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.SettingsWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.CleanupApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.FilterWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.UserWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
-LogAI.Web.Api.HistoryWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
+LogAI.Web.Api.HistoryWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies);
 LogAI.Web.Api.DiagnosticsApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.MiscWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.ChatApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
@@ -404,6 +406,8 @@ if (args.Length >= 2 && args[0] == "--purge-sources")
         Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
         Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
     });
+    var purgeArchive = new LogAI.Core.Store.LogArchive(
+        Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
     var allSources = await purgeStore.Db.SetMembersAsync(LogAI.Core.Store.Keys.SourcesIndex);
     long totalLogs = 0;
     var targets = new List<string>();
@@ -427,7 +431,7 @@ if (args.Length >= 2 && args[0] == "--purge-sources")
     long removed = 0;
     foreach (string source in targets)
     {
-        removed += await LogAI.Core.Store.LogMaintenance.DeleteBySourceAsync(purgeStore, source);
+        removed += await LogAI.Core.Store.LogMaintenance.DeleteBySourceAsync(purgeStore, source, purgeArchive);
         await LogAI.Core.Store.LogMaintenance.DeleteClientAsync(purgeStore, source);
     }
     Console.WriteLine("[purge] deleted " + removed + " logs across " + targets.Count + " sources");
@@ -630,6 +634,16 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
             shEntries.Skip(offset).Take(size).ToArray());
     }
     Console.WriteLine($"[backfill] set status-hash on {shEntries.Length} ai_history records");
+    Environment.Exit(0);
+}
+
+// 诊断：打印冷归档（SQLite）两张表的条数——验证"清理是否同时清了两库"时用。
+if (args.Length >= 1 && args[0] == "--archive-counts")
+{
+    var acArchive = new LogAI.Core.Store.LogArchive(
+        Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
+    Console.WriteLine("[archive] logs=" + await acArchive.CountAsync()
+        + " hashes=" + await acArchive.CountHashesAsync());
     Environment.Exit(0);
 }
 

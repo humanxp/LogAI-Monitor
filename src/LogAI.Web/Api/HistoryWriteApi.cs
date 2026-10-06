@@ -22,7 +22,7 @@ namespace LogAI.Web.Api;
 
 internal static class HistoryWriteApi
 {
-    public static void Map(WebApplication app, RedisStore store, SessionCookie cookies)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies)
     {
         app.MapDelete("/api/ai-history/{historyId}", async (HttpContext http, string historyId) =>
         {
@@ -34,6 +34,9 @@ internal static class HistoryWriteApi
 
             await store.Db.KeyDeleteAsync(historyId);
             await store.Db.SortedSetRemoveAsync(Keys.AiHistoryTimeline, historyId);
+            // 独立状态哈希 + 冷归档里的同一条也要删，否则残留。
+            await store.Db.HashDeleteAsync(Keys.AiHistoryStatus, historyId);
+            await archive.DeleteHashAsync(historyId);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok" });
         });
 
@@ -61,10 +64,14 @@ internal static class HistoryWriteApi
                 deleted += size;
             }
             await store.Db.KeyDeleteAsync(Keys.AiHistoryTimeline);
+            // 状态哈希整条清掉（只装 ai_history 的 id），冷归档按前缀清。
+            await store.Db.KeyDeleteAsync(Keys.AiHistoryStatus);
+            long archived = await archive.DeleteHashesByPrefixAsync("ai_history:");
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["deleted"] = deleted,
+                ["archived_deleted"] = archived,
                 ["status"] = "ok",
             });
         });
