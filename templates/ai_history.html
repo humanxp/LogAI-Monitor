@@ -25,39 +25,12 @@
         </div>
     </div>
     <div class="stat-card">
-        <div class="stat-icon danger">
-            <i class="fas fa-exclamation-circle"></i>
-        </div>
-        <div class="stat-info">
-            <h3 id="errorCount">0</h3>
-            <p>Error</p>
-        </div>
-    </div>
-    <div class="stat-card">
         <div class="stat-icon warning">
             <i class="fas fa-exclamation-triangle"></i>
         </div>
         <div class="stat-info">
             <h3 id="warningCount">0</h3>
             <p>Warning</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon primary">
-            <i class="fas fa-bell"></i>
-        </div>
-        <div class="stat-info">
-            <h3 id="noticeCount">0</h3>
-            <p>Notice</p>
-        </div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-icon primary">
-            <i class="fas fa-info-circle"></i>
-        </div>
-        <div class="stat-info">
-            <h3 id="infoCount">0</h3>
-            <p>Info</p>
         </div>
     </div>
     <div class="stat-card">
@@ -356,10 +329,7 @@ async function fetchHistoryStats(seq) {
         if (seq !== undefined && seq !== _historyFetchSeq) return;
         document.getElementById('totalAnalyses').textContent = s.total ?? historyTotal;
         document.getElementById('criticalCount').textContent = s.critical || 0;
-        document.getElementById('errorCount').textContent = s.error || 0;
         document.getElementById('warningCount').textContent = s.warning || 0;
-        document.getElementById('noticeCount').textContent = s.notice || 0;
-        document.getElementById('infoCount').textContent = s.info || 0;
         document.getElementById('healthyCount').textContent = s.healthy || 0;
         document.getElementById('otherCount').textContent = s.other || 0;
     } catch (error) {

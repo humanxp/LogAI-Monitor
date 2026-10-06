@@ -33,7 +33,11 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
                                          IReadOnlyDictionary<string, string>? extra = null)
     {
         string id = $"ai_history:{NextMilliseconds()}";
-        string status = AiStatusClassifier.Classify(type, analysis);
+        // 确定性兜底：批分析里没有 emergency/alert/critical 级别的原始日志时不允许判
+        // critical（单条分析走 is_critical，不受此限）。
+        bool allowCritical = string.Equals(type, "single", StringComparison.Ordinal)
+            || await AnyCriticalSeverityAsync(logIds);
+        string status = AiStatusClassifier.Classify(type, analysis, allowCritical);
 
         var ids = new JsonArray();
         foreach (string logId in logIds) ids.Add(logId);
@@ -84,6 +88,35 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
     public const int MaxFailedRetries = 3;
 
     public static bool ShouldRetire(int failCount) => failCount >= MaxFailedRetries;
+
+    /// <summary>
+    /// 这批日志里是否存在 emergency/alert/critical 级别的原始日志。用来给 "critical"
+    /// 加一道确定性闸门：3B 模型会把一长串重复的 error/info 消息（"already registered"、
+    /// "Sleeping!"、服务重启刷屏）当成 critical，实测占了一半的分析结果。真正的
+    /// critical 至少应该有来源设备标成危急级别的日志。
+    /// </summary>
+    private async Task<bool> AnyCriticalSeverityAsync(IReadOnlyList<string> logIds)
+    {
+        if (logIds.Count == 0) return false;
+        const int Chunk = 500;
+        for (int offset = 0; offset < logIds.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, logIds.Count - offset);
+            var batch = store.Db.CreateBatch();
+            var reads = new Task<RedisValue>[size];
+            for (int i = 0; i < size; i++)
+                reads[i] = batch.HashGetAsync(logIds[offset + i], "severity");
+            batch.Execute();
+            var loaded = await Task.WhenAll(reads);
+            foreach (var value in loaded)
+            {
+                string severity = value.ToString().ToLowerInvariant();
+                if (severity is "emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal")
+                    return true;
+            }
+        }
+        return false;
+    }
 
     private long NextMilliseconds()
     {

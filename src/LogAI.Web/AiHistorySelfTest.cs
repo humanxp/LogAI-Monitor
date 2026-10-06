@@ -74,6 +74,25 @@ internal static class AiHistorySelfTest
             && AiHistoryWriter.ShouldRetire(3) && AiHistoryWriter.ShouldRetire(4));
         Check("retirement threshold is three", AiHistoryWriter.MaxFailedRetries == 3);
 
+        // AiStatusClassifier：字符串重载必须真的解析 JSON（曾经因为 JsonNode 对 string
+        // 的隐式转换，3 参调用把整串 JSON 当成 JsonValue，导致回填全部变成 other）。
+        const string CritJson = """{"overall_status":"critical","critical_count":4}""";
+        Check("string overload parses JSON (not other)",
+            AiStatusClassifier.Classify("auto", CritJson) == "critical");
+        Check("error/notice fold into warning",
+            AiStatusClassifier.Classify("auto", """{"overall_status":"error"}""") == "warning"
+            && AiStatusClassifier.Classify("auto", """{"overall_status":"notice"}""") == "warning");
+        Check("info folds into healthy",
+            AiStatusClassifier.Classify("auto", """{"overall_status":"info"}""") == "healthy");
+        Check("critical without any critical_count is downgraded",
+            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""") == "warning");
+        Check("critical gate blocks when batch has no critical log",
+            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false) == "warning");
+        Check("critical gate allows through when batch has a critical log",
+            AiStatusClassifier.Classify("auto", CritJson, allowCritical: true) == "critical");
+        Check("non-object analysis is other",
+            AiStatusClassifier.Classify("auto", "not json") == "other");
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }

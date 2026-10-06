@@ -1875,17 +1875,17 @@ async function loadSettings() {
         const alertMinEl = document.getElementById('alertMinSeverity');
         if (alertMinEl) alertMinEl.value = settings.alert_min_severity || 'error';
         document.getElementById('analysisSummaryCooldown').value = settings.analysis_summary_cooldown_min ?? 30;
-        // 汇总推送状态（逗号分隔的 7 档）→ 勾选对应复选框；默认 critical（最重要、最不吵）
+        // 汇总推送状态（逗号分隔的 4 档）→ 勾选对应复选框；默认 critical（最重要、最不吵）
         const summaryStatuses = (settings.analysis_summary_status || 'critical').split(',');
         document.getElementById('summaryStatusCritical').checked = summaryStatuses.includes('critical');
-        document.getElementById('summaryStatusError').checked = summaryStatuses.includes('error');
         document.getElementById('summaryStatusWarning').checked = summaryStatuses.includes('warning');
-        document.getElementById('summaryStatusNotice').checked = summaryStatuses.includes('notice');
-        document.getElementById('summaryStatusInfo').checked = summaryStatuses.includes('info');
         document.getElementById('summaryStatusHealthy').checked = summaryStatuses.includes('healthy');
         document.getElementById('summaryStatusOther').checked = summaryStatuses.includes('other');
         document.getElementById('ollamaEnabled').checked = settings.ollama_enabled !== false;
-        document.getElementById('ollamaHost').value = settings.ollama_host || 'http://localhost:11434';
+        // 留空而不是回落到写死的 localhost:11434：设置页一保存就会把这个值写进
+        // ollama_host，从而覆盖部署时 env 里的 AI_BASE_URL，把分析指向不存在的本地
+        // Ollama（线上踩过：AI 全部 Connection refused，而 env 其实配的是对的）。
+        document.getElementById('ollamaHost').value = settings.ollama_host || '';
         document.getElementById('ollamaModel').value = settings.ollama_model || 'llama3.2';
         const provEl = document.getElementById('aiProvider');
         if (provEl) {
@@ -1950,7 +1950,7 @@ async function saveSettings() {
         telegram_bot_token: document.getElementById('telegramBotToken').value,
         telegram_chat_id: document.getElementById('telegramChatId').value,
         analysis_summary_cooldown_min: parseInt(document.getElementById('analysisSummaryCooldown').value) || 0,
-        analysis_summary_status: ['critical', 'error', 'warning', 'notice', 'info', 'healthy', 'other']
+        analysis_summary_status: ['critical', 'warning', 'healthy', 'other']
             .filter(s => document.getElementById('summaryStatus' + s.charAt(0).toUpperCase() + s.slice(1))?.checked)
             .join(','),
         telegram_cooldown_minutes: parseInt(document.getElementById('telegramCooldown').value) || 0,

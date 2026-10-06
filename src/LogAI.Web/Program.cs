@@ -584,24 +584,56 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
     var statusById = new Dictionary<string, string>(StringComparer.Ordinal);
     const int ShChunk = 500;
 
-    // 1) Redis 主哈希里的 status（热记录）
+    // 0) critical 闸门用的"危急级别日志 id"集合：热 ZSET + 归档表。批次里没有这些
+    //    id 就不认模型说的 critical（3B 模型会把一长串良性重复消息说成 critical）。
+    var critIds = new HashSet<string>(StringComparer.Ordinal);
+    foreach (string sev in new[] { "emergency", "alert", "critical" })
+        foreach (var m in await shStore.Db.SortedSetRangeByRankAsync(
+                     LogAI.Core.Store.Keys.LogSeverity(sev), 0, -1))
+            critIds.Add(m.ToString());
+    foreach (string cid in await shArchive.ListCriticalSeverityIdsAsync()) critIds.Add(cid);
+    Console.WriteLine("[backfill] critical-severity log ids: " + critIds.Count);
+
+    Func<string, bool> hasCriticalLog = raw =>
+    {
+        try
+        {
+            if (System.Text.Json.Nodes.JsonNode.Parse(raw) is not System.Text.Json.Nodes.JsonArray arr) return false;
+            foreach (var n in arr)
+                if (n?.GetValue<string>() is { Length: > 0 } s && critIds.Contains(s)) return true;
+        }
+        catch (System.Text.Json.JsonException) { }
+        return false;
+    };
+
+    // 1) 热记录：读 type + analysis + log_ids 重新分类。刻意不复用旧 status——分类口径变过
+    //    （7 档时期的 error/notice/info 要重新归到 4 档），且要补上 critical 闸门。
     for (int offset = 0; offset < shIds.Length; offset += ShChunk)
     {
         int size = Math.Min(ShChunk, shIds.Length - offset);
         var b = shStore.Db.CreateBatch();
-        var t = new Task<StackExchange.Redis.RedisValue>[size];
-        for (int i = 0; i < size; i++)
-            t[i] = b.HashGetAsync(shIds[offset + i].ToString(), "status");
-        b.Execute();
-        var loaded = await Task.WhenAll(t);
+        var tType = new Task<StackExchange.Redis.RedisValue>[size];
+        var tAnalysis = new Task<StackExchange.Redis.RedisValue>[size];
+        var tLogIds = new Task<StackExchange.Redis.RedisValue>[size];
         for (int i = 0; i < size; i++)
         {
-            string s = loaded[i].ToString();
-            if (s.Length > 0) statusById[shIds[offset + i].ToString()] = s;
+            tType[i] = b.HashGetAsync(shIds[offset + i].ToString(), "type");
+            tAnalysis[i] = b.HashGetAsync(shIds[offset + i].ToString(), "analysis");
+            tLogIds[i] = b.HashGetAsync(shIds[offset + i].ToString(), "log_ids");
+        }
+        b.Execute();
+        var types = await Task.WhenAll(tType);
+        var analyses = await Task.WhenAll(tAnalysis);
+        var logIds = await Task.WhenAll(tLogIds);
+        for (int i = 0; i < size; i++)
+        {
+            if (analyses[i].IsNullOrEmpty) continue;              // 已归档，交给第 2 步
+            statusById[shIds[offset + i].ToString()] = LogAI.Core.Ai.AiStatusClassifier.Classify(
+                types[i].ToString(), analyses[i].ToString(), hasCriticalLog(logIds[i].ToString()));
         }
     }
 
-    // 2) 已归档的：从 SQLite 哈希取 status（缺失则重算）
+    // 2) 已归档的：从 SQLite 哈希的 type + analysis 重新分类（同样过 critical 闸门）
     var shMissing = new List<string>();
     foreach (var id in shIds)
     {
@@ -617,11 +649,9 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
         {
             if (hashes[i].Length == 0) continue;
             var dict = hashes[i].ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
-            string s = dict.GetValueOrDefault("status") ?? "";
-            if (s.Length == 0)
-                s = LogAI.Core.Ai.AiStatusClassifier.Classify(
-                    dict.GetValueOrDefault("type") ?? "", dict.GetValueOrDefault("analysis") ?? "");
-            if (s.Length > 0) statusById[chunkIds[i]] = s;
+            statusById[chunkIds[i]] = LogAI.Core.Ai.AiStatusClassifier.Classify(
+                dict.GetValueOrDefault("type") ?? "", dict.GetValueOrDefault("analysis") ?? "",
+                hasCriticalLog(dict.GetValueOrDefault("log_ids") ?? ""));
         }
     }
 

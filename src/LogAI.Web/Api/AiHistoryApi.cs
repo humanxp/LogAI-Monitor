@@ -58,7 +58,15 @@ internal static class AiHistoryApi
             foreach (string s in AiStatusClassifier.Statuses) counts[s] = 0;
             void Bump(string s)
             {
-                if (counts.TryGetValue(s, out int c)) counts[s] = c + 1;
+                // 兼容 7 档时期落库的旧值（error/notice→warning、info→healthy），
+                // 免得它们在统计里掉进 other。
+                string k = s switch
+                {
+                    "error" or "err" or "notice" or "warn" => "warning",
+                    "info" or "informational" => "healthy",
+                    _ => s,
+                };
+                if (counts.TryGetValue(k, out int c)) counts[k] = c + 1;
                 else counts["other"]++;
             }
 

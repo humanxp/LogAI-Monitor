@@ -92,9 +92,13 @@ LOGS:
 {logSummary}
 
 Reply with ONLY a JSON object having exactly these keys:
-- "overall_status": the batch's overall health, pick the SINGLE most fitting level from (most severe first): "critical" (outage / security breach needing immediate action), "error" (errors present, service degraded), "warning" (warnings worth attention), "notice" (unusual but not harmful), "info" (routine informational), "healthy" (all normal), "other" (cannot judge)
+- "overall_status": rate the batch by its SINGLE WORST issue, one of "healthy", "warning", "critical".
+  * "critical" = a host/server is DOWN or UNREACHABLE right now, a confirmed security breach (break-in, malware, credential theft), or data loss. Nothing else qualifies.
+  * "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
+  * "healthy" = only routine / informational messages.
+  How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
 - "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). Do NOT copy raw log lines; summarize each distinct pattern in one short line (max 150 chars). Empty array if none
-- "critical_count": integer, count of DISTINCT critical problems, 0 if none
+- "critical_count": integer, how many DISTINCT issues meet the strict "critical" definition above (host down/unreachable, confirmed breach, data loss). This is normally 0. NEVER count warnings, retries, "already registered", "Sleeping!", service-restart chatter, or benign repeated messages here
 - "recommendations": array of short "[HOST] action" strings (actions to fix the issues), at most 5. Empty array if none
 - "affected_hosts": array of bare hostname/IP strings involved (no brackets), empty array if none
 - "alert_message": short admin alert if critical, else ""

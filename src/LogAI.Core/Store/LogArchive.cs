@@ -343,6 +343,21 @@ public sealed class LogArchive
     }
 
     /// <summary>
+    /// 归档里所有 emergency/alert/critical 级别的日志 id。给 "critical" 闸门用：
+    /// 回填时先把这些 id 收进集合，再逐条判断批次里有没有真正危急的日志。
+    /// </summary>
+    public async Task<List<string>> ListCriticalSeverityIdsAsync(CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id FROM logs WHERE severity IN ('emergency','alert','critical');";
+        var ids = new List<string>();
+        using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct)) ids.Add(reader.GetString(0));
+        return ids;
+    }
+
+    /// <summary>
     /// 更新一条已归档哈希的单个字段（值为空则删除该字段）。供一次性回填使用
     /// （如补齐历史遗留的空 timestamp）。读改写 JSON，低频操作，开销可忽略。
     /// </summary>
