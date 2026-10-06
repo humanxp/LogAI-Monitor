@@ -46,6 +46,12 @@ public static class Keys
     public const string AiHistoryArchiveWatermark = "ai_history:archive:watermark";
     /// <summary>告警归档水位（score-based，与 alerts:timeline 分数一致）。</summary>
     public const string AlertsArchiveWatermark = "alerts:archive:watermark";
+    /// <summary>
+    /// 分析历史的状态分类小字段（id → healthy/warning/critical/other）。独立成一条
+    /// 哈希、不随归档搬走，/api/ai-history/stats 直接读它即可，不必为已归档记录
+    /// 回读 SQLite 里 5KB 的分析 JSON（实测冷调用从 444ms 降到毫秒级）。
+    /// </summary>
+    public const string AiHistoryStatus = "ai_history:status";
 
     public static string Log(string id) => "log:" + id;
     public static string LogSource(string source) => "logs:source:" + source;

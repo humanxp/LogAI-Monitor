@@ -65,9 +65,10 @@ internal static class AiHistoryApi
             int critical = 0, healthy = 0, warning = 0, other = 0;
 
             const int Chunk = 500;
-            // 第一遍只读 status 小字段（新记录在写入时就已归好类）；无 status 的
-            // 旧记录收进回退列表。status 极小（~10B），批次可以很大，把往返从
-            // 38 次压到 4 次（这才是主要耗时：往返而非数据量）。
+            // 第一遍读独立的状态小哈希 ai_history:status（id → 分类结果）。它不随归档
+            // 搬走，因此已归档记录的状态也在 Redis 里，不必回读 SQLite 的整份哈希
+            // （含 5KB 分析 JSON）——这是冷调用从 444ms 降到毫秒级的关键。
+            // status 极小（~10B），批次可以很大，把往返压到几次。
             const int StatusChunk = 5000;
             var fallback = new List<string>();
             for (int offset = 0; offset < ids.Length; offset += StatusChunk)
@@ -76,7 +77,7 @@ internal static class AiHistoryApi
                 var batch = store.Db.CreateBatch();
                 var tasks = new Task<RedisValue>[size];
                 for (int i = 0; i < size; i++)
-                    tasks[i] = batch.HashGetAsync(ids[offset + i].ToString(), "status");
+                    tasks[i] = batch.HashGetAsync(Keys.AiHistoryStatus, ids[offset + i].ToString());
                 batch.Execute();
                 var loaded = await Task.WhenAll(tasks);
                 for (int i = 0; i < size; i++)
@@ -86,7 +87,7 @@ internal static class AiHistoryApi
                         case "critical": critical++; break;
                         case "warning": warning++; break;
                         case "healthy": healthy++; break;
-                        case "": fallback.Add(ids[offset + i].ToString()); break;   // 旧记录
+                        case "": fallback.Add(ids[offset + i].ToString()); break;   // 未回填的旧记录
                         default: other++; break;
                     }
                 }

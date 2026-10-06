@@ -32,6 +32,7 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
                                          IReadOnlyDictionary<string, string>? extra = null)
     {
         string id = $"ai_history:{NextMilliseconds()}";
+        string status = AiStatusClassifier.Classify(type, analysis);
 
         var ids = new JsonArray();
         foreach (string logId in logIds) ids.Add(logId);
@@ -47,12 +48,15 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
             new HashEntry("fail_count", failCount.ToString()),
             // 内部字段：分类结果落一条小字段，/api/ai-history/stats 只读它即可
             // 汇总，不必每次解析整份 analysis JSON（见 AiStatusClassifier）。
-            new HashEntry("status", AiStatusClassifier.Classify(type, analysis)),
+            new HashEntry("status", status),
         };
         if (extra is not null)
             foreach (var pair in extra) entries.Add(new HashEntry(pair.Key, pair.Value));
 
         await store.Db.HashSetAsync(id, entries.ToArray());
+        // 状态另存一份独立小哈希：归档只搬主哈希，这条留在 Redis，stats 直接读它，
+        // 不必为已归档记录回读 SQLite 的整份哈希（含 5KB 分析 JSON）。
+        await store.Db.HashSetAsync(Keys.AiHistoryStatus, id, status);
 
         double score = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
         await store.Db.SortedSetAddAsync(Keys.AiHistoryTimeline, id, score);

@@ -563,6 +563,76 @@ if (args.Length >= 1 && args[0] == "--purge-empty-ai-history")
     Environment.Exit(0);
 }
 
+// 一次性回填：给存量分析历史补上独立的 ai_history:status 小哈希（stats 直接读它，
+// 不必为已归档记录回读 SQLite 的整份哈希）。Redis 主哈希有 status 就用它，已归档的
+// 从 SQLite 哈希里取 status（缺失则按 type+analysis 重算）。幂等。
+if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
+{
+    var shStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    var shArchive = new LogAI.Core.Store.LogArchive(
+        Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
+    var shIds = await shStore.Db.SortedSetRangeByRankAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, 0, -1);
+    var statusById = new Dictionary<string, string>(StringComparer.Ordinal);
+    const int ShChunk = 500;
+
+    // 1) Redis 主哈希里的 status（热记录）
+    for (int offset = 0; offset < shIds.Length; offset += ShChunk)
+    {
+        int size = Math.Min(ShChunk, shIds.Length - offset);
+        var b = shStore.Db.CreateBatch();
+        var t = new Task<StackExchange.Redis.RedisValue>[size];
+        for (int i = 0; i < size; i++)
+            t[i] = b.HashGetAsync(shIds[offset + i].ToString(), "status");
+        b.Execute();
+        var loaded = await Task.WhenAll(t);
+        for (int i = 0; i < size; i++)
+        {
+            string s = loaded[i].ToString();
+            if (s.Length > 0) statusById[shIds[offset + i].ToString()] = s;
+        }
+    }
+
+    // 2) 已归档的：从 SQLite 哈希取 status（缺失则重算）
+    var shMissing = new List<string>();
+    foreach (var id in shIds)
+    {
+        string sid = id.ToString();
+        if (!statusById.ContainsKey(sid)) shMissing.Add(sid);
+    }
+    for (int offset = 0; offset < shMissing.Count; offset += ShChunk)
+    {
+        int size = Math.Min(ShChunk, shMissing.Count - offset);
+        var chunkIds = shMissing.GetRange(offset, size);
+        var hashes = await shArchive.GetHashesBatchAsync(chunkIds);
+        for (int i = 0; i < size; i++)
+        {
+            if (hashes[i].Length == 0) continue;
+            var dict = hashes[i].ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+            string s = dict.GetValueOrDefault("status") ?? "";
+            if (s.Length == 0)
+                s = LogAI.Core.Ai.AiStatusClassifier.Classify(
+                    dict.GetValueOrDefault("type") ?? "", dict.GetValueOrDefault("analysis") ?? "");
+            if (s.Length > 0) statusById[chunkIds[i]] = s;
+        }
+    }
+
+    // 3) 批量写入独立状态哈希
+    var shEntries = statusById.Select(kv => new StackExchange.Redis.HashEntry(kv.Key, kv.Value)).ToArray();
+    for (int offset = 0; offset < shEntries.Length; offset += ShChunk)
+    {
+        int size = Math.Min(ShChunk, shEntries.Length - offset);
+        await shStore.Db.HashSetAsync(LogAI.Core.Store.Keys.AiHistoryStatus,
+            shEntries.Skip(offset).Take(size).ToArray());
+    }
+    Console.WriteLine($"[backfill] set status-hash on {shEntries.Length} ai_history records");
+    Environment.Exit(0);
+}
+
 // 判断 analysis 是否"空分析"：四个关键字段(overall_status/category/summary/issues_found)
 // 全缺失或空。页面会显示 unknown + No issues found，没有保留价值。
 static bool IsUselessAnalysis(string analysisRaw)

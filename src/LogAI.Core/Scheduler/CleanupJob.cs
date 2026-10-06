@@ -50,7 +50,8 @@ public static class CleanupJob
 
         int removed = await RemoveExpiredAsync(db, archive, cutoff, pageSize, cancellationToken);
         // 分析历史/告警只有一条时间线，没有维度索引/待分析队列，清理更简单。
-        int aihRemoved = await RemoveExpiredSimpleAsync(db, archive, Keys.AiHistoryTimeline, cutoff, pageSize, cancellationToken);
+        int aihRemoved = await RemoveExpiredSimpleAsync(db, archive, Keys.AiHistoryTimeline, cutoff, pageSize,
+                                                        cancellationToken, statusHashKey: Keys.AiHistoryStatus);
         int alrRemoved = await RemoveExpiredSimpleAsync(db, archive, Keys.AlertsTimeline, cutoff, pageSize, cancellationToken);
         int deadPurged = await PurgeDeadQueuedAsync(db, pageSize, cancellationToken);
 
@@ -150,9 +151,11 @@ public static class CleanupJob
     /// <summary>
     /// 清理只有一条时间线的数据（分析历史/告警）：到期后摘除时间线 id、删 Redis 哈希、
     /// 并删 SQLite 归档记录。无维度索引/待分析队列，比日志清理简单。
+    /// statusHashKey 非空时（分析历史）一并摘除独立状态哈希里的条目。
     /// </summary>
     private static async Task<int> RemoveExpiredSimpleAsync(IDatabase db, LogArchive? archive,
-        string timelineKey, double cutoff, int pageSize, CancellationToken cancellationToken)
+        string timelineKey, double cutoff, int pageSize, CancellationToken cancellationToken,
+        string? statusHashKey = null)
     {
         int removed = 0;
         while (!cancellationToken.IsCancellationRequested)
@@ -162,13 +165,17 @@ public static class CleanupJob
             if (page.Length == 0) break;
 
             var batch = db.CreateBatch();
-            var pending = new List<Task>(page.Length * 2);
+            var pending = new List<Task>(page.Length * 3);
+            var fields = new RedisValue[page.Length];
             for (int i = 0; i < page.Length; i++)
             {
                 string id = page[i].ToString();
+                fields[i] = id;
                 pending.Add(batch.KeyDeleteAsync(id));
                 pending.Add(batch.SortedSetRemoveAsync(timelineKey, id));
             }
+            if (statusHashKey is not null)
+                pending.Add(batch.HashDeleteAsync(statusHashKey, fields));
             batch.Execute();
             await Task.WhenAll(pending);
 
