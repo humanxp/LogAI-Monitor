@@ -1866,9 +1866,9 @@ async function loadSettings() {
             onAiProviderChange(); // sync hint (does not clobber host once set)
         }
         document.getElementById('analysisInterval').value = settings.analysis_interval ?? 2;
-        document.getElementById('logRetention').value = settings.log_retention_hours || 240;
+        document.getElementById('logRetention').value = Math.round((settings.log_retention_hours || 720) / 24);
         const archEl = document.getElementById('archiveAfterHours');
-        if (archEl) archEl.value = settings.archive_after_hours ?? 168;
+        if (archEl) archEl.value = Math.round((settings.archive_after_hours ?? 168) / 24);
         const alertRetEl = document.getElementById('alertRetentionDays');
         if (alertRetEl) alertRetEl.value = settings.alert_retention_days ?? 30;
         document.getElementById('maxLogsPerAnalysis').value = settings.max_logs_per_analysis ?? 500;
@@ -1929,8 +1929,8 @@ async function saveSettings() {
         ollama_model: document.getElementById('ollamaModel').value,
         ai_provider: document.getElementById('aiProvider')?.value || 'openai',
         analysis_interval: parseInt(document.getElementById('analysisInterval').value) || 2,
-        log_retention_hours: parseInt(document.getElementById('logRetention').value) || 240,
-        archive_after_hours: parseInt(document.getElementById('archiveAfterHours')?.value) ?? 168,
+        log_retention_hours: (parseInt(document.getElementById('logRetention').value) || 30) * 24,
+        archive_after_hours: (parseInt(document.getElementById('archiveAfterHours')?.value) ?? 7) * 24,
         alert_retention_days: parseInt(document.getElementById('alertRetentionDays')?.value) ?? 30,
         max_logs_per_analysis: parseInt(document.getElementById('maxLogsPerAnalysis').value) || 500,
         batch_sample_limit: parseInt(document.getElementById('batchSampleLimit').value) || 100,
