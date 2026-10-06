@@ -12,10 +12,12 @@
 //
 // DELIBERATE SECURITY CHOICE: this endpoint requires a real session, not just reachability.
 
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using LogAI.Core.Ai;
 using LogAI.Core.Auth;
 using LogAI.Core.Store;
+using StackExchange.Redis;
 
 namespace LogAI.Web.Api;
 
@@ -132,7 +134,178 @@ internal static class AnalyzeApi
                 ["success"] = true,
             });
         });
+
+        // POST /api/analysis/reanalyze —— 对一条历史记录重跑分析并写回原记录。
+        //
+        // AI History 详情里的 Re-analyze 按钮调这里。历史记录本身与它引用的日志都
+        // 可能已归档，所以两处都必须走冷热两库：记录（Redis → SQLite），以及按
+        // log_ids 回读的日志哈希（Redis → SQLite）——超过热窗口的日志哈希早搬到冷库，
+        // 只看 Redis 会把"这批日志全都还在"误判成"没有可重跑的日志"。
+        //
+        // 契约：{"reanalyzed":true,"updated":true,"available":N} 成功；
+        //       {"reanalyzed":true,"updated":false} 重跑了但模型仍没给出合法 JSON；
+        //       {"reanalyzed":false,"msg":...} 没重跑（记录不存在/开关关闭/后端不可达）。
+        app.MapPost("/api/analysis/reanalyze", async (HttpContext http) =>
+        {
+            if (AuthApi.CurrentUser(http, cookies) is null)
+                return Results.Redirect("/login?next=" + Uri.EscapeDataString(http.Request.Path));
+
+            var data = await ReadObjectAsync(http);
+            string historyId = Text(data, "history_id");
+            if (historyId.Length == 0)
+                return ReadApi.JsonBody(new { error = "history_id required" }, 400);
+
+            // ① 历史记录：热库取不到就从冷库取
+            var hash = await store.Db.HashGetAllAsync(historyId);
+            if (hash.Length == 0)
+                hash = (await archive.GetHashesBatchAsync([historyId]))[0];
+            if (hash.Length == 0)
+                return ReadApi.JsonBody(new { reanalyzed = false, error = "History entry not found" }, 404);
+
+            var record = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
+            string type = record.GetValueOrDefault("type") ?? "auto";
+            bool single = string.Equals(type, "single", StringComparison.Ordinal);
+            var logIds = ParseLogIds(record.GetValueOrDefault("log_ids") ?? "");
+
+            // ② 按 log_ids 回读日志：热库批量取，缺失的从冷库补
+            var available = await LoadLogsAsync(store, archive, logIds);
+
+            var settings = await store.GetSettingsAsync();
+            if (!AiClient.AiEnabledIn(settings))
+                return ReadApi.JsonBody(new { reanalyzed = false, available = available.Count,
+                    msg = "AI 分析总开关已关闭（设置页 → AI 分析）" });
+
+            string provider = RedisStore.ToText(settings.GetValueOrDefault("ai_provider"));
+            if (provider.Length == 0) provider = "openai";
+            string host = RedisStore.ToText(settings.GetValueOrDefault("ollama_host"));
+            if (host.Length == 0) host = Environment.GetEnvironmentVariable("AI_BASE_URL") ?? "";
+            var client = new AiClient
+            {
+                Provider = provider,
+                BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
+                Model = AiClient.ResolveModel(store),
+                ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+            };
+            if (!await client.IsAvailableAsync())
+                return ReadApi.JsonBody(new { reanalyzed = false, available = available.Count,
+                    msg = "AI 后端当前不可达，稍后再试" });
+
+            if (available.Count == 0)
+                return ReadApi.JsonBody(new { reanalyzed = false, available = 0,
+                    msg = "这条记录引用的日志都已过保留期，没有可重跑的日志" });
+
+            // ③ 重跑
+            int sampleLimit = int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
+                                           out int sample) && sample > 0 ? sample : 200;
+            string prompt = single
+                ? PromptBuilderSingle.Build(available[0])
+                : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit));
+            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048);
+            if (analysis is null)
+                return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
+                    msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
+
+            // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
+            string status = AiStatusClassifier.Classify(type, analysis,
+                allowCritical: single || HasCriticalLog(available));
+            string analysisJson = analysis.ToJsonString();
+            bool inRedis = await store.Db.KeyExistsAsync(historyId);
+            if (inRedis)
+            {
+                await store.Db.HashSetAsync(historyId,
+                [
+                    new HashEntry("analysis", analysisJson),
+                    new HashEntry("status", status),
+                    new HashEntry("fail_count", "0"),
+                ]);
+            }
+            else
+            {
+                await archive.UpdateHashFieldAsync(historyId, "analysis", analysisJson);
+                await archive.UpdateHashFieldAsync(historyId, "status", status);
+                await archive.UpdateHashFieldAsync(historyId, "fail_count", "0");
+            }
+            await store.Db.HashSetAsync(Keys.AiHistoryStatus, historyId, status);
+
+            Console.WriteLine("[Analysis] re-analyzed " + historyId + " (" + type + ", "
+                + available.Count + " log(s), " + (inRedis ? "hot" : "archived") + ") -> " + status);
+            LogAI.Web.Api.StatsApi.PushIfNeeded(store);
+
+            return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["analysis"] = analysis,
+                ["available"] = available.Count,
+                ["reanalyzed"] = true,
+                ["status"] = status,
+                ["updated"] = true,
+            });
+        });
     }
+
+    /// <summary>把 log_ids（JSON 数组字符串）解析成 id 列表。</summary>
+    private static List<string> ParseLogIds(string raw)
+    {
+        var ids = new List<string>();
+        if (raw.Length == 0) return ids;
+        try
+        {
+            if (JsonNode.Parse(raw) is JsonArray array)
+                foreach (var node in array)
+                    if (node?.GetValue<string>() is { Length: > 0 } id) ids.Add(id);
+        }
+        catch (JsonException) { }
+        return ids;
+    }
+
+    /// <summary>
+    /// 按 id 回读日志哈希：热库批量取，缺失的从冷库补。重跑分析必须两库都看——
+    /// 超过热窗口的日志哈希早已搬到 SQLite。
+    /// </summary>
+    private static async Task<List<IReadOnlyDictionary<string, string>>> LoadLogsAsync(
+        RedisStore store, LogArchive archive, List<string> ids)
+    {
+        var logs = new List<IReadOnlyDictionary<string, string>>();
+        if (ids.Count == 0) return logs;
+
+        const int Chunk = 500;
+        var found = new Dictionary<int, HashEntry[]>();
+        var missing = new List<string>();
+        var missingIndex = new List<int>();
+        for (int offset = 0; offset < ids.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, ids.Count - offset);
+            var batch = store.Db.CreateBatch();
+            var reads = new Task<HashEntry[]>[size];
+            for (int i = 0; i < size; i++) reads[i] = batch.HashGetAllAsync(ids[offset + i]);
+            batch.Execute();
+            var hashes = await Task.WhenAll(reads);
+            for (int i = 0; i < size; i++)
+            {
+                if (hashes[i].Length == 0)
+                {
+                    missing.Add(ids[offset + i]);
+                    missingIndex.Add(offset + i);
+                }
+                else found[offset + i] = hashes[i];
+            }
+        }
+        if (missing.Count > 0)
+        {
+            var archived = await archive.GetFieldsBatchAsync(missing);
+            for (int i = 0; i < missing.Count; i++)
+                if (archived[i].Length > 0) found[missingIndex[i]] = archived[i];
+        }
+
+        for (int i = 0; i < ids.Count; i++)
+            if (found.TryGetValue(i, out var entries))
+                logs.Add(entries.ToDictionary(e => e.Name.ToString(), e => e.Value.ToString(), StringComparer.Ordinal));
+        return logs;
+    }
+
+    /// <summary>这批日志里是否有 emergency/alert/critical 级别的（与 AiHistoryWriter 的 critical 闸门同口径）。</summary>
+    private static bool HasCriticalLog(IEnumerable<IReadOnlyDictionary<string, string>> logs) =>
+        logs.Any(log => log.GetValueOrDefault("severity")?.ToLowerInvariant()
+            is "emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal");
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
     private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens)

@@ -478,10 +478,15 @@ function showHistoryDetail(historyId) {
     currentHistoryId = historyId;
     const analysis = entry.analysis || {};
     
-    // Only show the Re-analyze button when this record is a failed/unparseable one.
+    // Re-analyze 对任何一条历史记录都可用：失败批次其实不会落历史记录（Runner
+    // 直接返回 failed 让它留在待分析队列重试），所以"只在失败记录上显示"等于
+    // 永远不显示。对话里也会说明"只送仍在保留期内的日志"。
     const reanalyzeBtn = document.getElementById('reanalyzeBtn');
     if (reanalyzeBtn) {
-        reanalyzeBtn.style.display = isFailedAnalysis(analysis) ? '' : 'none';
+        reanalyzeBtn.style.display = '';
+        reanalyzeBtn.title = isFailedAnalysis(analysis)
+            ? '这条记录看起来是失败结果，重跑一次'
+            : '重跑 AI 分析（只送仍在保留期内的日志，结果写回本条记录）';
     }
     
     let issuesHtml = '';
