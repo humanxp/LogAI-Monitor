@@ -50,7 +50,7 @@
                 html.theme-night .lm-dot { fill: #58a6ff; }
             </style>
             <svg viewBox="0 0 860 214" width="100%" style="display: block;" role="img"
-                 aria-label="数据流：syslog 与容器日志经接收器解析后存入 Redis（热），超过热窗口的老日志哈希归档到 SQLite（冷）；过滤器匹配产生告警并推送 Telegram；调度器取未分析日志交给 AI，结果入库并通过实时推送到达浏览器">
+                 aria-label="数据流：syslog 与容器日志经接收器解析后存入 Redis（热），超过热窗口的日志/分析/告警哈希归档到 SQLite（冷）；过滤器匹配产生告警并推送 Telegram；调度器取未分析日志交给 AI，结果入库并通过实时推送到达浏览器">
                 <!-- 第一行：采集 → 存储 -->
                 <rect class="lm-box" x="8" y="30" width="112" height="42" rx="8"/>
                 <text class="lm-t" x="64" y="48" text-anchor="middle">syslog / 容器</text>
@@ -229,7 +229,7 @@
         <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:#DC382D;"></i> 数据存储</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>Redis 7</b> —— 主数据存储；.NET 客户端库为 <b>StackExchange.Redis</b></li>
-            <li><b>SQLite</b>（<b>Microsoft.Data.Sqlite</b>）—— 冷热分层的冷存储：超过热窗口的老日志哈希归档到磁盘，Redis 只保留 ZSET 索引</li>
+            <li><b>SQLite</b>（<b>Microsoft.Data.Sqlite</b>）—— 冷热分层的冷存储：超过热窗口的日志/分析/告警哈希归档到磁盘，Redis 只保留 ZSET 索引</li>
             <li>数据结构选型：有序集合承载时间线与多维索引（分数=写入时间，便于范围检索与排序），哈希承载日志 / 告警 / 用户 / 客户端档案，集合承载各类注册表，日志按保留期设置 TTL</li>
         </ul>
 

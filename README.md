@@ -26,7 +26,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 
 - **.NET 8 / ASP.NET Core**（minimal API，无第三方 Web 框架）
 - **StackExchange.Redis 2.8** — 管道化写入、批量读取
-- **Microsoft.Data.Sqlite 8** — 冷热分层里的老日志冷存储（归档哈希，Redis 只留 ZSET 索引）
+- **Microsoft.Data.Sqlite 8** — 冷热分层的冷存储（日志/分析/告警哈希归档，Redis 只留 ZSET 索引）
 - **System.Text.Json** — 自定义序列化选项以固定响应契约（键排序、非 ASCII 转义）
 - **Docker Engine API** — 经 unix socket 只读访问，无 SDK 依赖
 - **自实现**：Jinja2 模板子集引擎、Engine.IO v4 长轮询、scrypt 口令哈希生成
@@ -96,7 +96,7 @@ docker run -d --name logaimonitor \
 就能对生产数据跑接口比对/参数排查。注意别用隔离库（如 DB 9）去读生产数据——
 那样读到的自然是空集合，容易被误判成"接口全挂"。
 
-### 冷热分层（日志哈希落盘 SQLite）
+### 冷热分层（哈希落盘 SQLite）
 
 Redis 里数据占内存的大头是**哈希本体**（日志 ~1.1 KB/条、分析结果 ~5 KB/条），而时间线/维度 ZSET 每条只有 ~70 字节。
 冷热分层把"过了热窗口的老哈希"归档到 SQLite，Redis 只保留 ZSET 索引——过滤、翻页、
@@ -105,7 +105,7 @@ Redis 里数据占内存的大头是**哈希本体**（日志 ~1.1 KB/条、分�
 
 | 设置键 | 默认 | 说明 |
 |---|---|---|
-| `archive_after_hours` | 168（7 天） | 超过该时长的日志哈希归档到 SQLite；设为 `0` 关闭归档 |
+| `archive_after_hours` | 168（7 天） | 超过该时长的日志/分析/告警哈希归档到 SQLite；设为 `0` 关闭归档 |
 | `log_retention_hours` | 720（30 天） | 总保留期：到期后从 Redis ZSET 与 SQLite 一并删除 |
 
 - 归档任务**幂等**：分数水位驱动（`logs:archive:watermark` / `ai_history:archive:watermark` / `alerts:archive:watermark` 各自独立），跳过空哈希，重复跑无害
