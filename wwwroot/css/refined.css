@@ -960,3 +960,32 @@ table tbody tr { transition: background-color 0.1s ease; }
 @media (max-width: 640px) {
   .settings-tab { flex: 1 1 45%; min-width: 0; font-size: 0.82rem; padding: 0.5rem 0.4rem; }
 }
+
+/* --------------------------------------------------- 设置页：配置指南排版 */
+/* 全局 reset 是 * { margin: 0 }，指南里的 h4/ol/ul/p 全贴在一起（用户反馈"格式不对"）。
+   这里把可读的纵向节奏补回来。 */
+.settings-guide h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 1.6rem 0 0.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--lm-ink);
+}
+.settings-guide h4:first-child { margin-top: 0; }
+.settings-guide h4 i { color: var(--lm-accent); }
+.settings-guide ol,
+.settings-guide ul { margin: 0.5rem 0 0.9rem; padding-left: 1.4rem; }
+.settings-guide li { margin-bottom: 0.3rem; line-height: 1.65; }
+.settings-guide p { margin: 0.5rem 0 0.9rem; line-height: 1.65; }
+.settings-guide pre { margin: 0.6rem 0 1rem; }
+.settings-guide code {
+  background: var(--lm-surface-2);
+  border: 1px solid var(--lm-line);
+  border-radius: 4px;
+  padding: 0.08rem 0.35rem;
+  font-size: 0.82rem;
+}
+.settings-guide b { color: var(--lm-ink); }
+.settings-guide > :last-child { margin-bottom: 0; }

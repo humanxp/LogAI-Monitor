@@ -328,11 +328,11 @@
 </form>
 
 <!-- Configuration Guide -->
-<div class="card" data-settings-tab="guide" style="margin-top: 1.5rem;">
+<div class="card" data-settings-tab="guide">
     <div class="card-header">
         <h3><i class="fas fa-book"></i> Configuration Guide</h3>
     </div>
-    <div class="card-body">
+    <div class="card-body settings-guide">
         <h4><i class="fab fa-telegram"></i> Telegram 通知</h4>
         <ol>
             <li>在 Telegram 搜 <code>@BotFather</code>，发 <code>/newbot</code> 按提示建机器人</li>
@@ -350,7 +350,7 @@
                 勾得越少越安静；一个都不勾 = 不推。「AI 汇总冷却」限制同类汇总的推送间隔。</li>
         </ul>
 
-        <h4 style="margin-top: 1.5rem;"><i class="fas fa-brain"></i> AI 分析</h4>
+        <h4><i class="fas fa-brain"></i> AI 分析</h4>
         <ol>
             <li><b>AI Protocol</b>：<code>OpenAI-compatible</code>（vLLM / SGLang / Ollama 的 <code>/v1</code>）
                 或 <code>Ollama</code>（原生 API）</li>
@@ -364,7 +364,7 @@
             <code>Connection refused</code>（线上踩过这个坑）。
         </p>
 
-        <h4 style="margin-top: 1.5rem;"><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
+        <h4><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
         <ul>
             <li><b>Log Retention (days)</b>：日志 <b>和</b> AI 分析历史的保留天数（两者共用），到期自动清理。</li>
             <li><b>Redis Hot Data Window (days)</b>：超过此时长的日志/分析/告警哈希会归档到 SQLite（冷存储），
@@ -373,7 +373,7 @@
             <li><b>Clear All Logs</b> / <b>Run Cleanup Now</b>：清理会<b>同时作用于 Redis 与 SQLite 两个库</b>，且不可撤销。</li>
         </ul>
 
-        <h4 style="margin-top: 1.5rem;"><i class="fas fa-clock"></i> 各项改动何时生效</h4>
+        <h4><i class="fas fa-clock"></i> 各项改动何时生效</h4>
         <ul>
             <li><b>约 10 秒内</b>：自动分析开关、告警最低推送级别、分析间隔、Telegram 通知开关（Enable）</li>
             <li><b>下一次巡检</b>：巡检间隔 / 积压阈值 / 告警冷却 / 巡检日报</li>
@@ -383,14 +383,12 @@
             <li><b>需要重启容器</b>：AI Endpoint / AI Protocol（启动时读取）；Telegram 凭据内部有 5 分钟缓存</li>
         </ul>
 
-        <h4 style="margin-top: 1.5rem;"><i class="fas fa-network-wired"></i> Rsyslog 接入</h4>
+        <h4><i class="fas fa-network-wired"></i> Rsyslog 接入</h4>
         <p>在被采集的机器上加一行（本机监听 <b>UDP 514 / TCP 515</b>）：</p>
-        <pre>
-# /etc/rsyslog.d/99-logaimonitor.conf
+        <pre># /etc/rsyslog.d/99-logaimonitor.conf
 *.* @192.168.50.6:514     # UDP
 # 或
-*.* @@192.168.50.6:515    # TCP（可靠传输，推荐）
-        </pre>
+*.* @@192.168.50.6:515    # TCP（可靠传输，推荐）</pre>
         <p style="color: var(--lm-ink-2);">改完执行 <code>systemctl restart rsyslog</code>。
             若 rsyslog 跑在容器里，目标地址写宿主 IP 或 <code>host.docker.internal</code>。</p>
     </div>
