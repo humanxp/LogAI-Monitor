@@ -159,8 +159,10 @@ public sealed class EngineIoServer
         existing.LastSeen = DateTimeOffset.UtcNow;
 
         // Long-poll: wait briefly for something to send, then answer with a ping
-        // so the client keeps the connection alive.
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(20);
+        // so the client keeps the connection alive. 5s 而非 20s：Chrome 的 bfcache
+        // 会冻结旧页面的连接而不真正关闭，若挂 20s 会占住连接（切几下就耗尽卡顿）；
+        // 5s 内超时回 ping，客户端重连，残留连接更快释放。
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
         while (existing.Outbox.IsEmpty && DateTimeOffset.UtcNow < deadline)
         {
             if (http.RequestAborted.IsCancellationRequested)

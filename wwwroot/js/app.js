@@ -115,11 +115,14 @@ function initSocket() {
     // Firefox 行为不同所以正常。pagehide 在卸载与进 bfcache 时都会触发，这里
     // 主动断开；pageshow 从 bfcache 恢复时再重连，保证实时通道不哑。
     window.addEventListener('pagehide', () => {
-        try { state.socket?.disconnect(); } catch (e) { /* 页面已冻结时忽略 */ }
+        try {
+            state.socket?.disconnect();
+            state.socket?.io?.close();   // 连同 manager/底层 transport 一起关，避免 keep-alive 连接残留
+        } catch (e) { /* 页面已冻结时忽略 */ }
     });
     window.addEventListener('pageshow', (e) => {
         if (e.persisted) {
-            try { state.socket?.connect(); } catch (e) { /* ignore */ }
+            try { state.socket?.io?.open(); } catch (e) { /* ignore */ }
         }
     });
 
