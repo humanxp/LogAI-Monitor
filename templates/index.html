@@ -79,6 +79,21 @@
                 </button>
             </div>
         </div>
+
+        <!-- Telegram 发送量：字段来自 /api/stats 的 telegram_sent*（每次发送后累计） -->
+        <div class="token-usage" id="telegramUsage">
+            <div class="token-usage-head">
+                <i class="fab fa-telegram"></i>
+                <span class="token-usage-title">Telegram 推送</span>
+                <div class="token-usage-items">
+                    <span class="tu"><i>已发送</i><b id="telegramSent">—</b></span>
+                    <span class="tu"><i>今日</i><b id="telegramSentToday">—</b></span>
+                    <span class="tu"><i>近7天</i><b id="telegramSentWeek">—</b></span>
+                    <span class="tu"><i>失败</i><b id="telegramFailed">—</b></span>
+                    <span class="tu"><i>更新</i><b id="telegramUpdated">—</b></span>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 

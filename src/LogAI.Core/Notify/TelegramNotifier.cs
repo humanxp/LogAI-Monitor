@@ -142,9 +142,14 @@ public sealed class TelegramNotifier(HttpClient? http = null)
         return "";
     }
 
-    /// <summary>Sends the message; returns false instead of throwing on failure.</summary>
+    /// <summary>
+    /// Sends the message; returns false instead of throwing on failure.
+    /// store 传了就把这次结果计入 TelegramUsage（仪表盘显示"发出去了多少条"）；
+    /// 参数放在 cancellationToken 之后，既有调用点 SendAsync(t, c, text, ct) 不受影响。
+    /// </summary>
     public async Task<bool> SendAsync(string token, string chatId, string text,
-                                      CancellationToken cancellationToken = default)
+                                      CancellationToken cancellationToken = default,
+                                      LogAI.Core.Store.RedisStore? store = null)
     {
         if (string.IsNullOrEmpty(token) || string.IsNullOrEmpty(chatId)) return false;
 
@@ -156,19 +161,30 @@ public sealed class TelegramNotifier(HttpClient? http = null)
             ["parse_mode"] = "HTML",
         };
 
+        bool ok;
         try
         {
             using var content = new StringContent(payload.ToJsonString(), Encoding.UTF8, "application/json");
             using var response = await _http.PostAsync(url, content, cancellationToken);
-            return response.IsSuccessStatusCode;
+            ok = response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
         {
-            return false;                       // never let a notification failure break ingest
+            ok = false;                         // never let a notification failure break ingest
         }
         catch (TaskCanceledException)
         {
-            return false;
+            ok = false;
         }
+
+        if (store is not null)
+        {
+            try { await TelegramUsage.RecordAsync(store, ok, cancellationToken); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.Error.WriteLine("[TelegramUsage] record failed: " + ex.Message);
+            }
+        }
+        return ok;
     }
 }

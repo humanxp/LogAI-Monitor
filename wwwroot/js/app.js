@@ -222,37 +222,54 @@ function updateStatsDisplay() {
     updateServiceStatus('ollamaStatus', `[${aiModel}] AI`, state.stats.ollama_available);
     updateServiceStatus('telegramStatus', 'Telegram', state.stats.telegram_enabled);
     updateTokenUsage();
+    updateTelegramUsage();
+}
+
+// 用量/计数行共用的小工具
+function fmtCount(v) {
+    return (v === undefined || v === null || v === '' || isNaN(Number(v)))
+        ? '—' : Number(v).toLocaleString();
+}
+function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+function fmtUpdated(unix) {
+    const t = Number(unix || 0);
+    return t > 0
+        ? new Date(t * 1000).toLocaleString(undefined,
+            { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+        : '—';
 }
 
 // AI token 用量（后端每次调用后累计，见 AiUsage）。数字用千分位，读起来才不费劲。
 function updateTokenUsage() {
-    const fmt = (v) => (v === undefined || v === null || v === '' || isNaN(Number(v)))
-        ? '—' : Number(v).toLocaleString();
-    const set = (id, value) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = value;
-    };
     const total = Number(state.stats.ai_tokens_total || 0);
     const calls = Number(state.stats.ai_calls || 0);
 
-    set('aiTokensTotal', fmt(total));
-    set('aiTokensToday', fmt(state.stats.ai_tokens_today));
-    set('aiTokensWeek', fmt(state.stats.ai_tokens_week));
-    set('aiTokensPrompt', fmt(state.stats.ai_tokens_prompt));
-    set('aiTokensCompletion', fmt(state.stats.ai_tokens_completion));
-    set('aiTokensCached', fmt(state.stats.ai_tokens_cached));
+    setText('aiTokensTotal', fmtCount(total));
+    setText('aiTokensToday', fmtCount(state.stats.ai_tokens_today));
+    setText('aiTokensWeek', fmtCount(state.stats.ai_tokens_week));
+    setText('aiTokensPrompt', fmtCount(state.stats.ai_tokens_prompt));
+    setText('aiTokensCompletion', fmtCount(state.stats.ai_tokens_completion));
+    setText('aiTokensCached', fmtCount(state.stats.ai_tokens_cached));
+    setText('aiCalls', fmtCount(calls));
+    setText('aiTokensAvg', calls > 0 ? fmtCount(Math.round(total / calls)) : '—');
+    setText('aiTokensUpdated', fmtUpdated(state.stats.ai_tokens_updated_at));
+
     // 后端（vLLM）目前永远报 cached_tokens=0（用同一提示词连发三次实测均为 0），
     // 常驻一个 0 只是噪音；只有真出现缓存命中时才显示这一格。
     const cachedCell = document.getElementById('aiTokensCached')?.closest('.tu');
     if (cachedCell) cachedCell.style.display = Number(state.stats.ai_tokens_cached || 0) > 0 ? '' : 'none';
-    set('aiCalls', fmt(calls));
-    set('aiTokensAvg', calls > 0 ? fmt(Math.round(total / calls)) : '—');
+}
 
-    const updated = Number(state.stats.ai_tokens_updated_at || 0);
-    set('aiTokensUpdated', updated > 0
-        ? new Date(updated * 1000).toLocaleString(undefined,
-            { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-        : '—');
+// Telegram 发送量（每次 SendAsync 后累计，见 TelegramUsage）
+function updateTelegramUsage() {
+    setText('telegramSent', fmtCount(state.stats.telegram_sent));
+    setText('telegramSentToday', fmtCount(state.stats.telegram_sent_today));
+    setText('telegramSentWeek', fmtCount(state.stats.telegram_sent_week));
+    setText('telegramFailed', fmtCount(state.stats.telegram_failed));
+    setText('telegramUpdated', fmtUpdated(state.stats.telegram_updated_at));
 }
 
 // 复位清零：清掉累计与所有日用量（管理员限定，不可撤销）。

@@ -1057,11 +1057,11 @@ table tbody tr { transition: background-color 0.1s ease; }
   overflow-x: auto;
   min-width: 0;
 }
-.token-usage-head > i { color: var(--lm-accent); flex: 0 0 auto; font-size: 1.05rem; }
+.token-usage-head > i { color: var(--lm-accent); flex: 0 0 auto; font-size: 0.96rem; }
 .token-usage-title {
   font-weight: 600;
   color: var(--lm-ink);
-  font-size: 1.02rem;
+  font-size: 0.94rem;
   white-space: nowrap;
   flex: 0 0 auto;
 }
@@ -1084,11 +1084,11 @@ table tbody tr { transition: background-color 0.1s ease; }
 .token-usage-items .tu:first-child { border-left: 0; padding-left: 0; }
 .token-usage-items .tu i {
   font-style: normal;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   color: var(--lm-ink-3);
 }
 .token-usage-items .tu b {
-  font-size: 1.12rem;
+  font-size: 1.0rem;
   color: var(--lm-ink);
   font-variant-numeric: tabular-nums;
 }

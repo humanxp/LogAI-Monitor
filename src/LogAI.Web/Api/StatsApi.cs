@@ -170,6 +170,8 @@ internal static class StatsApi
 
             // AI token 用量（每次调用后由 AiClient 累计，见 AiUsage）。
             var tokens = await LogAI.Core.Ai.AiUsage.ReadAsync(store);
+            // Telegram 发送量（每次 SendAsync 后由 TelegramUsage 累计）
+            var tgUsage = await LogAI.Core.Notify.TelegramUsage.ReadAsync(store);
 
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -190,6 +192,11 @@ internal static class StatsApi
                 ["severities"] = severities,
                 ["sources"] = sources,
                 ["telegram_enabled"] = telegramEnabled,
+                ["telegram_failed"] = tgUsage.Failed,
+                ["telegram_sent"] = tgUsage.Sent,
+                ["telegram_sent_today"] = tgUsage.SentToday,
+                ["telegram_sent_week"] = tgUsage.Week,
+                ["telegram_updated_at"] = tgUsage.UpdatedAtUnix,
                 ["total_alerts"] = totalAlerts,
                 ["total_filters"] = totalFilters,
                 ["total_logs"] = totalLogs,

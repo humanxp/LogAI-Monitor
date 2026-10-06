@@ -251,7 +251,7 @@ internal static class AppHost
                 }
                 bool alertDelivered = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId,
                     TelegramNotifier.BuildAlertText(entry.Severity, entry.Source, entry.Message, entry.Hostname),
-                    cancellationToken);
+                    cancellationToken, store);
                 Console.WriteLine("[Telegram] alert " + (alertDelivered ? "sent" : "FAILED")
                     + " (" + gate + ")");
             }
@@ -415,7 +415,7 @@ internal static class AppHost
                                             .BuildSummaryText(statsNode, analysisRaw);
                                         bool sent = await notifier.SendAsync(
                                             LogAI.Core.Notify.TelegramState.BotToken,
-                                            LogAI.Core.Notify.TelegramState.ChatId, text, ct);
+                                            LogAI.Core.Notify.TelegramState.ChatId, text, ct, store);
                                         if (sent) Console.WriteLine("[Telegram] " + bucket + " analysis summary sent");
                                     }
                                 }
@@ -643,7 +643,7 @@ internal static class AppHost
                 return false;
             }
             bool sent;
-            try { sent = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId, text, ct); }
+            try { sent = await notifier.SendAsync(TelegramState.BotToken, TelegramState.ChatId, text, ct, store); }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 Console.WriteLine("[Health] " + what + " 发送异常: " + ex.Message);
