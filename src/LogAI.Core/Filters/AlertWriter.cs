@@ -44,8 +44,14 @@ public sealed class AlertWriter(RedisStore store, int retentionDays = 30)
 
         double score = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0;
         await db.SortedSetAddAsync(Keys.AlertsTimeline, id, score);
-        if (retentionDays > 0)
-            await db.KeyExpireAsync(id, TimeSpan.FromDays(retentionDays));
+        // 保留期跟着 alert_retention_days 走（设置页可改、改完即同步）；缺失/非法回退构造参数。
+        var settings = await store.GetSettingsAsync();
+        int days = retentionDays;
+        if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("alert_retention_days")), out int configured)
+            && configured > 0)
+            days = configured;
+        if (days > 0)
+            await db.KeyExpireAsync(id, TimeSpan.FromDays(days));
 
         return id;
     }

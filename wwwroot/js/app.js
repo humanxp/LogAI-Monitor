@@ -1867,6 +1867,10 @@ async function loadSettings() {
         }
         document.getElementById('analysisInterval').value = settings.analysis_interval ?? 2;
         document.getElementById('logRetention').value = settings.log_retention_hours || 240;
+        const archEl = document.getElementById('archiveAfterHours');
+        if (archEl) archEl.value = settings.archive_after_hours ?? 168;
+        const alertRetEl = document.getElementById('alertRetentionDays');
+        if (alertRetEl) alertRetEl.value = settings.alert_retention_days ?? 30;
         document.getElementById('maxLogsPerAnalysis').value = settings.max_logs_per_analysis ?? 500;
         document.getElementById('batchSampleLimit').value = settings.batch_sample_limit ?? 100;
         const hwEl = document.getElementById('healthWatchMinutes');
@@ -1926,6 +1930,8 @@ async function saveSettings() {
         ai_provider: document.getElementById('aiProvider')?.value || 'openai',
         analysis_interval: parseInt(document.getElementById('analysisInterval').value) || 2,
         log_retention_hours: parseInt(document.getElementById('logRetention').value) || 240,
+        archive_after_hours: parseInt(document.getElementById('archiveAfterHours')?.value) ?? 168,
+        alert_retention_days: parseInt(document.getElementById('alertRetentionDays')?.value) ?? 30,
         max_logs_per_analysis: parseInt(document.getElementById('maxLogsPerAnalysis').value) || 500,
         batch_sample_limit: parseInt(document.getElementById('batchSampleLimit').value) || 100,
         health_watch_minutes: parseInt(document.getElementById('healthWatchMinutes')?.value) || 5,

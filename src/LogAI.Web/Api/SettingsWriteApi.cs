@@ -33,6 +33,7 @@ internal static class SettingsWriteApi
         ["batch_sample_limit"] = (1, 5000, 200),
         ["log_retention_hours"] = (1, 8760, 720),
         ["archive_after_hours"] = (0, 8760, 168),
+        ["alert_retention_days"] = (1, 3650, 30),
         ["health_watch_minutes"] = (1, 1440, 5),
     };
 
