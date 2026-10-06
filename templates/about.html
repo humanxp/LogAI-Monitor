@@ -21,7 +21,7 @@
         </p>
         <p style="color: var(--lm-ink-2); margin-top: 0.75rem; line-height: 1.85;">
             面向中小规模基础设施与边缘现场：只要能发 syslog，或跑在 Docker 里，就能被纳入监控；
-            全部数据落在自有 Redis 中，界面、AI 与告警服务一体部署，不依赖外部 SaaS。
+            全部数据落在自有的 <b>Redis（热数据）+ SQLite（冷归档）</b> 中，界面、AI 与告警服务一体部署，不依赖外部 SaaS。
         </p>
         <div style="margin-top: 1.25rem; padding: 1rem 1.1rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-notice-line); border-radius: 10px;">
             <div style="font-weight: 600; color: var(--lm-accent); margin-bottom: 0.6rem;">
@@ -141,7 +141,7 @@
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
-            <li>全部数据存放于 <b>Redis</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别），另有一条"待 AI 分析"队列</li>
+            <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的老日志哈希归档到 SQLite，Redis 只留索引，读取时自动回填</li>
             <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳</li>
             <li><b>组合检索</b>：时间范围 × 来源 × 主机 × 级别 × 关键字，分页由存储层原生完成，日志量大时翻页依然迅速</li>
             <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
@@ -222,7 +222,8 @@
 
         <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:#DC382D;"></i> 数据存储</h4>
         <ul style="margin: 0 0 1rem 0;">
-            <li><b>Redis 7</b> —— 系统唯一的数据存储；.NET 客户端库为 <b>StackExchange.Redis</b></li>
+            <li><b>Redis 7</b> —— 主数据存储；.NET 客户端库为 <b>StackExchange.Redis</b></li>
+            <li><b>SQLite</b>（<b>Microsoft.Data.Sqlite</b>）—— 冷热分层的冷存储：超过热窗口的老日志哈希归档到磁盘，Redis 只保留 ZSET 索引</li>
             <li>数据结构选型：有序集合承载时间线与多维索引（分数=写入时间，便于范围检索与排序），哈希承载日志 / 告警 / 用户 / 客户端档案，集合承载各类注册表，日志按保留期设置 TTL</li>
         </ul>
 
@@ -245,7 +246,7 @@
         <ul style="margin: 0;">
             <li><b>Docker 多阶段构建</b> —— SDK 镜像编译，产物拷贝到 ASP.NET Core 运行时镜像</li>
             <li>对外端口 <b>5059</b>（HTTP）、<b>514/UDP</b> 与 <b>515/TCP</b>（syslog）；容器时区 Asia/Shanghai</li>
-            <li>第三方依赖仅 <b>3 个</b> NuGet 包：StackExchange.Redis、System.Text.Encoding.CodePages、scrypt 实现；其余（模板引擎、Engine.IO、调度器、协议解析）均为自实现</li>
+            <li>第三方依赖仅 <b>4 个</b> NuGet 包：StackExchange.Redis、Microsoft.Data.Sqlite、System.Text.Encoding.CodePages、scrypt 实现；其余（模板引擎、Engine.IO、调度器、协议解析）均为自实现</li>
         </ul>
     </div>
 </div>
@@ -262,6 +263,7 @@
             <li><b>多维索引</b>（来源 / 主机 / 级别）同样以写入时间为分数，级别与时间范围可以天然叠加；三张索引与时间线在同一批写入中同步维护</li>
             <li><b>待分析队列</b>独立成一条队列，AI 分析按批取走，与展示用的时间线互不干扰</li>
             <li><b>保留期</b>落在每条日志上，到期由清理任务回收，并同步移除索引中的成员，不残留空索引</li>
+            <li><b>冷热分层</b>：热窗口内日志哈希在 Redis，超过后归档到 SQLite（幂等、按分数水位推进）；Redis 保留时间线/维度 ZSET，因此按来源/主机/级别聚合与翻页不退化，真正读取老日志时才走 SQLite 主键回填</li>
             <li><b>值编码约定</b>：文本原样存储（便于外部直接读取与正则匹配），布尔与结构化数据以 JSON 文本存储——这一约定决定了写入与读取两侧的对称实现</li>
             <li><b>客户端档案</b>：每个发送方保留一份汇总记录（首见/末见、主机名、消息与错误计数、最近错误）另配两个附属结构——协议集合与<b>最近一分钟的滑动窗口</b>，因此"当前速率"与"是否停滞"都能即时算出，无需扫描历史</li>
         </ul>

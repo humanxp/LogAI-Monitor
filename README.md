@@ -10,7 +10,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 |---|---|
 | **syslog 采集** | UDP + TCP；RFC3164 / RFC5424 解析（PRI、facility/severity、程序名、消息），发送方省略主机名时**不把程序名误当主机名**；编码三级回退（UTF-8 → GB18030 → Latin-1，替换非法序列） |
 | **Docker 容器日志** | 通过 Docker Engine API（只读 unix socket）读取运行中容器日志；**排除列表**避免采集自身；8 字节帧解复用；按"最后一行"标记**跨轮询去重** |
-| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL |
+| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
 | **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试 |
 | **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**级别门限**与单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
 | **Telegram 推送** | 固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
@@ -18,7 +18,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 | **实时推送** | Engine.IO v4 长轮询（握手 / 命名空间连接 / 鉴权 / `\x1e` 多包 / 包序）；事件 `connected`、`new_log`、`new_alert`、`analysis_complete`、`stats`（2 秒节流） |
 | **调度** | 分析（设置间隔）、清理（保留期 + **死索引清理**）、健康巡检（含看门狗推送与恢复通知）、Docker 轮询；任务抛异常**可见**且不影响其它任务 |
 | **认证与权限** | 口令校验**与生成**（scrypt / pbkdf2 / legacy sha256，参数从哈希中读取）；HMAC 签名会话 cookie；三级权限；`X-Ingest-Token` 摄取令牌 |
-| **界面与主题** | 9 个页面，视觉改进集中在叠加层 `wwwroot/css/refined.css`（约 30 KB）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内 |
+| **界面与主题** | 11 个主页面 + 登录页，视觉改进集中在叠加层 `wwwroot/css/refined.css`（约 30 KB）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内 |
 
 ---
 
@@ -26,10 +26,11 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 
 - **.NET 8 / ASP.NET Core**（minimal API，无第三方 Web 框架）
 - **StackExchange.Redis 2.8** — 管道化写入、批量读取
+- **Microsoft.Data.Sqlite 8** — 冷热分层里的老日志冷存储（归档哈希，Redis 只留 ZSET 索引）
 - **System.Text.Json** — 自定义序列化选项以固定响应契约（键排序、非 ASCII 转义）
 - **Docker Engine API** — 经 unix socket 只读访问，无 SDK 依赖
 - **自实现**：Jinja2 模板子集引擎、Engine.IO v4 长轮询、scrypt 口令哈希生成
-- 部署：多阶段 `Dockerfile`（`dotnet publish` → `aspnet:8.0`）
+- 部署：多阶段 `Dockerfile`（`dotnet publish` → `aspnet:8.0`），静态资源 gzip 压缩 + 5 分钟缓存头
 
 ---
 
@@ -61,6 +62,7 @@ docker run -d --name logaimonitor \
 | `SYSLOG_UDP_PORT` / `SYSLOG_TCP_PORT` | 默认 514 / 515 |
 | `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥 |
 | `DOCKER_COLLECTION` | 设为 `off` 可关闭容器日志采集 |
+| `LOG_ARCHIVE_PATH` | 冷热分层的 SQLite 归档文件路径，默认 `/data/logai-archive.db`（应指向持久卷，否则容器重建归档就丢了） |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram 凭据的**备选来源**：设置页里的值优先（那是用户能改的地方、改完立刻生效），为空时回退到这两个环境变量。只配环境变量、不配设置页也能正常推送 |
 | `FILTER_TRACE` | 设为 `1` 时，每条日志都打印 `[Filters] loaded=N matched=M …`。用于区分"没加载到规则""加载了但没匹配""匹配了"，**默认关闭**——生产约 100 条日志/秒，逐条打点会变成噪音而不是可观测性 |
 
@@ -93,6 +95,22 @@ docker run -d --name logaimonitor \
 这个护栏同时也是**只读比对实例**的正确用法：`REDIS_DB=0` 且**不设** `ALLOW_DB0_WRITES`，
 就能对生产数据跑接口比对/参数排查。注意别用隔离库（如 DB 9）去读生产数据——
 那样读到的自然是空集合，容易被误判成"接口全挂"。
+
+### 冷热分层（日志哈希落盘 SQLite）
+
+Redis 里日志占内存的大头是**哈希本体**（~1.1 KB/条），而时间线/维度 ZSET 只占 ~70 B/条。
+冷热分层把"过了热窗口的老日志哈希"归档到 SQLite，Redis 只保留 ZSET 索引——过滤、翻页、
+按来源/主机/级别聚合照常工作，只有真正读取某条老日志时才从 SQLite 回填：
+
+| 设置键 | 默认 | 说明 |
+|---|---|---|
+| `archive_after_hours` | 168（7 天） | 超过该时长的日志哈希归档到 SQLite；设为 `0` 关闭归档 |
+| `log_retention_hours` | 720（30 天） | 总保留期：到期后从 Redis ZSET 与 SQLite 一并删除 |
+
+- 归档任务**幂等**：分数水位 `logs:archive:watermark` 驱动，跳过空哈希，重复跑无害
+- 读路径自动回填：`/api/logs`、`/api/logs/{id}` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）
+- 归档后 Redis 内存显著下降（实测 300 万条规模 7.2 GB → 4.3 GB），SQLite 体积约 0.27 KB/条
+- 回退：把 `archive_after_hours` 设为 `0` 即关闭归档；备份镜像 `logaimonitor-cs:pre-archive`
 
 ---
 

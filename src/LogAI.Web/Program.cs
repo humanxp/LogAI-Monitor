@@ -527,5 +527,5 @@ void RenderDump(string outputDirectory)
 
 partial class Program
 {
-    internal const string Version = "1.0.1";
+    internal const string Version = "1.1.0";
 }
