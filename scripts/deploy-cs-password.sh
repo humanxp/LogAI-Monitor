@@ -58,7 +58,7 @@ tar czf - --exclude=bin --exclude=obj \
   | "$SSH" "$HOST" "rm -rf $TREE/src $TREE/templates $TREE/wwwroot $TREE/scripts && mkdir -p $TREE && tar xzf - -C $TREE"
 
 echo "== 2/3 build + recreate (remote, credentials read from the live container) =="
-"$SSH" "$HOST" "TREE='${TREE}' sh -s" <<'REMOTE'
+"$SSH" "$HOST" "TREE='${TREE}' bash -s" <<'REMOTE'
 set -eo pipefail
 cd "$TREE"
 docker build -t logaimonitor-cs:latest . 2>&1 | tail -1
