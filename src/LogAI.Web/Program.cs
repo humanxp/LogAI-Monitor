@@ -187,6 +187,14 @@ if (args.Length >= 2 && args[0] == "--render-dump")
 }
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ASP.NET 默认把每个请求的 Info 日志都打出来（Request starting/finished），
+// 在监控系统的日志里是噪音、还盖住了应用自己的 [Analysis]/[Archive]/[Cleanup]
+// 行。这里把 Microsoft 类别降到 Warning，只保留告警与错误（启动横幅
+// Microsoft.Hosting.Lifetime 也一并去掉，[AppHost] 已覆盖同样信息）；
+// 应用自身的输出走 Console.WriteLine，不受影响（且带本地时间戳）。
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+
 // gzip 压缩静态资源与 JSON 响应：app.js(124KB)+socket.io(45KB)+CSS 压缩后 ~60KB，
 // 每个页面导航都能少传 ~180KB，明显改善页面加载。
 builder.Services.AddResponseCompression(options =>
