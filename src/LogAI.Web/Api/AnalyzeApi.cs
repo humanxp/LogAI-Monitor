@@ -59,6 +59,7 @@ internal static class AnalyzeApi
                 BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
                 Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+                Store = store,   // 累计 token 用量（见 AiUsage）
             };
             // 总开关关闭时不调用模型，"配置为停用"与"后端连不上"要给不同的话术，
             // 否则用户会去排查一个根本没启用的后端。
@@ -185,6 +186,7 @@ internal static class AnalyzeApi
                 BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
                 Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+                Store = store,   // 累计 token 用量（见 AiUsage）
             };
             if (!await client.IsAvailableAsync())
                 return ReadApi.JsonBody(new { reanalyzed = false, available = available.Count,

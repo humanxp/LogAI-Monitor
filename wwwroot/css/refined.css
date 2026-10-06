@@ -1040,3 +1040,19 @@ table tbody tr { transition: background-color 0.1s ease; }
 .pager-info { color: var(--lm-ink-2); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .pager-buttons { display: flex; gap: 0.4rem; }
 .pager-buttons .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+
+/* --------------------------------------------- 仪表盘：AI token 用量一行 */
+.token-usage {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--lm-line);
+  font-size: 0.88rem;
+  color: var(--lm-ink-2);
+}
+.token-usage > i { color: var(--lm-accent); }
+.token-usage b { color: var(--lm-ink); font-variant-numeric: tabular-nums; }
+.token-usage-sub { color: var(--lm-ink-3); font-size: 0.82rem; }

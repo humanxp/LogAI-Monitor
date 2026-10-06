@@ -221,6 +221,22 @@ function updateStatsDisplay() {
     updateServiceStatus('redisStatus', 'Redis', state.stats.redis_connected);
     updateServiceStatus('ollamaStatus', `[${aiModel}] AI`, state.stats.ollama_available);
     updateServiceStatus('telegramStatus', 'Telegram', state.stats.telegram_enabled);
+    updateTokenUsage();
+}
+
+// AI token 用量（后端每次调用后累计，见 AiUsage）。数字用千分位，读起来才不费劲。
+function updateTokenUsage() {
+    const fmt = (v) => (v === undefined || v === null || isNaN(Number(v)))
+        ? '—' : Number(v).toLocaleString();
+    const set = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = fmt(value);
+    };
+    set('aiTokensTotal', state.stats.ai_tokens_total);
+    set('aiTokensToday', state.stats.ai_tokens_today);
+    set('aiTokensPrompt', state.stats.ai_tokens_prompt);
+    set('aiTokensCompletion', state.stats.ai_tokens_completion);
+    set('aiCalls', state.stats.ai_calls);
 }
 
 function updateServiceStatus(elementId, serviceName, status) {

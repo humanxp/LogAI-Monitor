@@ -148,9 +148,17 @@ internal static class StatsApi
 
             bool telegramEnabled = await LogAI.Core.Notify.TelegramState.EnsureAsync(store);
 
+            // AI token 用量（每次调用后由 AiClient 累计，见 AiUsage）。
+            var tokens = await LogAI.Core.Ai.AiUsage.ReadAsync(store);
+
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
+                ["ai_calls"] = tokens.Calls,
                 ["ai_model"] = model,
+                ["ai_tokens_completion"] = tokens.Completion,
+                ["ai_tokens_prompt"] = tokens.Prompt,
+                ["ai_tokens_today"] = tokens.Today,
+                ["ai_tokens_total"] = tokens.Total,
                 ["logs_last_day"] = lastDay,
                 ["logs_last_hour"] = lastHour,
                 ["ollama_available"] = available,

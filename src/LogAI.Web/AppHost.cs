@@ -279,6 +279,7 @@ internal static class AppHost
             BaseUrl = AiClient.NormalizeBaseUrl(aiHost, provider),
             Model = AiClient.ResolveModel(store),
             ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+            Store = store,   // 累计 token 用量（见 AiUsage）
         };
 
         // 这两个值在 AnalysisRunner 里每轮都会重新读取（设置页写着"立即生效"），

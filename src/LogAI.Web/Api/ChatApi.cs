@@ -51,6 +51,7 @@ internal static class ChatApi
                 BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
                 Model = AiClient.ResolveModel(store),
                 ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+                Store = store,   // 累计 token 用量（见 AiUsage）
             };
 
             // 总开关关闭时不调用模型，"配置为停用"与"后端连不上"要给不同的话术，

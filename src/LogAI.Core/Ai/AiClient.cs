@@ -24,6 +24,12 @@ public sealed class AiClient(HttpClient? http = null)
     public string Model { get; init; } = "";
     public string ApiKey { get; init; } = "";
     public int MaxTokens { get; init; } = 2048;
+
+    /// <summary>
+    /// 可选：设置后每次调用都会把响应里的 usage（token 数）累加进 Redis，
+    /// 供仪表盘 Service Status 显示。自测不传，避免把测试调用算进生产用量。
+    /// </summary>
+    public RedisStore? Store { get; init; }
     public double Temperature { get; init; } = 0.1;
 
     public async Task<string> CompleteAsync(string prompt, string? system = null,
@@ -65,6 +71,18 @@ public sealed class AiClient(HttpClient? http = null)
 
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
+
+        // Token 用量累计（后端没给 usage 时 RecordAsync 自己会跳过）。
+        // 放在返回内容之前，成功响应才有 usage；异常路径不计数。
+        if (Store is not null && root.TryGetProperty("usage", out var usage))
+        {
+            try { await AiUsage.RecordAsync(Store, usage, cancellationToken); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // 计数失败绝不能影响分析本身
+                Console.Error.WriteLine("[AiUsage] record failed: " + ex.Message);
+            }
+        }
 
         // OpenAI-compatible: choices[0].message.content — Ollama: message.content
         if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0 &&
@@ -151,10 +169,19 @@ public sealed class AiClient(HttpClient? http = null)
         // health job turned into a silent failure.
         if (string.IsNullOrWhiteSpace(BaseUrl)) return false;
 
+        // 用 GET /models（Ollama 是 /api/tags）而不是发一次真实 completion：健康巡检
+        // 每分钟探一次，实测一次 "ping" 要 47 个 token —— 一天白烧近 7 万 token，
+        // 还会污染 Service Status 上的用量统计。列表端点 0 token，判断可用性同样准。
+        bool ollama = string.Equals(Provider, "ollama", StringComparison.OrdinalIgnoreCase);
+        string url = NormalizeBaseUrl(BaseUrl, Provider) + (ollama ? "/api/tags" : "/models");
+
         try
         {
-            await CompleteAsync("ping", cancellationToken: cancellationToken);
-            return true;
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(ApiKey))
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey);
+            using var response = await _http.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException
                                       or InvalidOperationException or UriFormatException)

@@ -56,6 +56,15 @@
                 <span class="status-dot offline"></span> Telegram: Checking...
             </div>
         </div>
+        <!-- AI token 用量：由 app.js 按 /api/stats 的 ai_tokens_* 字段填充 -->
+        <div class="token-usage" id="aiTokenUsage" title="累计自本功能上线；每次调用模型后由后端累加">
+            <i class="fas fa-coins"></i>
+            <span>Token 用量</span>
+            <b id="aiTokensTotal">—</b>
+            <span class="token-usage-sub">（今日 <b id="aiTokensToday">—</b>）</span>
+            <span class="token-usage-sub">提示 <b id="aiTokensPrompt">—</b> / 生成 <b id="aiTokensCompletion">—</b></span>
+            <span class="token-usage-sub"><b id="aiCalls">—</b> 次调用</span>
+        </div>
     </div>
 </div>
 
