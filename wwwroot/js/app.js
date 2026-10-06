@@ -972,6 +972,30 @@ function showNewFilterModal() {
     openModal('filterModal');
 }
 
+// 按级别统计告警数量（后端 /api/alerts/stats 会把冷库里的归档告警一起算上，
+// 只数 Redis 的话归档告警会在各档计数里凭空消失）。
+async function fetchAlertStats() {
+    try {
+        const response = await fetch('/api/alerts/stats');
+        if (!response.ok) return;
+        const s = await response.json();
+        const set = (id, value) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value ?? 0;
+        };
+        set('alertStatTotal', s.total);
+        set('alertStatCritical', s.critical);
+        set('alertStatError', s.error);
+        set('alertStatWarning', s.warning);
+        set('alertStatNotice', s.notice);
+        set('alertStatInfo', s.info);
+        set('alertStatDebug', s.debug);
+        set('alertStatOther', s.other);
+    } catch (error) {
+        console.error('Error fetching alert stats:', error);
+    }
+}
+
 // Fetch alerts
 async function fetchAlerts() {
     try {
@@ -995,6 +1019,7 @@ async function refreshAlerts() {
     if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
     try {
         const alerts = await fetchAlerts() || [];
+        fetchAlertStats();
         showToast('Refresh', `Alerts refreshed - ${alerts.length} alert(s)`, 'info');
     } catch (error) {
         console.error('Error refreshing alerts:', error);
@@ -1263,6 +1288,7 @@ async function clearAcknowledgedAlerts() {
             state.alerts = state.alerts.filter(a => !a.acknowledged);
             renderAlerts();
             fetchStats();
+            fetchAlertStats();
         }
     } catch (error) {
         console.error('Error clearing alerts:', error);
@@ -2710,6 +2736,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (path === '/alerts') {
         state.currentPage = 'alerts';
         fetchAlerts();
+        fetchAlertStats();
     } else if (path === '/docker') {
         state.currentPage = 'docker';
         fetchContainers();

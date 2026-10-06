@@ -12,8 +12,97 @@ namespace LogAI.Web.Api;
 
 internal static class AlertsApi
 {
+    /// <summary>
+    /// 级别分桶：与告警级别门限同一套 syslog 编码（emergency/alert/critical 并成一档，
+    /// 因为它们在门限里就是同一档）。
+    /// </summary>
+    private static readonly string[] SeverityBuckets =
+        ["critical", "error", "warning", "notice", "info", "debug", "other"];
+
+    private static string SeverityBucket(string severity) =>
+        LogAI.Core.Filters.FilterMatcher.SeverityCode(severity) switch
+        {
+            0 or 1 or 2 => "critical",
+            3 => "error",
+            4 => "warning",
+            5 => "notice",
+            6 => "info",
+            7 => "debug",
+            _ => "other",
+        };
+
+    // 页面每次加载都会请求，30 秒缓存（与 /api/ai-history/stats 同一哲学）。
+    private static readonly object StatsCacheLock = new();
+    private static Dictionary<string, object?>? _statsCache;
+    private static DateTimeOffset _statsCacheAt = DateTimeOffset.MinValue;
+    private static readonly TimeSpan StatsCacheTtl = TimeSpan.FromSeconds(30);
+
     public static void Map(WebApplication app, RedisStore store, LogArchive archive)
     {
+        app.MapGet("/api/alerts/stats", async () =>
+        {
+            lock (StatsCacheLock)
+            {
+                if (_statsCache is { } cached && DateTimeOffset.UtcNow - _statsCacheAt < StatsCacheTtl)
+                    return ReadApi.JsonBody(cached);
+            }
+
+            var ids = await store.Db.SortedSetRangeByRankAsync(Keys.AlertsTimeline, 0, -1);
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (string bucket in SeverityBuckets) counts[bucket] = 0;
+
+            // 热库批量取 severity；缺失的（已归档）交给冷库。告警参与冷热分层，
+            // 只读 Redis 会让归档告警在各档计数里凭空消失。
+            const int Chunk = 500;
+            var severities = new string[ids.Length];
+            var missing = new List<string>();
+            var missingIndex = new List<int>();
+            for (int offset = 0; offset < ids.Length; offset += Chunk)
+            {
+                int size = Math.Min(Chunk, ids.Length - offset);
+                var batch = store.Db.CreateBatch();
+                var reads = new Task<RedisValue>[size];
+                for (int i = 0; i < size; i++)
+                    reads[i] = batch.HashGetAsync(ids[offset + i].ToString(), "severity");
+                batch.Execute();
+                var loaded = await Task.WhenAll(reads);
+                for (int i = 0; i < size; i++)
+                {
+                    string raw = loaded[i].ToString();
+                    if (raw.Length == 0)
+                    {
+                        missing.Add(ids[offset + i].ToString());
+                        missingIndex.Add(offset + i);
+                    }
+                    else severities[offset + i] = raw;
+                }
+            }
+            if (missing.Count > 0)
+            {
+                var archived = await archive.GetHashFieldBatchAsync(missing, "severity");
+                for (int i = 0; i < missing.Count; i++)
+                    if (archived.TryGetValue(missing[i], out string? value))
+                        severities[missingIndex[i]] = value;
+            }
+
+            foreach (string severity in severities)
+            {
+                string bucket = SeverityBucket(severity);
+                counts[bucket] = counts.GetValueOrDefault(bucket) + 1;
+            }
+
+            var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (string bucket in SeverityBuckets) payload[bucket] = counts[bucket];
+            payload["total"] = ids.Length;
+
+            lock (StatsCacheLock)
+            {
+                _statsCache = payload;
+                _statsCacheAt = DateTimeOffset.UtcNow;
+            }
+            return ReadApi.JsonBody(payload);
+        });
+
         app.MapGet("/api/alerts", async (HttpRequest request) =>
         {
             // 上限：没有它时 limit 很大就会把整条告警时间线全部水合成列表。

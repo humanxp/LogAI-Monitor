@@ -4,6 +4,42 @@
 {% block header_title %}Alerts{% endblock %}
 
 {% block content %}
+<!-- Stats Cards：按级别统计（含已归档到冷库的告警） -->
+<div class="stats-grid" style="margin-bottom: 1.5rem;">
+    <div class="stat-card">
+        <div class="stat-icon primary"><i class="fas fa-bell"></i></div>
+        <div class="stat-info"><h3 id="alertStatTotal">0</h3><p>Total Alerts</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon danger"><i class="fas fa-times-circle"></i></div>
+        <div class="stat-info"><h3 id="alertStatCritical">0</h3><p>Critical</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon danger"><i class="fas fa-exclamation-circle"></i></div>
+        <div class="stat-info"><h3 id="alertStatError">0</h3><p>Error</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon warning"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="stat-info"><h3 id="alertStatWarning">0</h3><p>Warning</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon primary"><i class="fas fa-bell"></i></div>
+        <div class="stat-info"><h3 id="alertStatNotice">0</h3><p>Notice</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon primary"><i class="fas fa-info-circle"></i></div>
+        <div class="stat-info"><h3 id="alertStatInfo">0</h3><p>Info</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-bug"></i></div>
+        <div class="stat-info"><h3 id="alertStatDebug">0</h3><p>Debug</p></div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon"><i class="fas fa-question-circle"></i></div>
+        <div class="stat-info"><h3 id="alertStatOther">0</h3><p>Other</p></div>
+    </div>
+</div>
+
 <!-- Actions Bar -->
 <div style="margin-bottom: 1rem; display: flex; gap: 1rem;">
     <button class="btn btn-outline" id="refreshAlertsBtn" onclick="refreshAlerts()">
