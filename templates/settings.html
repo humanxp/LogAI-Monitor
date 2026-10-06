@@ -4,7 +4,7 @@
 {% block header_title %}Settings{% endblock %}
 
 {% block content %}
-<form id="settingsForm" onsubmit="event.preventDefault(); saveSettings();">
+<form id="settingsForm" onsubmit="event.preventDefault(); saveSettings(currentSettingsTab());">
     <!-- 类目切换：一次只显示一个类目（见文件末尾的 showSettingsTab）。 -->
     <div class="settings-tabs" id="settingsTabs">
         <button type="button" class="settings-tab" data-tab-target="telegram">
@@ -325,14 +325,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Save Button -->
-    <div style="margin-top: 1rem;">
-        <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save"></i> Save All Settings（保存全部）
-        </button>
-        <small style="color: var(--lm-ink-2); display: block; margin-top: 0.35rem;">一般用各类目下方的「保存本类目」即可；这个按钮会把所有类目一起提交。</small>
-    </div>
 </form>
 
 <!-- Configuration Guide -->
@@ -427,6 +419,12 @@ function initSettingsTabs() {
         const h = (location.hash || '').replace(/^#/, '');
         if (h) showSettingsTab(h, false);
     });
+}
+
+// 当前显示的是哪个类目（表单里按 Enter 时保存的就是它，而不是全部）
+function currentSettingsTab() {
+    const active = document.querySelector('#settingsTabs .settings-tab.active');
+    return active ? active.dataset.tabTarget : 'telegram';
 }
 
 document.addEventListener('DOMContentLoaded', initSettingsTabs);
