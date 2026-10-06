@@ -109,7 +109,20 @@ function previewTheme(theme) {
 // Initialize Socket.IO
 function initSocket() {
     state.socket = io();
-    
+
+    // Chrome 的 bfcache 会把旧页面"冻结"而非卸载：若不主动断开，旧页面的
+    // 长轮询连接会挂起占住（服务端最多 20s 才超时），切几下就连接耗尽导致卡顿。
+    // Firefox 行为不同所以正常。pagehide 在卸载与进 bfcache 时都会触发，这里
+    // 主动断开；pageshow 从 bfcache 恢复时再重连，保证实时通道不哑。
+    window.addEventListener('pagehide', () => {
+        try { state.socket?.disconnect(); } catch (e) { /* 页面已冻结时忽略 */ }
+    });
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) {
+            try { state.socket?.connect(); } catch (e) { /* ignore */ }
+        }
+    });
+
     state.socket.on('connect', () => {
         state.connected = true;
         updateConnectionStatus(true);
