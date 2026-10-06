@@ -50,7 +50,7 @@
                 html.theme-night .lm-dot { fill: #58a6ff; }
             </style>
             <svg viewBox="0 0 860 214" width="100%" style="display: block;" role="img"
-                 aria-label="数据流：syslog 与容器日志经接收器解析后存入 Redis，过滤器匹配产生告警并推送 Telegram；调度器取未分析日志交给 AI，结果入库并通过实时推送到达浏览器">
+                 aria-label="数据流：syslog 与容器日志经接收器解析后存入 Redis（热），超过热窗口的老日志哈希归档到 SQLite（冷）；过滤器匹配产生告警并推送 Telegram；调度器取未分析日志交给 AI，结果入库并通过实时推送到达浏览器">
                 <!-- 第一行：采集 → 存储 -->
                 <rect class="lm-box" x="8" y="30" width="112" height="42" rx="8"/>
                 <text class="lm-t" x="64" y="48" text-anchor="middle">syslog / 容器</text>
@@ -65,8 +65,12 @@
                 <text class="lm-s" x="332" y="62" text-anchor="middle">RFC3164 / 5424</text>
 
                 <rect class="lm-box-hi" x="412" y="30" width="120" height="42" rx="8"/>
-                <text class="lm-t" x="472" y="48" text-anchor="middle">Redis</text>
+                <text class="lm-t" x="472" y="48" text-anchor="middle">Redis（热）</text>
                 <text class="lm-s" x="472" y="62" text-anchor="middle">时间线 + 多维索引</text>
+
+                <rect class="lm-box" x="412" y="96" width="120" height="34" rx="8"/>
+                <text class="lm-t" x="472" y="111" text-anchor="middle">SQLite（冷归档）</text>
+                <text class="lm-s" x="472" y="124" text-anchor="middle">老日志哈希 · 落盘</text>
 
                 <rect class="lm-box" x="560" y="30" width="88" height="42" rx="8"/>
                 <text class="lm-t" x="604" y="48" text-anchor="middle">过滤器匹配</text>
@@ -99,7 +103,8 @@
                 <path class="lm-edge" d="M384 51 H412"/>
                 <path class="lm-edge" d="M532 51 H560"/>
                 <path class="lm-edge" d="M648 51 H676"/>
-                <path class="lm-edge lm-edge-slow" d="M472 72 V112 Q472 128 456 128 H348 Q332 128 332 144 V150"/>
+                <path class="lm-edge" d="M472 72 V96"/>
+                <path class="lm-edge lm-edge-slow" d="M412 72 V80 H388 V132 H332 V150"/>
                 <path class="lm-edge" d="M384 171 H412"/>
                 <path class="lm-edge" d="M532 171 H560"/>
                 <path class="lm-edge" d="M648 171 H676"/>
@@ -108,11 +113,12 @@
                 <circle class="lm-dot" r="2.6" cx="126" cy="51"><animate attributeName="cx" values="120;148" dur="1.1s" repeatCount="indefinite"/></circle>
                 <circle class="lm-dot" r="2.6" cx="384" cy="51" style="animation-delay:.35s"><animate attributeName="cx" values="384;412" dur="1.1s" repeatCount="indefinite"/></circle>
                 <circle class="lm-dot" r="2.6" cx="534" cy="51" style="animation-delay:.7s"><animate attributeName="cx" values="532;560" dur="1.1s" repeatCount="indefinite"/></circle>
+                <circle class="lm-dot" r="2.6" cx="472" cy="78"><animate attributeName="cy" values="72;96" dur="1.4s" repeatCount="indefinite"/></circle>
                 <circle class="lm-dot" r="2.6" cx="384" cy="171" style="animation-delay:.2s"><animate attributeName="cx" values="384;412" dur="1.1s" repeatCount="indefinite"/></circle>
                 <circle class="lm-dot" r="2.6" cx="648" cy="171" style="animation-delay:.55s"><animate attributeName="cx" values="648;676" dur="1.1s" repeatCount="indefinite"/></circle>
             </svg>
             <div style="color: var(--lm-ink-2); font-size: 0.85rem; line-height: 1.7; margin-top: 0.6rem;">
-                采集 → 解析 → 存储 → 检索 → 过滤告警 → AI 分析 → 推送；有事件时由实时通道立即送达页面。
+                采集 → 解析 → 存储（Redis 热 + SQLite 冷归档）→ 检索 → 过滤告警 → AI 分析 → 推送；有事件时由实时通道立即送达页面。
             </div>
         </div>
     </div>
