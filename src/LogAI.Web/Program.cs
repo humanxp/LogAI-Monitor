@@ -214,6 +214,11 @@ builder.Services.AddSingleton(new LogAI.Core.Store.LogArchive(archivePath));
 
 var app = builder.Build();
 
+// stdout 日志每行加本地时区时间戳（容器 TZ=Asia/Shanghai），方便直接看日志排查。
+// 数据里的时间戳仍保持 UTC（存储契约/排序/筛选），只有日志输出加本地前缀。
+// 放在 app 构建之后：自测类 CLI 在其之前，输出格式不受影响。
+Console.SetOut(new TimestampedWriter(Console.Out));
+
 app.UseResponseCompression();
 
 // Assets are served under /static (url_for('static', ...)),
@@ -631,6 +636,52 @@ void RenderDump(string outputDirectory)
         string name = page.Path == "/" ? "index" : page.Path.Trim('/').Replace('/', '_');
         File.WriteAllText(Path.Combine(outputDirectory, name + ".html"), html);
         Console.WriteLine($"rendered {page.Template,-18} -> {name}.html  {html.Length} bytes");
+    }
+}
+
+/// <summary>
+/// 给每一行 Console 输出加本地时间戳前缀。按行首状态判断，避免多行内容
+/// （如异常堆栈）只加一次前缀。用 DateTimeOffset.Now（容器 TZ 决定时区）。
+/// </summary>
+internal sealed class TimestampedWriter(TextWriter inner) : TextWriter
+{
+    private bool _atLineStart = true;
+
+    public override System.Text.Encoding Encoding => inner.Encoding;
+
+    private void Prefix()
+    {
+        if (!_atLineStart) return;
+        inner.Write(DateTimeOffset.Now.ToString("yyyy-MM-dd HH:mm:ss",
+            System.Globalization.CultureInfo.InvariantCulture));
+        inner.Write(' ');
+        _atLineStart = false;
+    }
+
+    public override void Write(char value)
+    {
+        if (value == '\n') { inner.Write(value); _atLineStart = true; return; }
+        Prefix();
+        inner.Write(value);
+    }
+
+    public override void Write(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        int start = 0;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] != '\n') continue;
+            Prefix();
+            inner.Write(value.AsSpan(start, i + 1 - start));
+            _atLineStart = true;
+            start = i + 1;
+        }
+        if (start < value.Length)
+        {
+            Prefix();
+            inner.Write(value.AsSpan(start));
+        }
     }
 }
 
