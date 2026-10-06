@@ -148,7 +148,7 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填</li>
-            <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳</li>
+            <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳；<b>手动清理/按来源删除会同时作用于 Redis 与 SQLite 两个库</b>，不会在冷库里留下看不见却占磁盘的残留</li>
             <li><b>组合检索</b>：时间范围 × 来源 × 主机 × 级别 × 关键字，分页由存储层原生完成，日志量大时翻页依然迅速</li>
             <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
         </ul>
@@ -173,6 +173,7 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。critical 刻意收得很紧——提示词限定只有「宕机 / 入侵 / 数据丢失」才算，并叠加一道<b>确定性闸门</b>：该批日志里没有 emergency/alert/critical 级别的原始日志就不判 critical。小模型习惯把一长串良性重复消息（"already registered"、"Sleeping!"、服务重启刷屏）误判成 critical，实测这两道措施把 critical 占比从约 50% 压到约 1%</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
             <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
             <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>
@@ -182,8 +183,11 @@
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
         <ul style="margin: 0 0 1.4rem 0;">
-            <li><b>Telegram 告警</b>：命中规则并同时通过<b>级别门限</b>与<b>冷却</b>检查后推送；冷却按「主机 × 规则」独立计时，避免同一问题反复刷屏</li>
-            <li><b>凭据来源</b>：可在设置页填写，也可由环境变量提供；设置页优先（改完即时生效）</li>
+            <li><b>总开关</b>：设置页「Enable Telegram notifications」不勾则完全不发（发通知前会检查该开关）</li>
+            <li><b>告警推送</b>：命中规则并同时通过<b>级别门限</b>与<b>冷却</b>检查后推送；冷却按「主机 × 规则」独立计时，避免同一问题反复刷屏</li>
+            <li><b>最低推送级别可配</b>：设置页可选 critical / error / warning / notice / info / debug，低于该级别的告警<b>仍会入库但不推送</b>；单条规则可勾「任意级别」绕过门限</li>
+            <li><b>AI 汇总推送可配</b>：上面对应的 4 档状态各自勾选是否推送，并可设冷却间隔（默认只推 critical），让通知少而精</li>
+            <li><b>凭据来源</b>：可在设置页填写，也可由环境变量提供；设置页优先</li>
             <li><b>不拖累主链路</b>：推送失败只记录日志，不影响采集与告警落库；通道未配置时告警仍会正常入库</li>
         </ul>
 
@@ -202,11 +206,13 @@
             <li><b>可观测</b>：每个后台任务都留正向判据——分析成功写 <code>[Analysis] analyzed N log(s)</code>、清理写 <code>[Cleanup] removed …</code>、告警推送写 <code>[Telegram] alert sent</code>；分析失败除日志外还在存储里留一条带原因的记录，便于事后追溯</li>
             <li><b>单一容器部署</b>：应用与界面一体，仅依赖一个 Redis；配置经环境变量注入</li>
             <li><b>写入护栏</b>：连接到生产库时默认禁止后台写入组件启动，避免误操作污染数据；确认接管时显式放行</li>
+            <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；仅 AI 端点/协议在启动时读取。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
         </ul>
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
         <ul style="margin: 0;">
             <li><b>11 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置、用户、关于；另有登录页与 404 页</li>
+            <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
             <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
         </ul>
     </div>

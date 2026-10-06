@@ -11,14 +11,14 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 | **syslog 采集** | UDP + TCP；RFC3164 / RFC5424 解析（PRI、facility/severity、程序名、消息），发送方省略主机名时**不把程序名误当主机名**；编码三级回退（UTF-8 → GB18030 → Latin-1，替换非法序列） |
 | **Docker 容器日志** | 通过 Docker Engine API（只读 unix socket）读取运行中容器日志；**排除列表**避免采集自身；8 字节帧解复用；按"最后一行"标记**跨轮询去重** |
 | **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志/分析/告警哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
-| **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试 |
-| **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**级别门限**与单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
-| **Telegram 推送** | 固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
+| **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试。整体状态分 **critical / warning / healthy / other** 四档：提示词把 critical 限定为「宕机 / 入侵 / 数据丢失」，并叠加一道**确定性闸门**（批次里没有 emergency/alert/critical 级原始日志就不判 critical）——小模型会把一长串良性重复消息误判成 critical，实测这两道措施把 critical 占比从约 50% 压到约 1% |
+| **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**最低推送级别可配**（critical/error/warning/notice/info/debug，低于它的仍入库但不推），另有单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
+| **Telegram 推送** | 总开关（设置页不勾则完全不发）+ 两类通知独立控制：**告警**按最低推送级别，**AI 汇总**按 4 档状态勾选并可设冷却；固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
 | **REST API** | 读 20 个 + 写 21 个端点；响应契约固定（键序、非 ASCII 转义、换行），界面与外部脚本依赖它 |
 | **实时推送** | Engine.IO v4 长轮询（握手 / 命名空间连接 / 鉴权 / `\x1e` 多包 / 包序）；事件 `connected`、`new_log`、`new_alert`、`analysis_complete`、`stats`（2 秒节流） |
 | **调度** | 分析（设置间隔）、清理（保留期 + **死索引清理**）、健康巡检（含看门狗推送与恢复通知）、Docker 轮询；任务抛异常**可见**且不影响其它任务 |
 | **认证与权限** | 口令校验**与生成**（scrypt / pbkdf2 / legacy sha256，参数从哈希中读取）；HMAC 签名会话 cookie；三级权限；`X-Ingest-Token` 摄取令牌 |
-| **界面与主题** | 11 个主页面 + 登录页，视觉改进集中在叠加层 `wwwroot/css/refined.css`（约 30 KB）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内 |
+| **界面与主题** | 11 个主页面 + 登录页，视觉改进集中在叠加层 `wwwroot/css/refined.css`。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内。**设置页按类目分页**（顶部切换按键），每个类目底部有独立的「保存本类目」，只提交本类目字段 |
 
 ---
 
@@ -60,7 +60,8 @@ docker run -d --name logaimonitor \
 | `ALLOW_DB0_WRITES` | 设为 `1` 才允许在 DB 0 上运行采集/分析/清理等写入任务 |
 | `SECRET_KEY` | 会话签名密钥，**必须固定不变**，否则每次重启都要重新登录 |
 | `SYSLOG_UDP_PORT` / `SYSLOG_TCP_PORT` | 默认 514 / 515 |
-| `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥 |
+| `AI_BASE_URL` | AI 端点（OpenAI 兼容），如 `http://192.168.50.23:8000/v1`。**设置页的 AI Endpoint 留空即用这个值**；若在设置页手动填了别的地址（尤其 `http://localhost:11434`）就会盖掉它——容器里没有本地 Ollama，会让全部分析报 `Connection refused`（线上踩过） |
+| `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥；模型名同样以设置页的 `ollama_model` 优先，为空才回退到这里 |
 | `DOCKER_COLLECTION` | 设为 `off` 可关闭容器日志采集 |
 | `LOG_ARCHIVE_PATH` | 冷热分层的 SQLite 归档文件路径，默认 `/data/logai-archive.db`（应指向持久卷，否则容器重建归档就丢了） |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram 凭据的**备选来源**：设置页里的值优先（那是用户能改的地方、改完立刻生效），为空时回退到这两个环境变量。只配环境变量、不配设置页也能正常推送 |
@@ -78,7 +79,7 @@ docker run -d --name logaimonitor \
 
 | 设置键 | 默认 | 说明 |
 |---|---|---|
-| `health_watch_minutes` | 5 | 巡检周期。**启动时读取一次，改完需重启容器** |
+| `health_watch_minutes` | 5 | 巡检周期。**每次巡检重读设置，改完无需重启** |
 | `health_backlog_warn` | 2000 | 积压阈值，`0` 表示"任何积压都算超标" |
 | `health_alert_cooldown_min` | 30 | 每个条件的推送冷却 |
 | `health_daily_summary` | true | 每 24 小时一条概览（时间戳存 Redis，重启不会重复发） |
@@ -106,12 +107,15 @@ Redis 里数据占内存的大头是**哈希本体**（日志 ~1.1 KB/条、分�
 | 设置键 | 默认 | 说明 |
 |---|---|---|
 | `archive_after_hours` | 168（7 天） | 超过该时长的日志/分析/告警哈希归档到 SQLite；设为 `0` 关闭归档 |
-| `log_retention_hours` | 720（30 天） | 总保留期：到期后从 Redis ZSET 与 SQLite 一并删除 |
+| `log_retention_hours` | 720（30 天） | 总保留期：**日志与 AI 分析历史共用**，到期后从 Redis ZSET 与 SQLite 一并删除 |
+| `alert_retention_days` | 30 | 告警保留天数（写入时读取，改完对之后新写入的告警生效）|
 
 - 归档任务**幂等**：分数水位驱动（`logs:archive:watermark` / `ai_history:archive:watermark` / `alerts:archive:watermark` 各自独立），跳过空哈希，重复跑无害
-- 读路径自动回填：`/api/logs`、`/api/logs/{id}`、`/api/ai-history`、`/api/alerts` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）；`/api/ai-history/stats` 的 status 字段同样回退
+- 读路径自动回填：`/api/logs`、`/api/logs/{id}`、`/api/ai-history`、`/api/alerts` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）
+- **分析状态另存一份小哈希** `ai_history:status`（id → 四档状态），它**不随归档搬走**，于是 `/api/ai-history/stats` 不必为已归档记录回读 SQLite 里 5 KB 的分析 JSON（冷调用 444 ms → 48 ms）
+- **清理同时覆盖两个库**：设置页的 Clear All Logs / 按来源删除 / 清空 AI 历史会一并清 Redis 与 SQLite（此前只清 Redis，冷库里会留下"界面看不见却占磁盘"的残留）。`--archive-counts` 可打印 SQLite 两表条数用于核对
 - 归档后 Redis 内存显著下降（日志实测 300 万条 7.2 GB → 4.3 GB；分析历史 1.9 万条又省 ~70 MB），SQLite 体积约 0.27 KB/条
-- 回退：把 `archive_after_hours` 设为 `0` 即关闭归档；备份镜像 `logaimonitor-cs:pre-archive`
+- 回退：把 `archive_after_hours` 设为 `0` 即关闭归档
 
 ---
 
@@ -133,6 +137,12 @@ dotnet LogAI.Web.dll --purge-sources "docker:cs-" --confirm
 
 # 签发一个临时会话 cookie（验证受保护端点时用，不必知道账号口令）
 dotnet LogAI.Web.dll --mint-session <用户名> <角色>
+
+# 打印冷归档（SQLite）两张表的条数——核对"清理是否同时清了两库"
+dotnet LogAI.Web.dll --archive-counts
+
+# 重算分析历史的状态分类（分类口径变更或新增闸门后跑一次；幂等）
+dotnet LogAI.Web.dll --backfill-ai-status-hash
 ```
 
 ---
