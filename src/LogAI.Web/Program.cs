@@ -253,7 +253,8 @@ LogAI.Web.Api.DockerLogsApi.Map(app);
 LogAI.Web.Api.LogWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
     app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies);
 LogAI.Web.Api.HealthApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>());
-LogAI.Web.Api.AlertWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
+LogAI.Web.Api.AlertWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
+    app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies);
 LogAI.Web.Api.SettingsWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.CleanupApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.FilterWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);

@@ -85,6 +85,45 @@ internal static class AlertSelfTest
         Check("zero minutes disables the window",
             await writer.AcquireCooldownAsync("GL-AXT1800", "filter:none", 0));
 
+        // ---- 冷热分层下的确认 / 清除 ------------------------------------
+        // 告警参与冷热分层，所以这两个动作必须能落到冷库。曾经它们只吃 Redis：
+        //   ① 归档告警会被凭空造出"只有 acknowledged 一个字段"的残缺哈希，而读路径
+        //      只在哈希完全不存在时才回退冷库 → 整条告警渲染成空行；
+        //   ② "清除已确认"删不掉 SQLite 里那份：时间线摘了、冷库还留着。
+        string archivePath = Path.Combine(Path.GetTempPath(), "logai-alert-selftest.db");
+        if (File.Exists(archivePath)) File.Delete(archivePath);
+        var archive = new LogArchive(archivePath);
+
+        var archivedRule = new FilterRule { Id = "filter:arch", Name = "归档测试" };
+        string archId = await new AlertWriter(store).WriteAsync(archivedRule, entry, "log:999");
+        await archive.ArchiveHashesAsync([(archId, await store.Db.HashGetAllAsync(archId))]);
+        await store.Db.KeyDeleteAsync(archId);                  // 模拟归档任务搬走哈希
+        Check("archived alert left Redis", !await store.Db.KeyExistsAsync(archId));
+        Check("archived alert is in SQLite", await archive.HashExistsAsync(archId));
+
+        Check("acknowledging an archived alert succeeds",
+            await AlertMaintenance.AcknowledgeAsync(store, archive, archId));
+        Check("ack wrote to SQLite without creating a partial Redis hash",
+            !await store.Db.KeyExistsAsync(archId)
+            && (await archive.GetHashFieldBatchAsync([archId], "acknowledged")).GetValueOrDefault(archId) == "true",
+            "a partial Redis hash would shadow the full SQLite record");
+
+        string archId2 = await new AlertWriter(store).WriteAsync(archivedRule, entry, "log:1000");
+        await archive.ArchiveHashesAsync([(archId2, await store.Db.HashGetAllAsync(archId2))]);
+        await store.Db.KeyDeleteAsync(archId2);
+        Check("acknowledge-all reaches archived alerts",
+            await AlertMaintenance.AcknowledgeAllAsync(store, archive) >= 1
+            && (await archive.GetHashFieldBatchAsync([archId2], "acknowledged")).GetValueOrDefault(archId2) == "true");
+
+        Check("clear-acknowledged deletes the archived rows from SQLite",
+            await AlertMaintenance.ClearAcknowledgedAsync(store, archive) >= 1
+            && !await archive.HashExistsAsync(archId) && !await archive.HashExistsAsync(archId2));
+        Check("clear-acknowledged removes them from the timeline too",
+            await store.Db.SortedSetScoreAsync(Keys.AlertsTimeline, archId) is null
+            && await store.Db.SortedSetScoreAsync(Keys.AlertsTimeline, archId2) is null);
+
+        try { File.Delete(archivePath); } catch (IOException) { }
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }

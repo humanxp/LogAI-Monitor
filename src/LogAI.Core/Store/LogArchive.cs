@@ -320,6 +320,44 @@ public sealed class LogArchive
         return await cmd.ExecuteScalarAsync(ct) is not null;
     }
 
+    /// <summary>
+    /// 批量取某个字段（key → 字段值），只含归档里确实存在且带该字段的条目。
+    /// 告警的已确认状态存在哈希里，而告警参与冷热分层，所以读取必须能落到冷库，
+    /// 否则"全部确认/清除已确认"会漏掉已归档的告警。
+    /// </summary>
+    public async Task<Dictionary<string, string>> GetHashFieldBatchAsync(
+        IReadOnlyList<string> keys, string field, CancellationToken ct = default)
+    {
+        var result = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (keys.Count == 0) return result;
+        using var conn = Open();
+        const int Chunk = 200;                   // SQLite 参数上限 999
+        for (int offset = 0; offset < keys.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, keys.Count - offset);
+            using var cmd = conn.CreateCommand();
+            var names = new string[size];
+            for (int i = 0; i < size; i++)
+            {
+                names[i] = "$p" + i;
+                cmd.Parameters.AddWithValue(names[i], keys[offset + i]);
+            }
+            cmd.CommandText = "SELECT key, fields FROM hashes WHERE key IN (" + string.Join(",", names) + ");";
+            using var reader = await cmd.ExecuteReaderAsync(ct);
+            while (await reader.ReadAsync(ct))
+            {
+                string key = reader.GetString(0);
+                foreach (var entry in DeserializeHash(reader.GetString(1)))
+                {
+                    if (!string.Equals(entry.Name.ToString(), field, StringComparison.Ordinal)) continue;
+                    result[key] = entry.Value.ToString();
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
     // ------------------------------------------------ 管理动作：清空/按条件删
     // Web 端的 "Clear All Logs" / "delete-source" / "Clear All History" 以前只清
     // Redis，冷归档里的数据会留下来（界面看不见、但占着磁盘）。下面几个方法让这些

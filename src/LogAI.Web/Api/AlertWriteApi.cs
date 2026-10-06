@@ -16,13 +16,13 @@ namespace LogAI.Web.Api;
 
 internal static class AlertWriteApi
 {
-    public static void Map(WebApplication app, RedisStore store, SessionCookie cookies)
+    public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies)
     {
         app.MapPost("/api/alerts/{alertId}/acknowledge", async (HttpContext http, string alertId) =>
         {
             if (RequireLogin(http, cookies) is { } denied) return denied;
 
-            bool found = await AlertMaintenance.AcknowledgeAsync(store, alertId);
+            bool found = await AlertMaintenance.AcknowledgeAsync(store, archive, alertId);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
             return found
                 ? ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal) { ["status"] = "ok" })
@@ -33,7 +33,7 @@ internal static class AlertWriteApi
         {
             if (RequireLogin(http, cookies) is { } denied) return denied;
 
-            long count = await AlertMaintenance.AcknowledgeAllAsync(store);
+            long count = await AlertMaintenance.AcknowledgeAllAsync(store, archive);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -46,7 +46,7 @@ internal static class AlertWriteApi
         {
             if (RequireLogin(http, cookies) is { } denied) return denied;
 
-            long count = await AlertMaintenance.ClearAcknowledgedAsync(store);
+            long count = await AlertMaintenance.ClearAcknowledgedAsync(store, archive);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
