@@ -991,41 +991,38 @@ table tbody tr { transition: background-color 0.1s ease; }
 .settings-guide > :last-child { margin-bottom: 0; }
 
 /* --------------------------------------------------- 告警页：紧凑统计卡片 */
-/* 8 张按级别统计的卡片，默认 .stats-grid 的 minmax(200px) 会折成两行；
-   这里强制一行排下，图标/字号同步收小。 */
+/* 8 张按级别统计的卡片，默认 .stats-grid 的 minmax(200px) 会折成两行；这里强制
+   一行排下。盒子保持紧凑，但里面的字要够大看得清（用户反馈过小）。 */
 .stats-grid.compact {
   grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 0.5rem;
   margin-bottom: 1rem;
 }
 .stats-grid.compact .stat-card {
-  padding: 0.55rem 0.6rem;
+  padding: 0.6rem 0.7rem;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.2rem;
   min-width: 0;
 }
 .stats-grid.compact .stat-icon {
-  width: 22px;
-  height: 22px;
-  font-size: 0.68rem;
-  border-radius: 6px;
-  margin-bottom: 0.15rem;
+  width: 27px;
+  height: 27px;
+  font-size: 0.82rem;
+  border-radius: 7px;
+  margin-bottom: 0.2rem;
 }
 .stats-grid.compact .stat-info { min-width: 0; }
 .stats-grid.compact .stat-info h3 {
-  font-size: 1.05rem;
+  font-size: 1.4rem;
   font-weight: 700;
   line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 .stats-grid.compact .stat-info p {
-  font-size: 0.66rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--lm-ink-3);
+  font-size: 0.8rem;
+  line-height: 1.25;
+  color: var(--lm-ink-2);
 }
 @media (max-width: 900px) { .stats-grid.compact { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .stats-grid.compact { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
