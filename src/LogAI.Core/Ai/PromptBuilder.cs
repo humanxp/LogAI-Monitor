@@ -93,9 +93,9 @@ LOGS:
 
 Reply with ONLY a JSON object having exactly these keys:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). Do NOT copy raw log lines; summarize each distinct pattern in one short line (max 150 chars). Empty array if none. The [HOST] must be the exact hostname or IP of the affected machine.
+- "issues_found": array of short PROBLEM descriptions, one per DISTINCT problem (at most 8). Each starts with "[HOST] " (the exact hostname or IP). Summarize the problem, do NOT copy the raw log line. Example: "[192.168.50.3] /dev/ipmi0 open failed repeatedly". Empty array if none.
 - "critical_count": integer, count of DISTINCT critical problems, 0 if none
-- "recommendations": array of short action strings, each STARTING with the exact hostname or IP of the affected machine in [square brackets], matching the host of the issue it fixes (at most 5). Examples: "[192.168.50.3] Check /dev/ipmi0 permissions", "[GL-AXT1800] Remove duplicate crontab entries". Never write a recommendation without its [host] prefix. Empty array if none
+- "recommendations": array of short FIX ACTIONS (at most 5). Each starts with "[HOST] " (the exact hostname or IP to act on) and says what an admin should DO, using a verb such as check/remove/restart/fix/increase/review. Example: "[192.168.50.3] Check /dev/ipmi0 permissions". Do NOT copy raw log lines or repeat the problem here. Empty array if none.
 - "affected_hosts": array of bare hostname/IP strings involved (no brackets), empty array if none
 - "alert_message": short admin alert if critical, else ""
 
