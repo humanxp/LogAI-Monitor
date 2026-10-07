@@ -229,15 +229,65 @@ public static class JsonExtractor
     }
 
     /// <summary>
-    /// 给 issues_found / recommendations 补 "[HOST] " 前缀（python-legacy 的
-    /// _ensure_host_prefix）。模型偶尔漏掉主机名，导致"发现的问题/处理建议"看不出是哪台
-    /// 机器。已有可信 [host] 前缀的条目不动；其余按内容匹配主机、匹配不到就用第一个主机。
+    /// 给 issues_found / recommendations 补 "[HOST] " 前缀。模型偶尔漏掉主机名。
+    /// 优先用 affected_hosts（模型自己列的受影响主机）+ 内容关键词匹配到 issue，
+    /// 避免把通用建议错挂到批里第一个主机（之前"主机名对不上"就是它）。
     /// </summary>
-    public static void EnsureHostPrefix(JsonObject obj, List<string> hosts)
+    public static void EnsureHostPrefix(JsonObject obj, List<string> batchHosts)
     {
+        if (obj["issues_found"] is not JsonArray issues) return;
+        if (obj["recommendations"] is not JsonArray recs) return;
+
+        // 受影响主机：affected_hosts 优先，其次批里的主机。
+        var hosts = new List<string>();
+        if (obj["affected_hosts"] is JsonArray affected)
+            foreach (var h in affected)
+            {
+                string t = h?.ToString()?.Trim() ?? "";
+                if (t.Length > 0 && !hosts.Contains(t)) hosts.Add(t);
+            }
+        foreach (string h in batchHosts)
+            if (!string.IsNullOrEmpty(h) && !hosts.Contains(h)) hosts.Add(h);
         if (hosts.Count == 0) return;
-        if (obj["issues_found"] is JsonArray issues) PrefixHostList(issues, hosts);
-        if (obj["recommendations"] is JsonArray recs) PrefixHostList(recs, hosts);
+
+        // 1) issues 先补前缀。
+        PrefixHostList(issues, hosts);
+
+        // 2) 收集 issue -> 主机，供 recommendations 关键词匹配。
+        var issueHosts = new List<(string Text, string Host)>();
+        foreach (var issue in issues)
+        {
+            string text = issue?.ToString()?.Trim() ?? "";
+            if (text.Length == 0) continue;
+            string host = ExtractHostPrefix(text);
+            if (host.Length == 0) host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
+            if (host.Length > 0) issueHosts.Add((text, host));
+        }
+
+        // 3) recommendations：关键词匹配到 issue 拿主机；匹配不到再退内容匹配，最后退第一个受影响主机。
+        for (int i = 0; i < recs.Count; i++)
+        {
+            string text = recs[i]?.ToString()?.Trim() ?? "";
+            if (text.Length == 0 || ExtractHostPrefix(text).Length > 0) continue;
+            string host = MatchIssueHost(text, issueHosts);
+            if (host.Length == 0) host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
+            if (host.Length == 0) host = hosts[0];
+            recs[i] = "[" + host + "] " + text;
+        }
+    }
+
+    /// <summary>text 以可信的 "[host]" 开头时返回该 host；否则返回空串。</summary>
+    private static string ExtractHostPrefix(string text)
+    {
+        if (!text.StartsWith("[", StringComparison.Ordinal)) return "";
+        int close = text.IndexOf(']');
+        if (close == -1) return "";
+        string inner = text.Substring(1, close - 1).Trim();
+        return inner.Length > 0
+            && !inner.Any(c => c is ' ' or ':' or '=')
+            && !inner.Contains('[')
+            ? inner
+            : "";
     }
 
     private static void PrefixHostList(JsonArray arr, List<string> hosts)
@@ -246,17 +296,13 @@ public static class JsonExtractor
         {
             string text = arr[i]?.ToString()?.Trim() ?? "";
             if (text.Length == 0) continue;
+            if (ExtractHostPrefix(text).Length > 0) continue;
+            // 有非主机前缀（如 "[x] foo: bar"）时剥掉重加。
             if (text.StartsWith("[", StringComparison.Ordinal))
             {
                 int close = text.IndexOf(']');
                 if (close != -1)
                 {
-                    string inner = text.Substring(1, close - 1).Trim();
-                    // 只有"像主机名"（无空格/冒号/等号/嵌套括号）才算已有前缀，否则剥掉重加。
-                    bool plausible = inner.Length > 0
-                        && !inner.Any(c => c is ' ' or ':' or '=')
-                        && !inner.Contains('[');
-                    if (plausible) continue;
                     text = text.Substring(close + 1).Trim();
                     if (text.Length == 0) continue;
                 }
@@ -264,6 +310,40 @@ public static class JsonExtractor
             string matched = hosts.FirstOrDefault(h => !string.IsNullOrEmpty(h) && text.Contains(h, StringComparison.Ordinal)) ?? hosts[0];
             arr[i] = "[" + matched + "] " + text;
         }
+    }
+
+    /// <summary>
+    /// 把建议文本按关键词（长度≥3 的字母数字词）与每条 issue 做子串重叠计数，返回重叠最多
+    /// 的 issue 的主机；无任何重叠返回空。用于把通用建议挂到它真正对应的那台机器。
+    /// </summary>
+    private static string MatchIssueHost(string text, List<(string Text, string Host)> issueHosts)
+    {
+        if (issueHosts.Count == 0) return "";
+        string[] words = Tokenize(text);
+        if (words.Length == 0) return "";
+        string best = "";
+        int bestScore = 0;
+        foreach (var (issueText, host) in issueHosts)
+        {
+            int score = 0;
+            foreach (string w in words)
+                if (issueText.Contains(w, StringComparison.OrdinalIgnoreCase)) score++;
+            if (score > bestScore) { bestScore = score; best = host; }
+        }
+        return bestScore >= 1 ? best : "";
+    }
+
+    private static string[] Tokenize(string text)
+    {
+        var words = new List<string>();
+        var sb = new System.Text.StringBuilder();
+        foreach (char c in text)
+        {
+            if (char.IsLetterOrDigit(c)) { sb.Append(c); }
+            else if (sb.Length > 0) { words.Add(sb.ToString()); sb.Clear(); }
+        }
+        if (sb.Length > 0) words.Add(sb.ToString());
+        return words.Where(w => w.Length >= 3).ToArray();
     }
 
     /// <summary>
