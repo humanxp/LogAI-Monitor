@@ -90,10 +90,10 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
     public static bool ShouldRetire(int failCount) => failCount >= MaxFailedRetries;
 
     /// <summary>
-    /// 这批日志里是否存在 emergency/alert/critical 级别的原始日志。用来给 "critical"
-    /// 加一道确定性闸门：3B 模型会把一长串重复的 error/info 消息（"already registered"、
-    /// "Sleeping!"、服务重启刷屏）当成 critical，实测占了一半的分析结果。真正的
-    /// critical 至少应该有来源设备标成危急级别的日志。
+    /// 这批日志里是否存在"真正危急"的日志（级别危急 + 消息含故障特征词）。用来给
+    /// "critical" 加一道确定性闸门：3B 模型会把重复的例行消息当成 critical，而设备
+    /// 的级别标签本身不可信——线上有设备把 "start NTP update" 标成 emergency，只凭
+    /// 级别会被骗。判断逻辑见 AiStatusClassifier.IsGenuinelyCritical。
     /// </summary>
     private async Task<bool> AnyCriticalSeverityAsync(IReadOnlyList<string> logIds)
     {
@@ -103,17 +103,19 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
         {
             int size = Math.Min(Chunk, logIds.Count - offset);
             var batch = store.Db.CreateBatch();
-            var reads = new Task<RedisValue>[size];
+            var sevReads = new Task<RedisValue>[size];
+            var msgReads = new Task<RedisValue>[size];
             for (int i = 0; i < size; i++)
-                reads[i] = batch.HashGetAsync(logIds[offset + i], "severity");
-            batch.Execute();
-            var loaded = await Task.WhenAll(reads);
-            foreach (var value in loaded)
             {
-                string severity = value.ToString().ToLowerInvariant();
-                if (severity is "emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal")
-                    return true;
+                sevReads[i] = batch.HashGetAsync(logIds[offset + i], "severity");
+                msgReads[i] = batch.HashGetAsync(logIds[offset + i], "message");
             }
+            batch.Execute();
+            var sevs = await Task.WhenAll(sevReads);
+            var msgs = await Task.WhenAll(msgReads);
+            for (int i = 0; i < size; i++)
+                if (AiStatusClassifier.IsGenuinelyCritical(sevs[i].ToString(), msgs[i].ToString()))
+                    return true;
         }
         return false;
     }

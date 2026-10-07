@@ -306,8 +306,8 @@ internal static class AnalyzeApi
 
     /// <summary>这批日志里是否有 emergency/alert/critical 级别的（与 AiHistoryWriter 的 critical 闸门同口径）。</summary>
     private static bool HasCriticalLog(IEnumerable<IReadOnlyDictionary<string, string>> logs) =>
-        logs.Any(log => log.GetValueOrDefault("severity")?.ToLowerInvariant()
-            is "emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal");
+        logs.Any(log => LogAI.Core.Ai.AiStatusClassifier.IsGenuinelyCritical(
+            log.GetValueOrDefault("severity"), log.GetValueOrDefault("message")));
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
     private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens)

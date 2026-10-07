@@ -406,7 +406,7 @@ function renderHistoryRow(entry) {
     const logsCount = entry.logs_analyzed || 1;
     
     const analysis = entry.analysis || {};
-    const status = getEntryStatus(analysis, entry.type);
+    const status = getEntryStatus(analysis, entry.type, entry.status);
     const statusClass = getStatusClass(status);
     const statusIcon = getStatusIcon(status);
     
@@ -436,14 +436,19 @@ function renderHistoryRow(entry) {
 
 // Map an analysis to a display status. Single-log analyses use
 // is_critical/category instead of overall_status, so never show the
-// meaningless hardcoded "unknown" default for them.
-function getEntryStatus(analysis, type) {
+// meaningless hardcoded "unknown" default for them. Batch analyses prefer the
+// stored 4-tier `status` (the gate-corrected verdict) over the model's raw
+// `overall_status`: the model over-flags routine batches as "critical" and the
+// critical gate downgrades them, so showing the raw value would keep lying to
+// the user.
+function getEntryStatus(analysis, type, storedStatus) {
     if (!analysis) return 'unknown';
     if (type === 'single') {
         if (analysis.is_critical === true) return 'critical';
         if (analysis.category) return analysis.category;
         return 'unknown';
     }
+    if (storedStatus) return storedStatus;
     return analysis.overall_status || analysis.category || 'unknown';
 }
 
@@ -513,7 +518,10 @@ function showHistoryDetail(historyId) {
         `;
     }
     
-    const status = getEntryStatus(analysis, entry.type);
+    const status = getEntryStatus(analysis, entry.type, entry.status);
+    // 闸门把模型的假 critical 降级时，详情页要如实说明，而不是悄悄改数字。
+    const downgraded = (status === 'warning' || status === 'healthy')
+        && String(analysis.overall_status || '').toLowerCase() === 'critical';
     
     document.getElementById('historyDetailContent').innerHTML = `
         <div class="form-group">
@@ -531,6 +539,7 @@ function showHistoryDetail(historyId) {
         <div class="form-group">
             <label class="form-label">Overall Status</label>
             <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(status)}</span></p>
+            ${downgraded ? `<p style="margin-top:.4rem;font-size:.85rem;color:var(--lm-ink-3);">模型原始判定为 <b>critical</b>，已按规则降级为 <b>${escapeHtml(status)}</b></p>` : ''}
         </div>
         ${analysis.summary ? `
         <div class="form-group">

@@ -84,4 +84,30 @@ public static class AiStatusClassifier
 
     private static string Text(JsonObject obj, string name) =>
         obj[name] is JsonValue value && value.TryGetValue<string>(out string? text) ? text : "";
+
+    /// <summary>
+    /// 判断一条日志是否"真正危急"。级别标签不可信——线上有设备把
+    /// "start NTP update"（开始 NTP 同步，纯例行）标成 emergency，于是只凭级别就能
+    /// 骗过 critical 闸门，让整批例行日志被判成 critical。所以这里要求**级别危急
+    /// 且消息里确实出现故障特征词**。critical 闸门（AiHistoryWriter / AnalyzeApi）
+    /// 据此决定是否允许判 critical。
+    /// </summary>
+    public static bool IsGenuinelyCritical(string? severity, string? message)
+    {
+        if (severity is null) return false;
+        string s = severity.ToLowerInvariant();
+        if (s is not ("emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal")) return false;
+
+        string m = (message ?? "").ToLowerInvariant();
+        foreach (string marker in FailureMarkers)
+            if (m.Contains(marker, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
+    private static readonly string[] FailureMarkers =
+    [
+        "failed", "failure", " down", "unreachable", "refused", "killed",
+        "out of memory", "panic", "segfault", "breach", "crashed",
+        "fatal", "halted", "timed out", "unresponsive", "data loss",
+    ];
 }

@@ -40,10 +40,12 @@ internal static class PromptSelfTest
 
         string summary = PromptBuilder.LogSummary(logs);
         string expectedSummary =
-            "[ERROR] [GL-AXT1800] crond: USER root pid 4643 cmd get_arp_scan_ret\n" +
-            "[WARNING] [10.10.10.7] kernel: disk 'sda1' is full";
+            "[GL-AXT1800] crond: USER root pid 4643 cmd get_arp_scan_ret\n" +
+            "[10.10.10.7] kernel: disk 'sda1' is full";
         Check("log summary format", summary == expectedSummary, summary.Replace("\n", "\\n"));
         Check("hostname falls back to source", summary.Contains("[10.10.10.7]", StringComparison.Ordinal));
+        Check("severity label is NOT emitted (device labels are unreliable; see LogSummary doc)",
+            !summary.Contains("[ERROR]", StringComparison.Ordinal) && !summary.Contains("[CRITICAL]", StringComparison.Ordinal));
 
         string prompt = PromptBuilder.BatchPrompt(summary);
         // 结构是产品决策、不是风格，两个方向都实测过：
@@ -95,19 +97,19 @@ internal static class PromptSelfTest
 
         string ranked = PromptBuilder.LogSummary(mixed);
         var rankedLines = ranked.Split('\n');
-        Check("等级由重到轻排序",
-            rankedLines[0].StartsWith("[CRITICAL]", StringComparison.Ordinal) &&
-            rankedLines[1].StartsWith("[ERROR]", StringComparison.Ordinal) &&
-            rankedLines[2].StartsWith("[WARNING]", StringComparison.Ordinal) &&
-            rankedLines[3].StartsWith("[INFO]", StringComparison.Ordinal) &&
-            rankedLines[4].StartsWith("[DEBUG]", StringComparison.Ordinal),
+        Check("等级由重到轻排序（看消息内容，级别标签已去掉）",
+            rankedLines[0].EndsWith("p: crit-1", StringComparison.Ordinal) &&
+            rankedLines[1].EndsWith("p: err-1", StringComparison.Ordinal) &&
+            rankedLines[2].EndsWith("p: warn-1", StringComparison.Ordinal) &&
+            rankedLines[3].EndsWith("p: info-1", StringComparison.Ordinal) &&
+            rankedLines[4].EndsWith("p: debug-1", StringComparison.Ordinal),
             ranked.Replace("\n", " | "));
 
         string limited = PromptBuilder.LogSummary(mixed, 2);
         var limitedLines = limited.Split('\n');
         Check("限制条数时只保留最严重的 N 行",
-            limitedLines[0].StartsWith("[CRITICAL]", StringComparison.Ordinal) &&
-            limitedLines[1].StartsWith("[ERROR]", StringComparison.Ordinal),
+            limitedLines[0].EndsWith("p: crit-1", StringComparison.Ordinal) &&
+            limitedLines[1].EndsWith("p: err-1", StringComparison.Ordinal),
             limited.Replace("\n", " | "));
         Check("被截断时明确告知模型剩余条数",
             limited.Contains("3 more log(s) omitted", StringComparison.Ordinal), limited);
@@ -119,7 +121,7 @@ internal static class PromptSelfTest
             new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "b", ["program"] = "p", ["message"] = "second" },
         };
         Check("同级保持到达顺序",
-            PromptBuilder.LogSummary(sameLevel).Replace("\n", "|").Contains("first|[ERROR] [b]", StringComparison.Ordinal));
+            PromptBuilder.LogSummary(sameLevel).Replace("\n", "|").Contains("first|[b] p: second", StringComparison.Ordinal));
 
         Check("样本上限大于总数时不截断、不提示",
             !PromptBuilder.LogSummary(mixed, 99).Contains("omitted", StringComparison.Ordinal));
@@ -128,7 +130,7 @@ internal static class PromptSelfTest
             {
                 new Dictionary<string, string> { ["severity"] = "weird", ["program"] = "p", ["message"] = "x" },
                 new Dictionary<string, string> { ["severity"] = "info", ["program"] = "p", ["message"] = "y" },
-            }).StartsWith("[INFO]", StringComparison.Ordinal));
+            }).EndsWith("p: x", StringComparison.Ordinal));
 
         // ---- "启用 AI 分析"总开关的判定 ----
         // 这个键此前后端从不读取，勾掉它完全无效。判定语义要有断言钉住，

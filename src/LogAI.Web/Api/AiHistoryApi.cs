@@ -185,6 +185,7 @@ internal static class AiHistoryApi
                         : new Dictionary<string, object?>(StringComparer.Ordinal),
                     ["id"] = ids[i].ToString(),
                     ["logs_analyzed"] = int.TryParse(stored.GetValueOrDefault("logs_analyzed"), out int count) ? count : 0,
+                    ["status"] = stored.GetValueOrDefault("status") ?? "",
                     ["timestamp"] = stored.GetValueOrDefault("timestamp") ?? "",
                     ["type"] = stored.GetValueOrDefault("type") ?? "",
                 });

@@ -69,11 +69,17 @@ public static partial class PromptBuilder
         var builder = new StringBuilder();
         foreach (var log in ordered.Take(shown))
         {
-            string severity = Safe(Field(log, "severity", "info"), 16).ToUpperInvariant();
             string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
             string program = Safe(Field(log, "program", "unknown"), 200);
             string message = Safe(Field(log, "message", ""), 200);
-            builder.Append('[').Append(severity).Append("] [").Append(host).Append("] ")
+            // 刻意**不带 [SEVERITY] 前缀**：设备的级别标签不可信（线上有设备把
+            // "start NTP update" 标成 emergency），模型看到 [EMERGENCY] 就会脑补出
+            // "NTP update failed / 不可达"这类不存在的故障，把整批例行日志判成
+            // critical。实测去掉级别标签后，同一批 hostd-probe 启动日志从 critical
+            // 9/10 变成 healthy 10/10，而真正的 critical/warning 仍 10/10 判对
+            // （故障特征都在 message 里）。排序仍按 SeverityRank（最严重的排最前），
+            // 只是不把级别写进给模型的文本。
+            builder.Append('[').Append(host).Append("] ")
                    .Append(program).Append(": ").Append(message).Append('\n');
         }
         string summary = builder.ToString().TrimEnd('\n');
@@ -104,7 +110,8 @@ RATING RULES
 - "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
 - "healthy" = only routine / informational messages.
 How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
-The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1).
+The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1), and some even mark routine actions as "emergency" (see Example 4).
+NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down".
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"
@@ -173,6 +180,24 @@ REPLY:
   "affected_hosts": [
     "web02"
   ],
+  "alert_message": ""
+}
+
+Example 4 - startup / lifecycle chatter; the device even marks a routine action as "emergency":
+LOGS:
+[INFO] [host1] hostd-probe: Glibc malloc guards disabled
+[INFO] [host1] hostd-probe: Priority level 4 is now active
+[INFO] [host1] hostd-probe: Successfully acquired hardware: M600
+[INFO] [host1] hostd-probe: Finished sysstat-collect.service
+[INFO] [host1] hostd-probe: Starting wg-watchdog.service
+[EMERGENCY] [routerA] ntp: start NTP update
+REPLY:
+{
+  "overall_status": "healthy",
+  "issues_found": [],
+  "critical_count": 0,
+  "recommendations": [],
+  "affected_hosts": [],
   "alert_message": ""
 }
 
