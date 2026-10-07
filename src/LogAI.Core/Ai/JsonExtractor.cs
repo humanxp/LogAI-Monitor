@@ -225,17 +225,32 @@ public static class JsonExtractor
         if (obj["affected_hosts"] is not JsonArray) obj["affected_hosts"] = new JsonArray();
         if (obj["critical_count"] is null) obj["critical_count"] = 0;
         if (obj["alert_message"] is null) obj["alert_message"] = "";
+
+        // 兜底：模型常给"有 issues 但 recommendations 空"，界面就只剩"发现的问题"没有
+        // "处理建议"。这里补一条通用建议，保证这两块始终成对出现（模型能给的还是用模型的，
+        // 只有为空时才兜底）。
+        if (obj["issues_found"] is JsonArray iss && iss.Count > 0
+            && obj["recommendations"] is JsonArray rec && rec.Count == 0)
+        {
+            rec.Add("请检查上述受影响主机的相关服务与日志，确认问题并处理");
+        }
     }
 
     /// <summary>
-    /// 批量分析结果的必需字段是否齐全（模型偶尔漏掉 recommendations/critical_count）。
-    /// 不齐全时调用方触发纠正性重试，让模型补一次完整 JSON。
+    /// 批量分析结果的必需字段是否齐全且自洽（模型偶尔漏掉 recommendations/critical_count，
+    /// 或给了"有 issues 但 recommendations 空"）。不齐全/不自洽时调用方触发纠正性重试。
     /// </summary>
     public static bool HasRequiredFields(JsonNode? node)
     {
         if (node is not JsonObject obj) return false;
-        return obj.ContainsKey("overall_status") && obj.ContainsKey("issues_found")
-            && obj.ContainsKey("recommendations") && obj.ContainsKey("critical_count");
+        if (!obj.ContainsKey("overall_status") || !obj.ContainsKey("issues_found")
+            || !obj.ContainsKey("recommendations") || !obj.ContainsKey("critical_count"))
+            return false;
+        // 有 issues 就必须有 recommendations，否则重试让模型补一份有建议的完整 JSON。
+        if (obj["issues_found"] is JsonArray iss && iss.Count > 0
+            && obj["recommendations"] is JsonArray rec && rec.Count == 0)
+            return false;
+        return true;
     }
 
     private static void DedupeStringArray(JsonObject obj, string key)
