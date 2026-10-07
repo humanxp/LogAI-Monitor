@@ -385,7 +385,7 @@
         <h4><i class="fas fa-balance-scale"></i> AI 判定口径（critical / warning / healthy）</h4>
         <ul>
             <li><b>critical</b>：只有「主机宕机/不可达、OOM、崩溃、入侵、数据丢失」这类<b>硬故障</b>才判，而且有<b>确定性闸门</b>——批次里必须有一条级别为 <code>emergency/alert/critical</code>、且<b>消息里含故障词</b>（failed / down / unreachable / refused / out of memory / panic…）的日志。设备乱标的级别不算（如 "start NTP update" 被标成 emergency 就不算）。</li>
-            <li><b>warning</b>：真实但非宕机的问题——磁盘满、反复 DNS/cURL 错误、服务重启失败、连接被拒。消息里<b>字面出现</b> failed / error / refused / timed out / No space left 即算。</li>
+            <li><b>warning</b>：真实但非宕机的问题——磁盘满、反复 DNS/cURL 错误、服务重启失败、连接被拒。消息里<b>字面出现</b> failed / cURL Error / connection refused / timed out / No space left / unreachable 即算。</li>
             <li><b>healthy</b>：只有例行/信息性消息（crond 调度、启动日志、<code>Sleeping!</code>、<code>already registered</code> 等）——哪怕设备标了 error，按消息内容也算 healthy。</li>
             <li><b>other</b>：无法判定。</li>
         </ul>
