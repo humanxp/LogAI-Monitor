@@ -364,7 +364,7 @@
                 或 <code>Ollama</code>（原生 API）</li>
             <li><b>AI Endpoint</b>：形如 <code>http://192.168.50.23:8000/v1</code>（可省略 <code>/v1</code>，会自动补全）</li>
             <li><b>Model</b>：点 <b>Refresh</b> 从 <code>/v1/models</code> 拉取后选择</li>
-            <li><b>去重（两个独立开关）</b>：<b>发送前去重</b>把只有 pid/时间戳/数字/IP/sleep 延迟不同的例行消息折叠成一条（带 ×N）；<b>结果去重</b>把模型重复列的 issues/建议去重、critical_count 封顶。两个都默认开。</li>
+            <li><b>去重（结果去重）</b>：<b>结果去重</b>把模型重复列的 issues/建议去重、critical_count 封顶，默认开启。</li>
             <li><b>AI Sample Limit per Batch</b>（通用设置里）：真正送进提示词的行数，按级别从严重到轻微取前 N 行。</li>
         </ol>
         <p style="color: var(--lm-danger-ink);">
@@ -376,10 +376,9 @@
 
         <h4><i class="fas fa-balance-scale"></i> AI 判定口径（critical / warning / healthy）</h4>
         <ul>
-            <li><b>critical</b>：只有「主机宕机/不可达、OOM、崩溃、入侵、数据丢失」这类<b>硬故障</b>才判，而且有<b>确定性闸门</b>——批次里必须有一条级别为 <code>emergency/alert/critical</code>、且<b>消息里含故障词</b>（failed / down / unreachable / refused / out of memory / panic…）的日志。设备乱标的级别不算（如 "start NTP update" 被标成 emergency 就不算）。</li>
-            <li><b>warning</b>：真实但非宕机的问题——磁盘满、反复 DNS/cURL 错误、服务重启失败、连接被拒。消息里<b>字面出现</b> failed / cURL Error / connection refused / timed out / No space left / unreachable 即算。</li>
-            <li><b>healthy</b>：只有例行/信息性消息（crond 调度、启动日志、<code>Sleeping!</code>、<code>already registered</code> 等）——哪怕设备标了 error，按消息内容也算 healthy。<b>一致性兜底</b>：模型若判 healthy 却在 issues 里列了真实故障（Transfer failed / open(...) failed 等），会按"字面故障词"确定性升为 warning，不会出现"发现问题却仍 healthy"。</li>
-            <li><b>other</b>：无法判定。</li>
+            <li><b>纯模型判定</b>（与 python-legacy 一致）：模型的 <code>overall_status</code> 判什么就是什么，程序只做同义词归一（critical/error → critical，warning/notice → warning，info/healthy → healthy，其余 → other），不做任何修正。</li>
+            <li>提示词用简单版本：无 few-shot 示例、无前缀缓存优化；日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。</li>
+            <li>小模型（3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围。</li>
         </ul>
 
         <h4><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
@@ -396,7 +395,7 @@
         <ul>
             <li><b>约 10 秒内</b>：自动分析开关、告警最低推送级别、分析间隔、Telegram 通知开关（Enable）</li>
             <li><b>下一次巡检</b>：巡检间隔 / 积压阈值 / 告警冷却 / 巡检日报</li>
-            <li><b>下一轮分析</b>：每轮取多少条日志、送模型多少条、发送前/结果去重开关、AI 汇总推送状态</li>
+            <li><b>下一轮分析</b>：每轮取多少条日志、送模型多少条、结果去重开关、AI 汇总推送状态</li>
             <li><b>下一次归档任务（≤5 分钟）</b>：Redis 热数据窗口</li>
             <li><b>对之后新写入的数据生效</b>：日志保留期、告警保留期</li>
             <li><b>需要重启容器</b>：AI Endpoint / AI Protocol（启动时读取）；Telegram 凭据内部有 5 分钟缓存</li>
