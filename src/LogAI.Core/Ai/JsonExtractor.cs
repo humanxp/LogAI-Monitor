@@ -193,36 +193,40 @@ public static class JsonExtractor
     }
 
     /// <summary>
-    /// Turns "issues_found": [ "Host": "text", ... ] into a list of objects.
+    /// 对提取出的分析结果做确定性后处理。小模型常把同一个问题重复列进
+    /// issues_found / recommendations（尤其当输入里同一条例行消息出现很多遍时），
+    /// 并据此把 critical_count 数大。这里按字符串精确去重，并把 critical_count
+    /// 收进去重后的条数（critical_count 永远不该超过 issues 的条数）。
     /// </summary>
     private static JsonNode? Normalize(JsonNode? node)
     {
-        // Intentionally a pass-through. An earlier version rebuilt every array
-        // into key/value pairs, which silently corrupted legitimate string
-        // arrays such as "issues_found": ["host down", "disk almost full"].
-        // The genuinely malformed form — "key": "value" written directly
-        // inside an array — is invalid JSON syntax, so it has to be repaired
-        // before parsing; that transformation is still outstanding.
-        return node;
-
-#pragma warning disable CS0162
-
-        if (node is not JsonObject obj) return node;
-        foreach (string key in obj.Select(p => p.Key).ToList())
+        if (node is JsonObject obj)
         {
-            if (obj[key] is JsonArray array && array.Count > 0 && array.All(item => item is JsonObject)) continue;
-            if (obj[key] is not JsonArray pairs) continue;
-
-            var rebuilt = new JsonArray();
-            for (int i = 0; i < pairs.Count; i += 2)
-            {
-                var entry = new JsonObject();
-                string name = pairs[i]?.GetValue<string>() ?? "";
-                entry[name] = i + 1 < pairs.Count ? pairs[i + 1]?.DeepClone() : null;
-                rebuilt.Add(entry);
-            }
-            if (rebuilt.Count > 0) obj[key] = rebuilt;
+            DedupeStringArray(obj, "issues_found");
+            DedupeStringArray(obj, "recommendations");
+            if (obj["critical_count"] is JsonValue cc && obj["issues_found"] is JsonArray issues
+                && cc.TryGetValue<int>(out int n) && n > issues.Count)
+                obj["critical_count"] = issues.Count;
         }
-        return obj;
+        return node;
+    }
+
+    private static void DedupeStringArray(JsonObject obj, string key)
+    {
+        if (obj[key] is not JsonArray arr) return;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var unique = new JsonArray();
+        foreach (var item in arr)
+        {
+            if (item is JsonValue jv && jv.TryGetValue<string>(out string? text) && text is not null)
+            {
+                if (seen.Add(text)) unique.Add(text);
+            }
+            else
+            {
+                unique.Add(item?.DeepClone());   // 非字符串（对象型 issue）原样保留
+            }
+        }
+        obj[key] = unique;
     }
 }

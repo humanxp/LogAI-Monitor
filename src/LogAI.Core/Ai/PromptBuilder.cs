@@ -141,11 +141,11 @@ RATING RULES
 - "healthy" = only routine / informational messages.
 How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
 The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1), and some even mark routine actions as "emergency" (see Example 4).
-NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down".
+NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down". A cron line like "cmd sleep N; /usr/bin/some_script.sh" means the script was SCHEDULED to run, NOT that it failed - do not rewrite it into "some_script.sh failed to run".
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER objects, never raw log lines. Empty array if none
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
 - "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
 - "recommendations": array of short "[HOST] action" strings (at most 5), one concrete fix for each distinct problem in issues_found. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
@@ -253,6 +253,11 @@ LOGS:
     {
         string m = message.ToLowerInvariant();
         m = System.Text.RegularExpressions.Regex.Replace(m, @"pid \d+", "pid N");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"sleep \d+", "sleep N");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"retry \d+", "retry N");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"delay \d+", "delay N");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+ seconds?", "N seconds");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+ minutes?", "N minutes");
         m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+\.\d+\.\d+\.\d+", "IP");
         m = System.Text.RegularExpressions.Regex.Replace(m, @"[0-9a-f]{8,}", "HEX");
         m = System.Text.RegularExpressions.Regex.Replace(m, @"\d{4,}", "N");
