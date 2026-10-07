@@ -114,11 +114,14 @@ internal static class AnalyzeApi
                 .Select(o => o!["id"]?.ToString().Trim('"') ?? "")
                 .Where(id => id.Length > 0).ToList();
 
-            var batchAnalysis = await CompleteAndExtractAsync(
-                client, PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(
-                    batchFields,
-                    int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
-                                 out int sample) && sample > 0 ? sample : 200)), 2048);
+            string batchSummary = PromptBuilder.LogSummary(
+                batchFields,
+                int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
+                             out int sample) && sample > 0 ? sample : 200);
+            string batchPrompt = AiClient.AiCacheOptimizedEnabledIn(settings)
+                ? PromptBuilder.BatchPromptCached(batchSummary)
+                : PromptBuilder.BatchPrompt(batchSummary);
+            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 2048);
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -208,9 +211,18 @@ internal static class AnalyzeApi
             // ③ 重跑
             int sampleLimit = int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
                                            out int sample) && sample > 0 ? sample : 200;
-            string prompt = single
-                ? PromptBuilderSingle.Build(available[0])
-                : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit));
+            string prompt;
+            if (single)
+            {
+                prompt = PromptBuilderSingle.Build(available[0]);
+            }
+            else
+            {
+                string reSummary = PromptBuilder.LogSummary(available, sampleLimit);
+                prompt = AiClient.AiCacheOptimizedEnabledIn(settings)
+                    ? PromptBuilder.BatchPromptCached(reSummary)
+                    : PromptBuilder.BatchPrompt(reSummary);
+            }
             var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048);
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,

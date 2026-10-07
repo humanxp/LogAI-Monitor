@@ -138,6 +138,22 @@ public sealed class AiClient(HttpClient? http = null)
     public static bool AiEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
+    /// <summary>
+    /// 「优化 AI 模型缓存效率」开关（默认关闭）。开启时用 BatchPromptCached（few-shot
+    /// 前缀缓存版，静态块在日志前、命中率高），关闭时用简单版 BatchPrompt。与 AiEnabledIn
+    /// 相反的判定：这是 opt-in，只有显式 true/1/yes/on 才视为开启。
+    /// </summary>
+    public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, object?> settings)
+    {
+        if (!settings.TryGetValue("ai_cache_optimized", out object? raw) || raw is null)
+            return false;
+        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
+        return text is "true" or "1" or "yes" or "on";
+    }
+
+    public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, string> settings) =>
+        AiCacheOptimizedEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
+
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {
         try

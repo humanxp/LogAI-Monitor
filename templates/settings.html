@@ -166,6 +166,14 @@
                 </label>
             </div>
 
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="aiCacheOptimized">
+                    <span>优化 AI 模型缓存效率（前缀缓存）</span>
+                </label>
+                <small style="color: var(--lm-ink-2);">开启后批量分析用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、缓存命中率更高、更省算力；few-shot 专门锚定"例行噪音/启动日志不算故障"，不影响判定精度。关闭用简单提示词。改动从下一轮分析开始生效，无需重启。</small>
+            </div>
+
             <div class="section-save">
                 <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('ai')">
                     <i class="fas fa-save"></i> 保存本类目（Save Section）

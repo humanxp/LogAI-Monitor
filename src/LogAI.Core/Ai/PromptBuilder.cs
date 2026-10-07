@@ -102,6 +102,116 @@ Reply with ONLY a JSON object having exactly these keys:
 Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
 """;
 
+    /// <summary>
+    /// 前缀缓存优化版批量提示词：静态规则 + few-shot 示例放在日志之前，让 omlx/vLLM
+    /// 命中前缀缓存（反复调用时只算日志那一段，缓存命中率更高）。设置页开关「优化
+    /// AI 模型缓存效率」开启时用；默认关闭（用上面的简单版 BatchPrompt）。
+    /// </summary>
+    public static string BatchPromptCached(string logSummary) => $$"""
+You are a syslog security/health analyzer. You are given a batch of logs; rate the batch by its SINGLE WORST issue.
+
+RATING RULES
+- "critical" = a host/server is DOWN or UNREACHABLE right now, a confirmed security breach (break-in, malware, credential theft), or data loss. Nothing else qualifies.
+- "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
+- "healthy" = only routine / informational messages.
+How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
+The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1), and some even mark routine actions as "emergency" (see Example 4).
+NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down". A cron line like "cmd sleep N; /usr/bin/some_script.sh" means the script was SCHEDULED to run, NOT that it failed - do not rewrite it into "some_script.sh failed to run". Conversely, a message that LITERALLY says "failed", "cURL Error", "connection refused", "timed out", "No space left", or "unreachable" IS a real problem - rate the batch warning (or critical if it is a host down). The rule is: judge by the literal words in the message, never invent a failure, never ignore a stated one.
+
+REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
+- "overall_status": one of "healthy", "warning", "critical"
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
+- "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
+- "recommendations": array of short "[HOST] action" strings (at most 5), one concrete fix for each distinct problem in issues_found. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
+- "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
+- "alert_message": short admin alert if critical, else ""
+The fields MUST agree with overall_status: a "healthy" batch has issues_found [], critical_count 0, recommendations [], alert_message "". A "warning" or "critical" batch has at least one issue in issues_found and at least one action in recommendations. Never list routine chatter (cron lines, startup messages, "already registered", "Sleeping!") in issues_found.
+ALL 6 keys MUST appear in the output every time, even if their value is empty - never omit a key. Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
+
+EXAMPLES
+
+Example 1 - routine chatter; the device marks lines "error" but nothing is actually wrong:
+LOGS:
+[ERROR] [routerA] crond: USER root pid 31556 cmd /usr/bin/wg-watchdog
+[ERROR] [routerA] crond: USER root pid 31512 cmd sleep 50; /usr/bin/modem_sim_status_check.sh
+[INFO] [routerA] hostapd: wlan0: AP-STA-CONNECTED 9c:5c:8e:11:22:33
+[NOTICE] [nas1] Injector: Sleeping!
+REPLY:
+{
+  "overall_status": "healthy",
+  "issues_found": [],
+  "critical_count": 0,
+  "recommendations": [],
+  "affected_hosts": [],
+  "alert_message": ""
+}
+
+Example 2 - a service is down on a host that must be reachable:
+LOGS:
+[CRITICAL] [db01] systemd: mysqld.service: Main process exited, code=exited, status=1/FAILURE
+[ERROR] [db01] mysqld: Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock'
+[ERROR] [web01] nagios: CRITICAL - db01:3306 - connection refused
+REPLY:
+{
+  "overall_status": "critical",
+  "issues_found": [
+    "[db01] mysqld failed to start (socket unreachable)",
+    "[db01] port 3306 refusing connections"
+  ],
+  "critical_count": 2,
+  "recommendations": [
+    "[db01] check mysqld logs and restart the service"
+  ],
+  "affected_hosts": [
+    "db01"
+  ],
+  "alert_message": "db01 MySQL is down (3306 refused)"
+}
+
+Example 3 - a real problem that is not an outage:
+LOGS:
+[ERROR] [web02] nginx: connect() failed (111: Connection refused) while connecting to upstream
+[WARNING] [web02] kernel: TCP: request_sock_TCP: Possible SYN flooding on port 443
+[INFO] [web02] systemd: Started Session 9912 of user deploy.
+REPLY:
+{
+  "overall_status": "warning",
+  "issues_found": [
+    "[web02] nginx upstream connection refused (repeated)"
+  ],
+  "critical_count": 0,
+  "recommendations": [
+    "[web02] check the service behind the nginx upstream"
+  ],
+  "affected_hosts": [
+    "web02"
+  ],
+  "alert_message": ""
+}
+
+Example 4 - startup / lifecycle chatter; the device even marks a routine action as "emergency":
+LOGS:
+[INFO] [host1] hostd-probe: Glibc malloc guards disabled
+[INFO] [host1] hostd-probe: Priority level 4 is now active
+[INFO] [host1] hostd-probe: Successfully acquired hardware: M600
+[INFO] [host1] hostd-probe: Finished sysstat-collect.service
+[INFO] [host1] hostd-probe: Starting wg-watchdog.service
+[EMERGENCY] [routerA] ntp: start NTP update
+REPLY:
+{
+  "overall_status": "healthy",
+  "issues_found": [],
+  "critical_count": 0,
+  "recommendations": [],
+  "affected_hosts": [],
+  "alert_message": ""
+}
+
+NOW ANALYZE THIS BATCH.
+LOGS:
+{{logSummary}}
+""";
+
     /// <summary>Second attempt sent when the first reply could not be parsed.</summary>
     public static string CorrectivePrompt(string originalPrompt) => originalPrompt +
         "\n\nYour previous reply was NOT a single valid JSON object (e.g. missing separators / truncated). " +

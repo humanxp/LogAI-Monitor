@@ -2082,6 +2082,8 @@ async function loadSettings() {
         const hsEl = document.getElementById('healthDailySummary');
         if (hsEl) hsEl.checked = settings.health_daily_summary !== false;
         document.getElementById('autoAnalyze').checked = settings.auto_analyze !== false;
+        const cacheOptEl = document.getElementById('aiCacheOptimized');
+        if (cacheOptEl) cacheOptEl.checked = settings.ai_cache_optimized === true;
         
         // Hide duplicates default setting
         const hideDuplicatesDefaultEl = document.getElementById('hideDuplicatesDefault');
@@ -2129,6 +2131,7 @@ const SETTINGS_SECTIONS = {
         ollama_host: document.getElementById('ollamaHost').value,
         ollama_model: document.getElementById('ollamaModel').value,
         auto_analyze: document.getElementById('autoAnalyze').checked,
+        ai_cache_optimized: document.getElementById('aiCacheOptimized')?.checked ?? false,
     }),
     theme: () => ({
         ui_theme: document.getElementById('uiTheme')?.value || 'default',
