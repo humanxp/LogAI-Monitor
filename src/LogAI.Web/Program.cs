@@ -481,6 +481,59 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status")
     Environment.Exit(0);
 }
 
+// 一次性修复：把历史记录的"处理建议"主机前缀重挂一遍。旧版 EnsureHostPrefix 把
+// 通用建议错挂到批里第一个主机（R4S/debian 之类），现在按 affected_hosts + 关键词
+// 匹配重新挂。幂等：重跑无害。
+if (args.Length >= 1 && args[0] == "--fix-recommendation-hosts")
+{
+    var fixStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    var fixIds = await fixStore.Db.SortedSetRangeByRankAsync(LogAI.Core.Store.Keys.AiHistoryTimeline, 0, -1);
+    int fixScanned = 0, fixChanged = 0;
+    const int FixChunk = 500;
+    for (int offset = 0; offset < fixIds.Length; offset += FixChunk)
+    {
+        int size = Math.Min(FixChunk, fixIds.Length - offset);
+        var readBatch = fixStore.Db.CreateBatch();
+        var reads = new Task<StackExchange.Redis.RedisValue>[size];
+        for (int i = 0; i < size; i++)
+            reads[i] = readBatch.HashGetAsync(fixIds[offset + i].ToString(), "analysis");
+        readBatch.Execute();
+        var loaded = await Task.WhenAll(reads);
+
+        var writeBatch = fixStore.Db.CreateBatch();
+        var writes = new List<Task>(size);
+        for (int i = 0; i < size; i++)
+        {
+            fixScanned++;
+            string raw = loaded[i].ToString();
+            if (raw.Length == 0) continue;
+            System.Text.Json.Nodes.JsonNode? node;
+            try { node = System.Text.Json.Nodes.JsonNode.Parse(raw); }
+            catch (System.Text.Json.JsonException) { continue; }
+            if (node is not System.Text.Json.Nodes.JsonObject obj) continue;
+            string before = obj.ToJsonString();
+            if (LogAI.Core.Ai.JsonExtractor.RehostRecommendations(obj))
+            {
+                string after = obj.ToJsonString();
+                if (before != after)
+                {
+                    writes.Add(writeBatch.HashSetAsync(fixIds[offset + i].ToString(), "analysis", after));
+                    fixChanged++;
+                }
+            }
+        }
+        writeBatch.Execute();
+        await Task.WhenAll(writes);
+    }
+    Console.WriteLine("[fix-recommendation-hosts] scanned " + fixScanned + ", rehosted " + fixChanged + " records");
+    Environment.Exit(0);
+}
+
 // 一次性回填：补齐历史遗留的空 timestamp（早期版本未写该字段，前端曾渲染成
 // "Invalid Date"）。从 id（ai_history:<epoch ms>）推导写入时间，Redis 热记录
 // HSET、已归档记录改 SQLite。幂等：重复跑无害。

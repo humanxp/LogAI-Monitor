@@ -347,6 +347,26 @@ public static class JsonExtractor
     }
 
     /// <summary>
+    /// 修复旧记录：把 recommendations 里已有的 [host] 前缀剥掉，再用当前匹配逻辑重新挂
+    /// 主机（旧版把通用建议错挂到批里第一个主机，导致 R4S/debian 之类对不上）。issues 不动。
+    /// 返回是否有前缀被剥掉（调用方据此判断是否需要写回）。
+    /// </summary>
+    public static bool RehostRecommendations(JsonObject obj)
+    {
+        if (obj["recommendations"] is not JsonArray recs) return false;
+        bool had = false;
+        for (int i = 0; i < recs.Count; i++)
+        {
+            string text = recs[i]?.ToString()?.Trim() ?? "";
+            if (ExtractHostPrefix(text).Length == 0) continue;
+            recs[i] = text.Substring(text.IndexOf(']') + 1).Trim();
+            had = true;
+        }
+        if (had) EnsureHostPrefix(obj, new List<string>());
+        return had;
+    }
+
+    /// <summary>
     /// 批量分析结果的必需字段是否齐全且自洽（模型偶尔漏掉 recommendations/critical_count，
     /// 或给了"有 issues 但 recommendations 空"）。不齐全/不自洽时调用方触发纠正性重试。
     /// </summary>
