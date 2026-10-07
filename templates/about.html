@@ -173,7 +173,7 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
-            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。critical 刻意收得很紧——提示词限定只有「宕机 / 入侵 / 数据丢失」才算，并叠加一道<b>确定性闸门</b>：该批日志里没有 emergency/alert/critical 级别的原始日志就不判 critical。小模型习惯把一长串良性重复消息（"already registered"、"Sleeping!"、服务重启刷屏）误判成 critical，实测这两道措施把 critical 占比从约 50% 压到约 1%</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。critical 刻意收得很紧，靠<b>双重防线</b>压住小模型「看到错误级别就喊 critical」的毛病：① <b>提示词</b>把 critical 限定为「宕机 / 入侵 / 数据丢失」，静态指令 + 4 个 few-shot 示例排在日志之前（示例锚定"例行噪音 / 启动日志 / 被设备误标 emergency 的例行动作 → healthy"），日志按级别排序但<b>去掉 [SEVERITY] 前缀</b>——设备的级别标签不可信（实测有设备把 "start NTP update" 标成 emergency，带着标签模型会脑补出 "NTP 不可达" 并把整批例行日志判成 critical）；② 一道<b>确定性闸门</b>：critical 要求批次里至少有一条<b>级别危急、且消息含故障特征词</b>（failed / down / unreachable / refused / killed / out of memory / panic…）的原始日志。实测这两道防线把 critical 占比从约 50% 压到约 1%</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
             <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
             <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>
@@ -310,6 +310,8 @@
             <li>两次都失败即判定该批次<b>失败</b>——不伪造"成功但内容为空"的结果，否则界面与统计都会失真</li>
             <li>反复失败的批次会被<b>退役</b>，防止一条无法解析的日志让队列永久卡在同一批</li>
             <li>历史记录的字段集<b>按来源区分</b>（批量与单条所需信息不同），并设置保留期，长期运行不会无限增长</li>
+            <li><b>前缀缓存友好</b>：静态指令 + few-shot 示例是每次调用都相同的公共前缀。omlx/vLLM 的前缀缓存按 256 token 块对齐，静态块约 1200 token，每批稳定命中约 1024 token，线上命中率约 52%——分析延迟与算力都更省</li>
+            <li><b>用量可观测</b>：Service Status 卡片显示 <b>AI token 用量</b>（总量 / 今日 / 近 7 天 / 提示 / 生成 / 缓存命中 / 调用次数 / 均次，含复位清零按键）与 <b>Telegram 发送量</b>（已发送 / 今日 / 失败），每次调用与发送后累计</li>
         </ul>
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-stream" style="color:var(--lm-accent);"></i> 调度</h4>
