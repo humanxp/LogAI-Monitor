@@ -66,6 +66,13 @@ internal static class TelegramSelfTest
             summary == "\n📊 <b>LogAI Monitor Summary</b>\n\n<b>Logs (24h):</b> 212527\n<b>Logs (1h):</b> 5154\n<b>Active Alerts:</b> 3\n<b>Sources:</b> 2\n",
             Show(summary));
 
+        // gated status 应覆盖模型的 overall_status，保证 Telegram 与 Analysis History 口径一致。
+        string gated = TelegramNotifier.BuildSummaryText(
+            System.Text.Json.Nodes.JsonNode.Parse("""{"logs_last_day":1,"logs_last_hour":1,"unacknowledged_alerts":0,"sources":[]}"""),
+            """{"overall_status":"critical","issues_found":[],"critical_count":0,"recommendations":[],"affected_hosts":[],"alert_message":""}""",
+            "warning");
+        Check("gated status overrides raw overall_status", gated.Contains("WARNING") && !gated.Contains("CRITICAL"), Show(gated));
+
         // Delivery failures must not throw (invalid token is the cheap case).
         var notifier = new TelegramNotifier();
         bool emptyToken = notifier.SendAsync("", "1", "x").GetAwaiter().GetResult();

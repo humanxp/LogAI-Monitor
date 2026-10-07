@@ -350,6 +350,7 @@ internal static class AppHost
                         // alone made the toast read "Analyzed undefined logs" and left an
                         // automatic analysis invisible on the page.
                         string? analysisRaw = null;
+                        string? storedStatus = null;
                         var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
                         {
                             ["logs_analyzed"] = outcome.Count,
@@ -359,9 +360,10 @@ internal static class AppHost
                             var hash = await store.Db.HashGetAllAsync(outcome.HistoryId);
                             foreach (var field in hash)
                             {
+                                if (field.Name == "status") { storedStatus = field.Value.ToString(); continue; }
                                 if (field.Name != "analysis") continue;
                                 string raw = field.Value.ToString();
-                                if (raw.Length == 0) break;
+                                if (raw.Length == 0) continue;
                                 analysisRaw = raw;
                                 try
                                 {
@@ -372,7 +374,6 @@ internal static class AppHost
                                 {
                                     // A malformed record must not stop the scheduler.
                                 }
-                                break;
                             }
                         }
                         LogAI.Web.Realtime.EngineIoServer.Current?.Broadcast("analysis_complete", payload);
@@ -385,8 +386,13 @@ internal static class AppHost
                         {
                             try
                             {
-                                var analysisNode = System.Text.Json.Nodes.JsonNode.Parse(analysisRaw);
-                                string bucket = LogAI.Core.Ai.AiStatusClassifier.Classify("batch", analysisNode);
+                                // 用存储时的 status（带 critical 闸门），与 Analysis History 完全一致；
+                                // 只有拿不到时才退回 Classify 重算，避免 Telegram 说 critical、
+                                // 历史里却只是 warning 的口径分裂。
+                                string bucket = !string.IsNullOrEmpty(storedStatus)
+                                    ? storedStatus
+                                    : LogAI.Core.Ai.AiStatusClassifier.Classify("batch",
+                                        System.Text.Json.Nodes.JsonNode.Parse(analysisRaw));
                                 var summarySettings = await store.GetSettingsAsync();
                                 string rawWanted = LogAI.Core.Store.RedisStore.ToText(
                                     summarySettings.GetValueOrDefault("analysis_summary_status"));
@@ -412,7 +418,7 @@ internal static class AppHost
                                             ReadApi.SerializeLikeFlask(
                                                 await LogAI.Web.Api.StatsApi.BuildPayloadAsync(store)));
                                         string text = LogAI.Core.Notify.TelegramNotifier
-                                            .BuildSummaryText(statsNode, analysisRaw);
+                                            .BuildSummaryText(statsNode, analysisRaw, bucket);
                                         bool sent = await notifier.SendAsync(
                                             LogAI.Core.Notify.TelegramState.BotToken,
                                             LogAI.Core.Notify.TelegramState.ChatId, text, ct, store);

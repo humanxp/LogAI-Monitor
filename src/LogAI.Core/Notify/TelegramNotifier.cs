@@ -71,7 +71,7 @@ public sealed class TelegramNotifier(HttpClient? http = null)
         return text.ToString();
     }
 
-    public static string BuildSummaryText(JsonNode? stats, string? analysis = null)
+    public static string BuildSummaryText(JsonNode? stats, string? analysis = null, string? gatedStatus = null)
     {
         int logsLastDay = stats?["logs_last_day"]?.GetValue<int>() ?? 0;
         int logsLastHour = stats?["logs_last_hour"]?.GetValue<int>() ?? 0;
@@ -95,7 +95,11 @@ public sealed class TelegramNotifier(HttpClient? http = null)
         if (node is null) return text.ToString();
 
         // Structured rendering; the summary line layout is fixed.
-        string status = node["overall_status"]?.ToString() ?? "unknown";
+        // 优先用调用方传入的 gated status（与 Analysis History 一致），否则退回模型
+        // 的 overall_status——避免 Telegram 说 critical、历史里却只是 warning 的分裂。
+        string status = !string.IsNullOrEmpty(gatedStatus)
+            ? gatedStatus
+            : node["overall_status"]?.ToString() ?? "unknown";
         string emoji = status.ToLowerInvariant() switch
         {
             "healthy" => "✅",
