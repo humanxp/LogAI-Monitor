@@ -163,8 +163,9 @@ public static class LogMaintenance
     }
 
     /// <summary>
-    /// 清空分析历史 + 告警（Redis 与 SQLite 冷归档一并删），配 "Clear All Logs" 的
-    /// "一键回到初始状态"。只删 ai_history:* / alert:* / alerts:*，不动设置与过滤器。
+    /// 清空分析历史 + 告警 + AI Token 用量 + Telegram 推送计数（Redis 与 SQLite 冷归档
+    /// 一并删），配 "Clear All Data" 的"一键回到初始状态"。只删这些数据键，不动设置、
+    /// 过滤器与账号。
     /// </summary>
     public static async Task ClearAnalysisAndAlertsAsync(RedisStore store,
                                                          LogArchive? archive = null,
@@ -173,6 +174,9 @@ public static class LogMaintenance
         await store.DeleteKeysByPatternAsync("ai_history:*");
         await store.DeleteKeysByPatternAsync("alert:*");
         await store.DeleteKeysByPatternAsync("alerts:*");
+        // AI Token 用量 + Telegram 推送计数也一并初始化（累计键 + 当日键）。
+        await store.DeleteKeysByPatternAsync("ai:usage*");
+        await store.DeleteKeysByPatternAsync("telegram:usage*");
         if (archive is not null)
         {
             await archive.DeleteHashesByPrefixAsync("ai_history:", cancellationToken);
