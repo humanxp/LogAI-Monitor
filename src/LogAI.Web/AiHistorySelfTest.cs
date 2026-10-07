@@ -102,6 +102,12 @@ internal static class AiHistorySelfTest
         Check("healthy with only routine issues stays healthy",
             AiStatusClassifier.Classify("auto",
                 """{"overall_status":"healthy","issues_found":["[h1] Load template from file","[h2] Injector: Sleeping!"]}""") == "healthy");
+        // warning 下限的消息判定：字面故障词才算，例行调度/误标 emergency 不算。
+        Check("HasFailureWord matches literal failures only",
+            AiStatusClassifier.HasFailureWord("myddns_ipv6: Transfer failed - retry 126/ in 60 seconds")
+            && AiStatusClassifier.HasFailureWord("IpmiIfcOpenIpmiOpen: open(/dev/ipmi0, RDWR) failed")
+            && !AiStatusClassifier.HasFailureWord("crond: USER root pid 28014 cmd /usr/bin/wg-watchdog")
+            && !AiStatusClassifier.HasFailureWord("start NTP update"));
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;

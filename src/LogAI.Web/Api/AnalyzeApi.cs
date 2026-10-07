@@ -211,6 +211,28 @@ internal static class AnalyzeApi
             // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
             string status = AiStatusClassifier.Classify(type, analysis,
                 allowCritical: single || HasCriticalLog(available));
+
+            // warning 下限：判 healthy 但日志消息里有真实故障词 → 升 warning 并补进 issues。
+            if (string.Equals(status, "healthy", StringComparison.Ordinal) && !single)
+            {
+                var failureLines = available
+                    .Where(log => AiStatusClassifier.HasFailureWord(log.GetValueOrDefault("message")))
+                    .Take(8)
+                    .Select(log => "[" + (log.GetValueOrDefault("hostname") ?? log.GetValueOrDefault("source") ?? "?") + "] " + log.GetValueOrDefault("message"))
+                    .ToList();
+                if (failureLines.Count > 0)
+                {
+                    status = "warning";
+                    if (analysis is JsonObject obj)
+                    {
+                        var issues = obj["issues_found"] as JsonArray ?? new JsonArray();
+                        foreach (string line in failureLines)
+                            if (issues.All(x => x?.ToString() != line)) issues.Add(line);
+                        obj["issues_found"] = issues;
+                    }
+                }
+            }
+
             string analysisJson = analysis.ToJsonString();
             bool inRedis = await store.Db.KeyExistsAsync(historyId);
             if (inRedis)

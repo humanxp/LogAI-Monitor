@@ -42,6 +42,26 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
             || await AnyCriticalSeverityAsync(logIds);
         string status = AiStatusClassifier.Classify(type, analysis, allowCritical);
 
+        // warning 下限：模型判 healthy 但原始日志里有真实故障词（Transfer failed、
+        // refused、out of memory…）时，升到 warning 并把那条日志补进 issues，避免
+        // "发现问题却判 healthy"或"warning 但 No issues"。只对批分析生效。
+        if (string.Equals(status, "healthy", StringComparison.Ordinal)
+            && !string.Equals(type, "single", StringComparison.Ordinal))
+        {
+            var failureLines = await FindFailureLinesAsync(logIds);
+            if (failureLines.Count > 0)
+            {
+                status = "warning";
+                if (analysis is JsonObject obj)
+                {
+                    var issues = obj["issues_found"] as JsonArray ?? new JsonArray();
+                    foreach (string line in failureLines.Take(8))
+                        if (issues.All(x => x?.ToString() != line)) issues.Add(line);
+                    obj["issues_found"] = issues;
+                }
+            }
+        }
+
         var ids = new JsonArray();
         foreach (string logId in logIds) ids.Add(logId);
 
@@ -120,6 +140,42 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
                     return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// 找出消息里含故障词的日志行（"[host] message"），供 warning 下限补进 issues。
+    /// 只取消息本身，不看级别——"Transfer failed" 之类即使设备标成 info 也值得 warning。
+    /// </summary>
+    private async Task<List<string>> FindFailureLinesAsync(IReadOnlyList<string> logIds)
+    {
+        var result = new List<string>();
+        if (logIds.Count == 0) return result;
+        const int Chunk = 500;
+        for (int offset = 0; offset < logIds.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, logIds.Count - offset);
+            var batch = store.Db.CreateBatch();
+            var hostReads = new Task<RedisValue>[size];
+            var msgReads = new Task<RedisValue>[size];
+            for (int i = 0; i < size; i++)
+            {
+                hostReads[i] = batch.HashGetAsync(logIds[offset + i], "hostname");
+                msgReads[i] = batch.HashGetAsync(logIds[offset + i], "message");
+            }
+            batch.Execute();
+            var hosts = await Task.WhenAll(hostReads);
+            var msgs = await Task.WhenAll(msgReads);
+            for (int i = 0; i < size; i++)
+            {
+                string msg = msgs[i].ToString();
+                if (AiStatusClassifier.HasFailureWord(msg))
+                {
+                    string host = hosts[i].ToString();
+                    result.Add("[" + (host.Length > 0 ? host : "?") + "] " + msg);
+                }
+            }
+        }
+        return result;
     }
 
     private long NextMilliseconds()

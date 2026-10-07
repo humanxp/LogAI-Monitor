@@ -110,6 +110,20 @@ public static class AiStatusClassifier
         return false;
     }
 
+    /// <summary>
+    /// 日志消息是否含故障词（warning 下限用）。模型判 healthy 时可能连
+    /// "Transfer failed - retry N" 这类真实故障都没列进 issues；这里直接看原始日志
+    /// 消息，按"字面故障词"判断是否值得至少算 warning。与 critical 闸门同一套词。
+    /// </summary>
+    public static bool HasFailureWord(string? message)
+    {
+        if (string.IsNullOrEmpty(message)) return false;
+        string m = message.ToLowerInvariant();
+        foreach (string marker in FailureMarkers)
+            if (m.Contains(marker, StringComparison.Ordinal)) return true;
+        return false;
+    }
+
     private static readonly string[] FailureMarkers =
     [
         "failed", "failure", " down", "unreachable", "refused", "killed",
