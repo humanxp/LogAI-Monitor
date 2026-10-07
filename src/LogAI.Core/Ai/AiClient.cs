@@ -32,6 +32,13 @@ public sealed class AiClient(HttpClient? http = null)
     public RedisStore? Store { get; init; }
     public double Temperature { get; init; } = 0.1;
 
+    /// <summary>
+    /// 传给 OpenAI 兼容后端的 frequency_penalty。python-legacy 版固定 0.3——它抑制
+    /// 小模型被逼着输出 JSON 时陷入的重复循环（同一问题重复列 N 次、把 token 预算烧光
+    /// 再截断）。C# 版之前漏了这个参数，导致 3B 模型重复列问题、虚高 critical_count。
+    /// </summary>
+    public double FrequencyPenalty { get; init; } = 0.3;
+
     public async Task<string> CompleteAsync(string prompt, string? system = null,
                                             CancellationToken cancellationToken = default)
     {
@@ -55,6 +62,8 @@ public sealed class AiClient(HttpClient? http = null)
         {
             payload["max_tokens"] = MaxTokens;
             payload["temperature"] = Temperature;
+            if (FrequencyPenalty > 0)
+                payload["frequency_penalty"] = FrequencyPenalty;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
