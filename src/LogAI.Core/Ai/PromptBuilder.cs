@@ -147,9 +147,10 @@ REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing 
 - "overall_status": one of "healthy", "warning", "critical"
 - "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER objects, never raw log lines. Empty array if none
 - "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
-- "recommendations": array of short "[HOST] action" strings (at most 5). Empty array if none
+- "recommendations": array of short "[HOST] action" strings (at most 5), one concrete fix for each distinct problem in issues_found. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
 - "alert_message": short admin alert if critical, else ""
+The fields MUST agree with overall_status: a "healthy" batch has issues_found [], critical_count 0, recommendations [], alert_message "". A "warning" or "critical" batch has at least one issue in issues_found and at least one action in recommendations. Never list routine chatter (cron lines, startup messages, "already registered", "Sleeping!") in issues_found.
 Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
 
 EXAMPLES
