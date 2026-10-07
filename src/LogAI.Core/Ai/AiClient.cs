@@ -39,6 +39,13 @@ public sealed class AiClient(HttpClient? http = null)
     /// </summary>
     public double FrequencyPenalty { get; init; } = 0.3;
 
+    /// <summary>
+    /// 是否启用模型的"思考模式"（Qwen3.5 这类推理模型默认会先输出一段 Thinking
+    /// Process 再给答案，烧 token 又破坏 JSON 提取）。syslog 分析是直接 JSON 任务，
+    /// 固定关闭。传给 OpenAI 兼容后端为 enable_thinking:false（非推理模型忽略它）。
+    /// </summary>
+    public bool EnableThinking { get; init; } = false;
+
     public async Task<string> CompleteAsync(string prompt, string? system = null,
                                             CancellationToken cancellationToken = default)
     {
@@ -64,6 +71,8 @@ public sealed class AiClient(HttpClient? http = null)
             payload["temperature"] = Temperature;
             if (FrequencyPenalty > 0)
                 payload["frequency_penalty"] = FrequencyPenalty;
+            if (!EnableThinking)
+                payload["enable_thinking"] = false;
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, url)
