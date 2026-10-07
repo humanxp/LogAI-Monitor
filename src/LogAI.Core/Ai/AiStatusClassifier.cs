@@ -18,12 +18,10 @@ public static class AiStatusClassifier
     public static readonly string[] Statuses = ["critical", "warning", "healthy", "other"];
 
     /// <summary>
-    /// 归类。<paramref name="guard"/> = 是否做确定性修正（程序兜底）。
-    /// guard=true（默认）：critical_count≤0 降 warning、allowCritical 闸门、
-    /// healthy 但 issues 含故障词升 warning；
-    /// guard=false：纯模型，只做同义词归一，模型说什么就是什么。
+    /// 归类：只做同义词归一（critical/error/... → 4 档），不做任何修正。
+    /// 与 python-legacy 版一致：模型判什么就是什么。allowCritical 参数已废弃、不再起闸门作用。
     /// </summary>
-    public static string Classify(string type, JsonNode? analysis, bool allowCritical = true, bool guard = true)
+    public static string Classify(string type, JsonNode? analysis, bool allowCritical = true)
     {
         // 防御：JsonNode 对 string 有隐式转换，误把 JSON 字符串传进来时这里拿到的是
         // JsonValue（而非 JsonObject），下面会全部落进 other。发现是字符串就先解析。
@@ -45,10 +43,6 @@ public static class AiStatusClassifier
         {
             status = Text(obj, "overall_status");
             if (status.Length == 0) status = Text(obj, "category");
-            // 兜底（guard）：模型说 critical 却数不出 critical_count → warning。
-            if (guard && status.Equals("critical", StringComparison.OrdinalIgnoreCase)
-                && obj["critical_count"] is JsonValue cc && cc.TryGetValue<int>(out int n) && n <= 0)
-                status = "warning";
         }
 
         // 同义写法一并归一，避免模型偶尔换个词就掉进 other。
@@ -63,12 +57,6 @@ public static class AiStatusClassifier
             _ => "other",
         };
 
-        if (guard)
-        {
-            if (bucket == "critical" && !allowCritical) return "warning";
-            // 模型偶尔判 healthy 却在 issues 里列了真实故障 → 确定性升 warning。
-            if (bucket == "healthy" && HasFailureIssue(obj)) return "warning";
-        }
         return bucket;
     }
 
@@ -77,12 +65,12 @@ public static class AiStatusClassifier
     /// 那会把整串 JSON 变成单个 JsonValue（而非 JsonObject），从而把一切误判成
     /// "other"（回填时踩过这个坑，加 allowCritical 参数时又踩了一次）。
     /// </summary>
-    public static string Classify(string type, string? analysisRaw, bool allowCritical = true, bool guard = true)
+    public static string Classify(string type, string? analysisRaw, bool allowCritical = true)
     {
         if (string.IsNullOrEmpty(analysisRaw)) return "other";
         try
         {
-            return Classify(type, JsonNode.Parse(analysisRaw), allowCritical, guard);
+            return Classify(type, JsonNode.Parse(analysisRaw), allowCritical);
         }
         catch (JsonException)
         {

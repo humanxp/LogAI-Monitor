@@ -98,39 +98,6 @@ public sealed class AiClient(HttpClient? http = null)
     }
 
     /// <summary>
-    /// 让模型针对 warning 下限检出的故障行生成具体建议（返回空列表表示模型失败/无输出）。
-    /// 程序只负责确定性检出故障行，建议本身交给模型。
-    /// </summary>
-    public async Task<List<string>> RecommendFailureLinesAsync(List<string> failureLines,
-                                                               CancellationToken cancellationToken = default)
-    {
-        if (failureLines.Count == 0) return [];
-
-        var prompt = new System.Text.StringBuilder();
-        prompt.AppendLine("以下是系统检测到含故障词（failed / refused / out of memory 等）的日志行，此前的批量分析没有覆盖这些故障。");
-        prompt.AppendLine("请针对这些具体问题给出简洁、可执行的处置建议。要求：每条建议单独一行、纯文本、不要 JSON、不要编号或项目符号；建议要具体到主机和问题（例如引用 /dev/ipmi0、磁盘、服务名等），不要空泛地说\"请检查日志\"。");
-        prompt.AppendLine();
-        foreach (string line in failureLines.Take(8))
-            prompt.AppendLine("- " + line);
-
-        string reply;
-        try { reply = await CompleteAsync(prompt.ToString(), cancellationToken: cancellationToken); }
-        catch { return []; }
-
-        var recs = new List<string>();
-        foreach (string raw in reply.Split('\n'))
-        {
-            string t = raw.Trim();
-            int start = 0;
-            while (start < t.Length && !char.IsLetter(t[start]))
-                start++;
-            t = t[start..].Trim();
-            if (t.Length >= 4) recs.Add(t);
-        }
-        return recs;
-    }
-
-    /// <summary>
     /// The configured host often lacks the /v1 suffix (the deployment stores
     /// http://192.168.50.23:8000 while the OpenAI-compatible route lives under
     /// /v1), which produced a 404 until this normalisation was added.
@@ -163,24 +130,9 @@ public sealed class AiClient(HttpClient? http = null)
         AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
     /// <summary>
-    /// 日志去重开关（默认开启）。设置页「Deduplicate log lines before sending」。
-    /// 与 AiEnabledIn 相同的布尔判定：只有显式 false/0/no/off 才视为关闭。
-    /// </summary>
-    public static bool AiDedupEnabledIn(IReadOnlyDictionary<string, object?> settings)
-    {
-        if (!settings.TryGetValue("ai_dedup_enabled", out object? raw) || raw is null)
-            return true;
-        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-        return text is not ("false" or "0" or "no" or "off");
-    }
-
-    public static bool AiDedupEnabledIn(IReadOnlyDictionary<string, string> settings) =>
-        AiDedupEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
-
-    /// <summary>
     /// 输出去重开关（默认开启）。设置页「Deduplicate analysis results」。控制
     /// JsonExtractor 对模型重复列的 issues/建议去重 + critical_count 封顶。
-    /// 与 AiDedupEnabledIn 相同的布尔判定。
+    /// 与 AiEnabledIn 相同的布尔判定：只有显式 false/0/no/off 才视为关闭。
     /// </summary>
     public static bool AiDedupOutputEnabledIn(IReadOnlyDictionary<string, object?> settings)
     {
@@ -192,22 +144,6 @@ public sealed class AiClient(HttpClient? http = null)
 
     public static bool AiDedupOutputEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiDedupOutputEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
-
-    /// <summary>
-    /// AI 判定修正开关（程序兜底，默认开启）。设置页「AI 判定修正（程序兜底）」。
-    /// 开启时：critical 闸门 + critical_count 检查 + 故障词一致性升 warning + warning 下限；
-    /// 关闭时：100% 纯模型原始数据，模型判什么就显示什么。
-    /// </summary>
-    public static bool AiStatusGuardEnabledIn(IReadOnlyDictionary<string, object?> settings)
-    {
-        if (!settings.TryGetValue("ai_status_guard", out object? raw) || raw is null)
-            return true;
-        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-        return text is not ("false" or "0" or "no" or "off");
-    }
-
-    public static bool AiStatusGuardEnabledIn(IReadOnlyDictionary<string, string> settings) =>
-        AiStatusGuardEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {

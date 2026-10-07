@@ -40,42 +40,25 @@ internal static class PromptSelfTest
 
         string summary = PromptBuilder.LogSummary(logs);
         string expectedSummary =
-            "[GL-AXT1800] crond: USER root pid 4643 cmd get_arp_scan_ret\n" +
-            "[10.10.10.7] kernel: disk 'sda1' is full";
+            "[ERROR] [GL-AXT1800] crond: USER root pid 4643 cmd get_arp_scan_ret\n" +
+            "[WARNING] [10.10.10.7] kernel: disk 'sda1' is full";
         Check("log summary format", summary == expectedSummary, summary.Replace("\n", "\\n"));
         Check("hostname falls back to source", summary.Contains("[10.10.10.7]", StringComparison.Ordinal));
-        Check("severity label is NOT emitted (device labels are unreliable; see LogSummary doc)",
-            !summary.Contains("[ERROR]", StringComparison.Ordinal) && !summary.Contains("[CRITICAL]", StringComparison.Ordinal));
+        Check("severity label is emitted (python-legacy log_summary format)",
+            summary.Contains("[ERROR]", StringComparison.Ordinal) && summary.Contains("[WARNING]", StringComparison.Ordinal));
 
         string prompt = PromptBuilder.BatchPrompt(summary);
-        // 结构是产品决策、不是风格，两个方向都实测过：
-        //   · 指令在末尾、无示例      → healthy 15 / warning 10，缓存 0%
-        //   · 指令在前、无示例        → warning 13 / healthy 2（把健康批次误判），缓存 6.9%
-        //   · 指令在前 + few-shot 示例 → healthy 25/25、故障批次 critical 25/25、
-        //     warning 批次 warning 15/15，缓存 22.8%
-        // 示例把"设备标了 error 但其实是例行噪音 → healthy"锚住，于是既能吃到
-        // 前缀缓存（静态块 966 token → 稳定命中 768）又不牺牲判定。改动这段前请重跑
-        // 上述三组 A/B。
+        // 与 python-legacy 版一致：简单提示 + 日志 + 6 个 JSON 键，无 few-shot、无缓存前缀。
         Check("prompt starts with the opening line",
             prompt.StartsWith("You are a syslog security/health analyzer.", StringComparison.Ordinal),
             prompt[..Math.Min(80, prompt.Length)]);
-        Check("static rules + examples come BEFORE the logs (cacheable prefix)",
-            prompt.IndexOf("REPLY FORMAT", StringComparison.Ordinal) <
-            prompt.IndexOf("NOW ANALYZE THIS BATCH.", StringComparison.Ordinal),
-            "static block must precede the logs");
-        Check("logs come last",
-            prompt.EndsWith(expectedSummary, StringComparison.Ordinal),
-            prompt[^60..]);
-        Check("three few-shot examples present (they anchor the routine-chatter case)",
-            prompt.Contains("Example 1 - routine chatter", StringComparison.Ordinal)
-            && prompt.Contains("Example 2 - a service is down", StringComparison.Ordinal)
-            && prompt.Contains("Example 3 - a real problem", StringComparison.Ordinal));
         Check("prompt embeds the summary verbatim", prompt.Contains(expectedSummary, StringComparison.Ordinal));
         Check("prompt carries every required key name",
             new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
                 .All(key => prompt.Contains('"' + key + '"', StringComparison.Ordinal)),
             "missing key");
         Check("no stray markdown fences in the template", !prompt.Contains("```", StringComparison.Ordinal));
+        Check("no few-shot examples", !prompt.Contains("Example 1", StringComparison.Ordinal));
 
         string corrective = PromptBuilder.CorrectivePrompt(prompt);
         Check("corrective prompt keeps the original", corrective.StartsWith(prompt, StringComparison.Ordinal));
@@ -121,25 +104,16 @@ internal static class PromptSelfTest
             new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "b", ["program"] = "p", ["message"] = "second" },
         };
         Check("同级保持到达顺序",
-            PromptBuilder.LogSummary(sameLevel).Replace("\n", "|").Contains("first|[b] p: second", StringComparison.Ordinal));
+            PromptBuilder.LogSummary(sameLevel).StartsWith("[ERROR] [a] p: first", StringComparison.Ordinal)
+            && PromptBuilder.LogSummary(sameLevel).EndsWith("[b] p: second", StringComparison.Ordinal));
 
-        // 去重：只有 pid/长数字/IP/hex 不同的例行消息折叠成一条 + ×N；不同消息不折叠。
-        var dup = new List<IReadOnlyDictionary<string, string>>
-        {
-            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 100 cmd /usr/bin/wg-watchdog" },
-            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 200 cmd /usr/bin/wg-watchdog" },
-            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 300 cmd /usr/bin/wg-watchdog" },
-        };
-        string deduped = PromptBuilder.LogSummary(dup);
-        Check("例行消息按 pid 归一化去重为一条 + ×3",
-            deduped.Split('\n').Length == 1 && deduped.Contains("pid 100", StringComparison.Ordinal) && deduped.Contains("[×3]", StringComparison.Ordinal),
-            deduped);
-        Check("不同消息不折叠",
+        // 不去重（python-legacy 版行为）：逐条输出原始行。
+        Check("lines are NOT deduped (python-legacy)",
             PromptBuilder.LogSummary(new List<IReadOnlyDictionary<string, string>>
             {
-                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "p", ["message"] = "alpha" },
-                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "p", ["message"] = "beta" },
-            }).Split('\n').Length == 2, "alpha 与 beta 应各占一行");
+                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 100 cmd wg-watchdog" },
+                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 200 cmd wg-watchdog" },
+            }).Split('\n').Length == 2, "pid 不同也应各占一行");
 
         Check("样本上限大于总数时不截断、不提示",
             !PromptBuilder.LogSummary(mixed, 99).Contains("omitted", StringComparison.Ordinal));

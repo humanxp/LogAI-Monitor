@@ -84,24 +84,15 @@ internal static class AiHistorySelfTest
             && AiStatusClassifier.Classify("auto", """{"overall_status":"notice"}""") == "warning");
         Check("info folds into healthy",
             AiStatusClassifier.Classify("auto", """{"overall_status":"info"}""") == "healthy");
-        // guard=true（程序兜底，默认）：critical_count=0 降 warning、allowCritical 闸门生效、
-        // healthy 含故障词升 warning。
-        Check("guard on: critical without critical_count is downgraded",
-            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""") == "warning");
-        Check("guard on: critical gate blocks when no critical log",
-            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false) == "warning"
+        // 纯模型：只做同义词归一，不降级、不闸门、不升 warning（与 python-legacy 一致）。
+        Check("critical stays critical regardless of critical_count",
+            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""") == "critical");
+        Check("allowCritical is ignored",
+            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false) == "critical"
             && AiStatusClassifier.Classify("auto", CritJson, allowCritical: true) == "critical");
-        Check("guard on: healthy with failure-word issue bumps to warning",
+        Check("healthy with failure-word issue stays healthy",
             AiStatusClassifier.Classify("auto",
-                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""") == "warning");
-        // guard=false（纯模型）：不降级、不闸门、不升 warning。
-        Check("guard off: critical stays critical regardless of count",
-            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""", guard: false) == "critical");
-        Check("guard off: allowCritical ignored",
-            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false, guard: false) == "critical");
-        Check("guard off: healthy with failure-word issue stays healthy",
-            AiStatusClassifier.Classify("auto",
-                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""", guard: false) == "healthy");
+                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""") == "healthy");
         Check("non-object analysis is other",
             AiStatusClassifier.Classify("auto", "not json") == "other");
         Check("healthy with only routine issues stays healthy",

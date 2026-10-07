@@ -30,66 +30,14 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
     /// </summary>
     public async Task<string> WriteAsync(IReadOnlyList<string> logIds, JsonNode analysis,
                                          string type = "auto", int failCount = 0,
-                                         IReadOnlyDictionary<string, string>? extra = null,
-                                         Func<List<string>, Task<List<string>>>? recommendAsync = null)
+                                         IReadOnlyDictionary<string, string>? extra = null)
     {
         string id = $"ai_history:{NextMilliseconds()}";
         // 提前读设置：保留期用它，避免后面重复取。
         var settings = await store.GetSettingsAsync();
 
-        bool single = string.Equals(type, "single", StringComparison.Ordinal);
-        bool guard = AiClient.AiStatusGuardEnabledIn(settings);
-        string status;
-
-        if (single || !guard)
-        {
-            // 单条分析，或关闭了"程序兜底"：纯模型判定。
-            status = AiStatusClassifier.Classify(type, analysis, allowCritical: true, guard: guard);
-        }
-        else
-        {
-            // 程序兜底（设置页「AI 判定修正」开启）：critical 闸门 + warning 下限。
-            bool allowCritical = await AnyCriticalSeverityAsync(logIds);
-            status = AiStatusClassifier.Classify(type, analysis, allowCritical, guard: true);
-
-            if (string.Equals(status, "healthy", StringComparison.Ordinal))
-            {
-                var failureLines = await FindFailureLinesAsync(logIds);
-                if (failureLines.Count > 0)
-                {
-                    status = "warning";
-                    if (analysis is JsonObject obj)
-                    {
-                        var issues = obj["issues_found"] as JsonArray ?? new JsonArray();
-                        foreach (string line in failureLines.Take(8))
-                            if (issues.All(x => x?.ToString() != line)) issues.Add(line);
-                        obj["issues_found"] = issues;
-
-                        // 建议交给模型生成（针对检出的故障行）；失败就留空。
-                        if (recommendAsync is not null)
-                        {
-                            try
-                            {
-                                var modelRecs = await recommendAsync(failureLines.Take(8).ToList());
-                                if (modelRecs.Count > 0)
-                                {
-                                    var recArray = obj["recommendations"] as JsonArray ?? new JsonArray();
-                                    foreach (string r in modelRecs)
-                                        if (recArray.All(x => x?.ToString() != r)) recArray.Add(r);
-                                    obj["recommendations"] = recArray;
-                                }
-                            }
-                            catch { /* 模型失败就留空，不影响写库 */ }
-                        }
-                    }
-                }
-            }
-
-            // 程序兜底模式：把模型原始 overall_status 覆盖成修正后的 status，
-            // 让 Analysis Details 界面显示正确值（与列表/统计一致）。
-            if (analysis is JsonObject objFinal)
-                objFinal["overall_status"] = status;
-        }
+        // 纯模型：status 直接用模型的 overall_status（只做同义词归一，与 python 版一致）。
+        string status = AiStatusClassifier.Classify(type, analysis);
 
         var ids = new JsonArray();
         foreach (string logId in logIds) ids.Add(logId);
@@ -139,71 +87,6 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
     public const int MaxFailedRetries = 3;
 
     public static bool ShouldRetire(int failCount) => failCount >= MaxFailedRetries;
-
-    /// <summary>
-    /// 批里是否存在"真正危急"的日志（级别危急 + 消息含故障词）。critical 闸门用：
-    /// 设备级别标签不可信（"start NTP update" 被标 emergency 不算）。
-    /// </summary>
-    private async Task<bool> AnyCriticalSeverityAsync(IReadOnlyList<string> logIds)
-    {
-        if (logIds.Count == 0) return false;
-        const int Chunk = 500;
-        for (int offset = 0; offset < logIds.Count; offset += Chunk)
-        {
-            int size = Math.Min(Chunk, logIds.Count - offset);
-            var batch = store.Db.CreateBatch();
-            var sevReads = new Task<RedisValue>[size];
-            var msgReads = new Task<RedisValue>[size];
-            for (int i = 0; i < size; i++)
-            {
-                sevReads[i] = batch.HashGetAsync(logIds[offset + i], "severity");
-                msgReads[i] = batch.HashGetAsync(logIds[offset + i], "message");
-            }
-            batch.Execute();
-            var sevs = await Task.WhenAll(sevReads);
-            var msgs = await Task.WhenAll(msgReads);
-            for (int i = 0; i < size; i++)
-                if (AiStatusClassifier.IsGenuinelyCritical(sevs[i].ToString(), msgs[i].ToString()))
-                    return true;
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// 找出消息含故障词的日志行（"[host] message"），供 warning 下限补进 issues。
-    /// 只取消息本身、不看级别——"Transfer failed" 即使设备标成 info 也值得 warning。
-    /// </summary>
-    private async Task<List<string>> FindFailureLinesAsync(IReadOnlyList<string> logIds)
-    {
-        var result = new List<string>();
-        if (logIds.Count == 0) return result;
-        const int Chunk = 500;
-        for (int offset = 0; offset < logIds.Count; offset += Chunk)
-        {
-            int size = Math.Min(Chunk, logIds.Count - offset);
-            var batch = store.Db.CreateBatch();
-            var hostReads = new Task<RedisValue>[size];
-            var msgReads = new Task<RedisValue>[size];
-            for (int i = 0; i < size; i++)
-            {
-                hostReads[i] = batch.HashGetAsync(logIds[offset + i], "hostname");
-                msgReads[i] = batch.HashGetAsync(logIds[offset + i], "message");
-            }
-            batch.Execute();
-            var hosts = await Task.WhenAll(hostReads);
-            var msgs = await Task.WhenAll(msgReads);
-            for (int i = 0; i < size; i++)
-            {
-                string msg = msgs[i].ToString();
-                if (AiStatusClassifier.HasFailureWord(msg))
-                {
-                    string host = hosts[i].ToString();
-                    result.Add("[" + (host.Length > 0 ? host : "?") + "] " + msg);
-                }
-            }
-        }
-        return result;
-    }
 
     private long NextMilliseconds()
     {

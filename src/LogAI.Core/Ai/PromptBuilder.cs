@@ -46,16 +46,11 @@ public static partial class PromptBuilder
         };
 
     /// <summary>
-    /// One line per log: [SEVERITY] [HOST] program: message.
-    ///
-    /// 顺序按级别从严重到轻微（同级保持原有先后），可用 sampleLimit 限制行数。
-    /// 之所以要排序与限行：批次上限（每批分析条数）与送给模型的样本数是两个
-    /// 独立的设置，界面上写着"每批按级别排序后取 N 行"，此前这里既没排序也没
-    /// 限行——整批 1000 条会全部灌进提示词。当样本被截断时补一行提示，
-    /// 让模型知道看到的是样本而不是全部，避免它给出"整体健康"的错误结论。
+    /// 每行一条日志："[SEVERITY] [HOST] program: message"。与 python-legacy 版
+    /// log_summary 完全一致：按级别从严重到轻微排序（同级保持先后），可用 sampleLimit
+    /// 限行。不去重——把原始行原样交给模型。
     /// </summary>
-    public static string LogSummary(IEnumerable<IReadOnlyDictionary<string, string>> logs,
-                                    int sampleLimit = 0, bool dedup = true)
+    public static string LogSummary(IEnumerable<IReadOnlyDictionary<string, string>> logs, int sampleLimit = 0)
     {
         var ordered = logs
             .Select((log, index) => (log, index))
@@ -67,50 +62,15 @@ public static partial class PromptBuilder
         int shown = sampleLimit > 0 && ordered.Count > sampleLimit ? sampleLimit : ordered.Count;
 
         var builder = new StringBuilder();
-        if (dedup)
+        foreach (var log in ordered.Take(shown))
         {
-            // 去重：把"只有 pid / 长数字 / IP / hex 不同"的例行消息折叠成一条 + ×N。
-            // 设备的例行输出（crond USER root pid NNN、resolved endpoint 0x…）每条都带
-            // 不同的 pid/会话号，但语义相同——给模型看几十条几乎一样的文本既不增加
-            // 信息，又让提示词更长、前缀缓存更差（实测真实批次去重率约 61%）。重复次数
-            // 用 ×N 保留（"反复出现"本身就是判断 warning 的信号）。
-            var seen = new Dictionary<string, (int Count, string FirstLine)>(StringComparer.Ordinal);
-            var order = new List<string>(shown);
-            foreach (var log in ordered.Take(shown))
-            {
-                string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
-                string program = Safe(Field(log, "program", "unknown"), 200);
-                string message = Safe(Field(log, "message", ""), 200);
-                string key = NormalizeKey(host, program, message);
-                if (seen.TryGetValue(key, out var existing))
-                {
-                    seen[key] = (existing.Count + 1, existing.FirstLine);
-                }
-                else
-                {
-                    seen[key] = (1, "[" + host + "] " + program + ": " + message);
-                    order.Add(key);
-                }
-            }
-            foreach (string key in order)
-            {
-                var (count, firstLine) = seen[key];
-                builder.Append(firstLine);
-                if (count > 1) builder.Append("  [×").Append(count).Append(']');
-                builder.Append('\n');
-            }
-        }
-        else
-        {
-            // 不去重：逐条输出（同样不带 [SEVERITY] 前缀）。供设置页关闭去重时使用。
-            foreach (var log in ordered.Take(shown))
-            {
-                string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
-                string program = Safe(Field(log, "program", "unknown"), 200);
-                string message = Safe(Field(log, "message", ""), 200);
-                builder.Append('[').Append(host).Append("] ")
-                       .Append(program).Append(": ").Append(message).Append('\n');
-            }
+            string severity = Safe(Field(log, "severity", "info"), 16).ToUpperInvariant();
+            string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
+            string program = Safe(Field(log, "program", "unknown"), 200);
+            string message = Safe(Field(log, "message", ""), 200);
+            builder.Append('[').Append(severity).Append("] [")
+                   .Append(host).Append("] ")
+                   .Append(program).Append(": ").Append(message).Append('\n');
         }
         string summary = builder.ToString().TrimEnd('\n');
         if (shown < ordered.Count)
@@ -122,119 +82,24 @@ public static partial class PromptBuilder
     }
 
     /// <summary>
-    /// 批量提示词。**静态块（规则 + few-shot 示例）必须在日志之前**——omlx/vLLM 的
-    /// 前缀缓存按 256 token 块对齐、不足 256 不命中；静态块现在约 800+ token，
-    /// 每批能稳定命中 3 个块。few-shot 的 token 成本近似为零（被缓存），
-    /// 只有第一次调用付全价。
-    ///
-    /// 示例不是装饰：3B 小模型原先会把 issues_found 输出成 {"host":"msg"} 对象、
-    /// 把 overall_status 写成 schema 里没有的 "error"，而且会把一长串例行 crond
-    /// 记录（设备标成 error）当成 warning。示例 1 专门示范"标了 error 但其实是
-    /// 例行噪音 → healthy"，示例 2/3 示范 critical/warning 的边界与 issues 的字符串格式。
+    /// 批量提示词。恢复成与 python-legacy 版 services/ollama_analyzer.py 完全一致：
+    /// 简单提示 + 日志 + 6 个 JSON 键，没有 few-shot 示例、没有前缀缓存优化。
     /// </summary>
     public static string BatchPrompt(string logSummary) => $$"""
-You are a syslog security/health analyzer. You are given a batch of logs; rate the batch by its SINGLE WORST issue.
+You are a syslog security/health analyzer. Assess the logs below.
 
-RATING RULES
-- "critical" = a host/server is DOWN or UNREACHABLE right now, a confirmed security breach (break-in, malware, credential theft), or data loss. Nothing else qualifies.
-- "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
-- "healthy" = only routine / informational messages.
-How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
-The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1), and some even mark routine actions as "emergency" (see Example 4).
-NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down". A cron line like "cmd sleep N; /usr/bin/some_script.sh" means the script was SCHEDULED to run, NOT that it failed - do not rewrite it into "some_script.sh failed to run". Conversely, a message that LITERALLY says "failed", "cURL Error", "connection refused", "timed out", "No space left", or "unreachable" IS a real problem - rate the batch warning (or critical if it is a host down). The rule is: judge by the literal words in the message, never invent a failure, never ignore a stated one.
-
-REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
-- "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
-- "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
-- "recommendations": array of short "[HOST] action" strings (at most 5), one concrete fix for each distinct problem in issues_found. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
-- "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
-- "alert_message": short admin alert if critical, else ""
-The fields MUST agree with overall_status: a "healthy" batch has issues_found [], critical_count 0, recommendations [], alert_message "". A "warning" or "critical" batch has at least one issue in issues_found and at least one action in recommendations. Never list routine chatter (cron lines, startup messages, "already registered", "Sleeping!") in issues_found.
-ALL 6 keys MUST appear in the output every time, even if their value is empty - never omit a key. Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
-
-EXAMPLES
-
-Example 1 - routine chatter; the device marks lines "error" but nothing is actually wrong:
-LOGS:
-[ERROR] [routerA] crond: USER root pid 31556 cmd /usr/bin/wg-watchdog
-[ERROR] [routerA] crond: USER root pid 31512 cmd sleep 50; /usr/bin/modem_sim_status_check.sh
-[INFO] [routerA] hostapd: wlan0: AP-STA-CONNECTED 9c:5c:8e:11:22:33
-[NOTICE] [nas1] Injector: Sleeping!
-REPLY:
-{
-  "overall_status": "healthy",
-  "issues_found": [],
-  "critical_count": 0,
-  "recommendations": [],
-  "affected_hosts": [],
-  "alert_message": ""
-}
-
-Example 2 - a service is down on a host that must be reachable:
-LOGS:
-[CRITICAL] [db01] systemd: mysqld.service: Main process exited, code=exited, status=1/FAILURE
-[ERROR] [db01] mysqld: Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock'
-[ERROR] [web01] nagios: CRITICAL - db01:3306 - connection refused
-REPLY:
-{
-  "overall_status": "critical",
-  "issues_found": [
-    "[db01] mysqld failed to start (socket unreachable)",
-    "[db01] port 3306 refusing connections"
-  ],
-  "critical_count": 2,
-  "recommendations": [
-    "[db01] check mysqld logs and restart the service"
-  ],
-  "affected_hosts": [
-    "db01"
-  ],
-  "alert_message": "db01 MySQL is down (3306 refused)"
-}
-
-Example 3 - a real problem that is not an outage:
-LOGS:
-[ERROR] [web02] nginx: connect() failed (111: Connection refused) while connecting to upstream
-[WARNING] [web02] kernel: TCP: request_sock_TCP: Possible SYN flooding on port 443
-[INFO] [web02] systemd: Started Session 9912 of user deploy.
-REPLY:
-{
-  "overall_status": "warning",
-  "issues_found": [
-    "[web02] nginx upstream connection refused (repeated)"
-  ],
-  "critical_count": 0,
-  "recommendations": [
-    "[web02] check the service behind the nginx upstream"
-  ],
-  "affected_hosts": [
-    "web02"
-  ],
-  "alert_message": ""
-}
-
-Example 4 - startup / lifecycle chatter; the device even marks a routine action as "emergency":
-LOGS:
-[INFO] [host1] hostd-probe: Glibc malloc guards disabled
-[INFO] [host1] hostd-probe: Priority level 4 is now active
-[INFO] [host1] hostd-probe: Successfully acquired hardware: M600
-[INFO] [host1] hostd-probe: Finished sysstat-collect.service
-[INFO] [host1] hostd-probe: Starting wg-watchdog.service
-[EMERGENCY] [routerA] ntp: start NTP update
-REPLY:
-{
-  "overall_status": "healthy",
-  "issues_found": [],
-  "critical_count": 0,
-  "recommendations": [],
-  "affected_hosts": [],
-  "alert_message": ""
-}
-
-NOW ANALYZE THIS BATCH.
 LOGS:
 {{logSummary}}
+
+Reply with ONLY a JSON object having exactly these keys:
+- "overall_status": one of "healthy", "warning", "critical"
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). Do NOT copy raw log lines; summarize each distinct pattern in one short line (max 150 chars). Empty array if none
+- "critical_count": integer, count of DISTINCT critical problems, 0 if none
+- "recommendations": array of short "[HOST] action" strings (actions to fix the issues), at most 5. Empty array if none
+- "affected_hosts": array of bare hostname/IP strings involved (no brackets), empty array if none
+- "alert_message": short admin alert if critical, else ""
+
+Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
 """;
 
     /// <summary>Second attempt sent when the first reply could not be parsed.</summary>
@@ -244,25 +109,6 @@ LOGS:
 
     private static string Field(IReadOnlyDictionary<string, string> log, string name, string fallback) =>
         log.TryGetValue(name, out string? value) && !string.IsNullOrEmpty(value) ? value : fallback;
-
-    /// <summary>
-    /// 归一化去重的 key：去掉 pid、长数字、IP、hex 这些"每行都不同但无语义"的噪声，
-    /// 让只有这些差异的行折叠成一条。只影响分组，不影响输出（输出保留首条原文）。
-    /// </summary>
-    private static string NormalizeKey(string host, string program, string message)
-    {
-        string m = message.ToLowerInvariant();
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"pid \d+", "pid N");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"sleep \d+", "sleep N");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"retry \d+", "retry N");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"delay \d+", "delay N");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+ seconds?", "N seconds");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+ minutes?", "N minutes");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+\.\d+\.\d+\.\d+", "IP");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"[0-9a-f]{8,}", "HEX");
-        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d{4,}", "N");
-        return host.ToLowerInvariant() + "|" + program.ToLowerInvariant() + "|" + m;
-    }
 }
 
 // ---------------------------------------------------------------------------
