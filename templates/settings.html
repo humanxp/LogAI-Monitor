@@ -309,7 +309,7 @@
             <div class="form-group">
                 <label class="form-label" for="archiveAfterHours">Redis Hot Data Window (days)</label>
                 <input type="number" class="form-control" id="archiveAfterHours" value="7" min="0" max="365">
-                <small style="color: var(--lm-ink-2);">超过此时长（天）的日志/分析/告警哈希会归档到 SQLite（冷存储），Redis 只留 ZSET 索引。设为 0 关闭归档。改动下一轮归档任务（≤5 分钟）生效。</small>
+                <small style="color: var(--lm-ink-2);">超过此时长（天）的日志/分析/告警哈希会归档到 SQLite（冷存储），Redis 只留 ZSET 索引。设为 0 关闭归档。改动下一轮归档任务（≤5 分钟）生效。<b>内存关系：</b>哈希是 Redis 内存的大头，天数越大 → Redis 保留的哈希越多 → 内存越高；调小能显著省内存，代价是冷数据回读 SQLite 稍慢。</small>
             </div>
 
             <div class="form-group">
@@ -394,7 +394,8 @@
         <ul>
             <li><b>Log Retention (days)</b>：日志 <b>和</b> AI 分析历史的保留天数（两者共用），到期自动清理。</li>
             <li><b>Redis Hot Data Window (days)</b>：超过此时长的日志/分析/告警哈希会归档到 SQLite（冷存储），
-                Redis 只留索引。<b>设为 0 表示关闭归档。</b></li>
+                Redis 只留索引。<b>设为 0 表示关闭归档。</b><b>与内存强相关：</b>哈希是 Redis 内存大头，天数越大
+                Redis 保留的哈希越多、内存越高；调小省内存，代价是冷数据回读 SQLite 稍慢。</li>
             <li><b>Alert Retention (days)</b>：告警记录的保留天数。</li>
             <li><b>Clear All Data</b> / <b>Purge Expired Data</b>：清理会<b>同时作用于 Redis 与 SQLite 两个库</b>，且不可撤销。</li>
         </ul>
