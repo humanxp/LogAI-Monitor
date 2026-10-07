@@ -148,11 +148,16 @@ public static class LogMaintenance
         return removed;
     }
 
-    /// <summary>Clears the whole Connected-Clients list.</summary>
+    /// <summary>
+    /// Clears the whole Connected-Clients list. A client owns several keys (hash +
+    /// protocols + recent-window zset + index entry); deleting only the index leaves
+    /// the hash behind with a stale message_count, so the old "Messages" count
+    /// resurrects once the host sends again. SCAN 扫全部 syslog:client:*，孤儿也一并清。
+    /// </summary>
     public static async Task<long> DeleteAllClientsAsync(RedisStore store,
                                                          CancellationToken cancellationToken = default)
     {
-        long count = await store.Db.SortedSetLengthAsync(Keys.ClientsIndex);
+        long count = await store.DeleteKeysByPatternAsync("syslog:client:*");
         await store.Db.KeyDeleteAsync(Keys.ClientsIndex);
         return count;
     }

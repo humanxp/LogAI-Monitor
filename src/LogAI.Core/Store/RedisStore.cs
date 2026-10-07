@@ -104,6 +104,25 @@ public sealed class RedisStore : IDisposable
 
     public IDatabase Db => _connection.GetDatabase();
 
+    /// <summary>
+    /// SCAN + 删除匹配 pattern 的键（如 "syslog:client:*"），返回删除条数。
+    /// 用 SCAN 而不是只按索引取：历史遗留的孤儿键（只在旧版本里删了 index 没删
+    /// 哈希）不在任何索引里，只有 SCAN 能扫到。
+    /// </summary>
+    public async Task<long> DeleteKeysByPatternAsync(string pattern, int pageSize = 500)
+    {
+        var endpoints = _connection.GetEndPoints();
+        if (endpoints.Length == 0) return 0;
+        var server = _connection.GetServer(endpoints[0]);
+        long count = 0;
+        await foreach (var key in server.KeysAsync(pattern: pattern, pageSize: pageSize))
+        {
+            await Db.KeyDeleteAsync(key);
+            count++;
+        }
+        return count;
+    }
+
     public async Task<bool> PingAsync()
     {
         try
