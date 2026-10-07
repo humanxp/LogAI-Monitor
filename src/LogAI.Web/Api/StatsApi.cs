@@ -53,6 +53,25 @@ internal static class StatsApi
                 ["status"] = "ok",
             });
         });
+
+        // POST /api/telegram-usage/reset —— 仪表盘上 Telegram 发送量"复位"按钮。
+        app.MapPost("/api/telegram-usage/reset", async (HttpContext http) =>
+        {
+            var session = AuthApi.CurrentUser(http, cookies);
+            if (session is null)
+                return Results.Redirect("/login?next=" + Uri.EscapeDataString(http.Request.Path));
+            if (!string.Equals(session.Role, "admin", StringComparison.Ordinal))
+                return ReadApi.JsonBody(new { error = "Access denied" }, 403);
+
+            long removed = await LogAI.Core.Notify.TelegramUsage.ResetAsync(store);
+            Console.WriteLine("[TelegramUsage] reset, " + removed + " key(s) deleted");
+            PushIfNeeded(store);
+            return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["deleted"] = removed,
+                ["status"] = "ok",
+            });
+        });
     }
 
     /// <summary>
