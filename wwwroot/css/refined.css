@@ -1035,7 +1035,7 @@ table tbody tr { transition: background-color 0.1s ease; }
   gap: 0.75rem;
   flex-wrap: wrap;
   padding: 0.7rem var(--lm-space-4);
-  border-top: 1px solid var(--lm-line);
+  border-bottom: 1px solid var(--lm-line);
 }
 .pager-info { color: var(--lm-ink-2); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .pager-buttons { display: flex; gap: 0.4rem; }

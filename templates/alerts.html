@@ -59,14 +59,14 @@
         <h3><i class="fas fa-bell"></i> Alert History</h3>
     </div>
     <div class="card-body" style="padding: 0;">
+        <!-- 翻页条：放在列表上方（Alert History 标题下面），避免滚到底部才能翻页 -->
+        <div class="pager" id="alertsPager"></div>
         <div id="alertsContainer" class="table-container">
             <div class="empty-state">
                 <i class="fas fa-bell"></i>
                 <h4>Loading alerts...</h4>
             </div>
         </div>
-        <!-- 翻页条：由 app.js 的 renderAlertsPager() 填充（含"第 X-Y 条 / 共 N 条"） -->
-        <div class="pager" id="alertsPager"></div>
     </div>
 </div>
 
