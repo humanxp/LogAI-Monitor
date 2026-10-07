@@ -75,28 +75,38 @@
     <div class="card-header">
         <h3><i class="fas fa-info-circle"></i> About Alerts</h3>
     </div>
-    <div class="card-body">
-        <p style="margin-bottom: 0.75rem;">
-            告警在<b>日志命中过滤器</b>时产生，每条记录都带主机、来源、级别、命中的规则与原始日志。
+        <div class="card-body">
+        <p style="margin: 0 0 1.1rem 0;">
+            告警在<b>日志命中过滤器</b>时产生，每条记录带主机、来源、级别、命中的规则与原始日志。
         </p>
-        <ul style="margin: 0 0 0.9rem 0;">
-            <li><b>列表</b>：分页浏览（每页 25 条）；点行尾的 <b>Details</b> 看完整消息与原始日志</li>
-            <li><b>刷新 / Ack All / Clear Acknowledged</b>：三个操作都在上方的操作条里</li>
-            <li><b>Ack（确认）</b>：标记"人已看过"。未确认的数量会显示在左侧导航的角标上</li>
-            <li><b>Clear Acknowledged</b>：<b>永久删除</b>已确认的告警（Redis 与 SQLite 冷存储一并删），不可撤销</li>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink); font-size: 0.95rem;">
+            <i class="fas fa-list" style="color: var(--lm-accent);"></i> 列表与操作
+        </h4>
+        <ul style="margin: 0 0 1.1rem 0;">
+            <li>分页浏览（每页 25 条）；点行尾 <b>Details</b> 看完整消息与原始日志</li>
+            <li><b>Ack（确认）</b>：标记"人已看过"，未确认数量显示在左侧导航角标上</li>
+            <li><b>Ack All</b>：把全部告警标记已读</li>
+            <li><b>Clear Acknowledged</b>：<b>永久删除</b>已确认的告警（Redis + SQLite 冷存储一并删），不可撤销</li>
         </ul>
-        <p style="margin-bottom: 0.75rem;">
-            <b>推送到 Telegram 的条件</b>（两个都要满足）：
-        </p>
-        <ol style="margin: 0 0 0.9rem 1.4rem;">
-            <li>该过滤规则勾了「通知 Telegram」；<b>若还勾了「任意级别」则直接放行</b>，跳过下一步</li>
-            <li>否则看<b>级别门限</b>：设置页「告警最低推送级别」以下的<b>不推但仍会入库</b></li>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink); font-size: 0.95rem;">
+            <i class="fab fa-telegram" style="color: var(--lm-accent);"></i> 推送到 Telegram（两个条件都要满足）
+        </h4>
+        <ol style="margin: 0 0 1.1rem 1.2rem;">
+            <li>该过滤规则勾了「通知 Telegram」；若还勾「任意级别」则直接放行，跳过下一步</li>
+            <li>否则看「告警最低推送级别」：低于门限的<b>不推但仍会入库</b></li>
         </ol>
-        <p style="color: var(--lm-ink-2); margin: 0;">
-            另外还有每「主机 × 规则」独立的<b>冷却</b>，避免同一问题反复刷屏；
-            推送失败只记日志，不影响采集与告警落库。归档到冷存储的告警依然参与上面的计数与删除。
-        </p>
-    </div>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink); font-size: 0.95rem;">
+            <i class="fas fa-shield-alt" style="color: var(--lm-accent);"></i> 其它
+        </h4>
+        <ul style="margin: 0;">
+            <li>每「主机 × 规则」独立<b>冷却</b>，避免同一问题反复刷屏</li>
+            <li>推送失败只记日志，不影响采集与告警落库</li>
+            <li>归档到冷存储的告警仍参与上面的计数与删除</li>
+        </ul>
+    </div></div>
 </div>
 
 <!-- Alert detail modal (opened by the Details button on each row) -->
