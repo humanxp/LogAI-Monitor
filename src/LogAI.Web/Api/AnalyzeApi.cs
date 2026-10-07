@@ -118,7 +118,8 @@ internal static class AnalyzeApi
                 client, PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(
                     batchFields,
                     int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
-                                 out int sample) && sample > 0 ? sample : 200)), 2048);
+                                 out int sample) && sample > 0 ? sample : 200,
+                    AiClient.AiDedupEnabledIn(settings))), 2048);
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -201,7 +202,7 @@ internal static class AnalyzeApi
                                            out int sample) && sample > 0 ? sample : 200;
             string prompt = single
                 ? PromptBuilderSingle.Build(available[0])
-                : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit));
+                : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit, AiClient.AiDedupEnabledIn(settings)));
             var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048);
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,

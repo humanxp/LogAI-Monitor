@@ -123,6 +123,24 @@ internal static class PromptSelfTest
         Check("同级保持到达顺序",
             PromptBuilder.LogSummary(sameLevel).Replace("\n", "|").Contains("first|[b] p: second", StringComparison.Ordinal));
 
+        // 去重：只有 pid/长数字/IP/hex 不同的例行消息折叠成一条 + ×N；不同消息不折叠。
+        var dup = new List<IReadOnlyDictionary<string, string>>
+        {
+            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 100 cmd /usr/bin/wg-watchdog" },
+            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 200 cmd /usr/bin/wg-watchdog" },
+            new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "crond", ["message"] = "USER root pid 300 cmd /usr/bin/wg-watchdog" },
+        };
+        string deduped = PromptBuilder.LogSummary(dup);
+        Check("例行消息按 pid 归一化去重为一条 + ×3",
+            deduped.Split('\n').Length == 1 && deduped.Contains("pid 100", StringComparison.Ordinal) && deduped.Contains("[×3]", StringComparison.Ordinal),
+            deduped);
+        Check("不同消息不折叠",
+            PromptBuilder.LogSummary(new List<IReadOnlyDictionary<string, string>>
+            {
+                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "p", ["message"] = "alpha" },
+                new Dictionary<string, string> { ["severity"] = "error", ["hostname"] = "h", ["program"] = "p", ["message"] = "beta" },
+            }).Split('\n').Length == 2, "alpha 与 beta 应各占一行");
+
         Check("样本上限大于总数时不截断、不提示",
             !PromptBuilder.LogSummary(mixed, 99).Contains("omitted", StringComparison.Ordinal));
         Check("未知级别排在最后",

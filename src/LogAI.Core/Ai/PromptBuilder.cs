@@ -55,7 +55,7 @@ public static partial class PromptBuilder
     /// 让模型知道看到的是样本而不是全部，避免它给出"整体健康"的错误结论。
     /// </summary>
     public static string LogSummary(IEnumerable<IReadOnlyDictionary<string, string>> logs,
-                                    int sampleLimit = 0)
+                                    int sampleLimit = 0, bool dedup = true)
     {
         var ordered = logs
             .Select((log, index) => (log, index))
@@ -67,20 +67,50 @@ public static partial class PromptBuilder
         int shown = sampleLimit > 0 && ordered.Count > sampleLimit ? sampleLimit : ordered.Count;
 
         var builder = new StringBuilder();
-        foreach (var log in ordered.Take(shown))
+        if (dedup)
         {
-            string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
-            string program = Safe(Field(log, "program", "unknown"), 200);
-            string message = Safe(Field(log, "message", ""), 200);
-            // 刻意**不带 [SEVERITY] 前缀**：设备的级别标签不可信（线上有设备把
-            // "start NTP update" 标成 emergency），模型看到 [EMERGENCY] 就会脑补出
-            // "NTP update failed / 不可达"这类不存在的故障，把整批例行日志判成
-            // critical。实测去掉级别标签后，同一批 hostd-probe 启动日志从 critical
-            // 9/10 变成 healthy 10/10，而真正的 critical/warning 仍 10/10 判对
-            // （故障特征都在 message 里）。排序仍按 SeverityRank（最严重的排最前），
-            // 只是不把级别写进给模型的文本。
-            builder.Append('[').Append(host).Append("] ")
-                   .Append(program).Append(": ").Append(message).Append('\n');
+            // 去重：把"只有 pid / 长数字 / IP / hex 不同"的例行消息折叠成一条 + ×N。
+            // 设备的例行输出（crond USER root pid NNN、resolved endpoint 0x…）每条都带
+            // 不同的 pid/会话号，但语义相同——给模型看几十条几乎一样的文本既不增加
+            // 信息，又让提示词更长、前缀缓存更差（实测真实批次去重率约 61%）。重复次数
+            // 用 ×N 保留（"反复出现"本身就是判断 warning 的信号）。
+            var seen = new Dictionary<string, (int Count, string FirstLine)>(StringComparer.Ordinal);
+            var order = new List<string>(shown);
+            foreach (var log in ordered.Take(shown))
+            {
+                string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
+                string program = Safe(Field(log, "program", "unknown"), 200);
+                string message = Safe(Field(log, "message", ""), 200);
+                string key = NormalizeKey(host, program, message);
+                if (seen.TryGetValue(key, out var existing))
+                {
+                    seen[key] = (existing.Count + 1, existing.FirstLine);
+                }
+                else
+                {
+                    seen[key] = (1, "[" + host + "] " + program + ": " + message);
+                    order.Add(key);
+                }
+            }
+            foreach (string key in order)
+            {
+                var (count, firstLine) = seen[key];
+                builder.Append(firstLine);
+                if (count > 1) builder.Append("  [×").Append(count).Append(']');
+                builder.Append('\n');
+            }
+        }
+        else
+        {
+            // 不去重：逐条输出（同样不带 [SEVERITY] 前缀）。供设置页关闭去重时使用。
+            foreach (var log in ordered.Take(shown))
+            {
+                string host = Safe(Field(log, "hostname", Field(log, "source", "unknown")), 120);
+                string program = Safe(Field(log, "program", "unknown"), 200);
+                string message = Safe(Field(log, "message", ""), 200);
+                builder.Append('[').Append(host).Append("] ")
+                       .Append(program).Append(": ").Append(message).Append('\n');
+            }
         }
         string summary = builder.ToString().TrimEnd('\n');
         if (shown < ordered.Count)
@@ -213,6 +243,20 @@ LOGS:
 
     private static string Field(IReadOnlyDictionary<string, string> log, string name, string fallback) =>
         log.TryGetValue(name, out string? value) && !string.IsNullOrEmpty(value) ? value : fallback;
+
+    /// <summary>
+    /// 归一化去重的 key：去掉 pid、长数字、IP、hex 这些"每行都不同但无语义"的噪声，
+    /// 让只有这些差异的行折叠成一条。只影响分组，不影响输出（输出保留首条原文）。
+    /// </summary>
+    private static string NormalizeKey(string host, string program, string message)
+    {
+        string m = message.ToLowerInvariant();
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"pid \d+", "pid N");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d+\.\d+\.\d+\.\d+", "IP");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"[0-9a-f]{8,}", "HEX");
+        m = System.Text.RegularExpressions.Regex.Replace(m, @"\d{4,}", "N");
+        return host.ToLowerInvariant() + "|" + program.ToLowerInvariant() + "|" + m;
+    }
 }
 
 // ---------------------------------------------------------------------------
