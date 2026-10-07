@@ -104,7 +104,8 @@ Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be
 
     /// <summary>
     /// 前缀缓存优化版批量提示词：静态规则 + few-shot 示例放在日志之前，让 omlx/vLLM
-    /// 命中前缀缓存（反复调用时只算日志那一段，缓存命中率更高）。设置页开关「优化
+    /// 命中前缀缓存（反复调用时只算日志那一段，缓存命中率更高）。few-shot 按
+    /// Qwen3.5-9B 的行为调校（模型更强，规则比 3B 时代精简）。设置页开关「优化
     /// AI 模型缓存效率」开启时用；默认关闭（用上面的简单版 BatchPrompt）。
     /// </summary>
     public static string BatchPromptCached(string logSummary) => $$"""
@@ -116,7 +117,7 @@ RATING RULES
 - "healthy" = only routine / informational messages.
 How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
 The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1), and some even mark routine actions as "emergency" (see Example 4).
-NEVER invent or extrapolate a failure. Judge ONLY by the literal message text: "start NTP update" means a routine NTP sync STARTED, not a failure. Do not rewrite "start X" / "Starting X" / "Finished X" / "Successfully acquired X" into "X failed", "X unreachable" or "X is down". A cron line like "cmd sleep N; /usr/bin/some_script.sh" means the script was SCHEDULED to run, NOT that it failed - do not rewrite it into "some_script.sh failed to run". Conversely, a message that LITERALLY says "failed", "cURL Error", "connection refused", "timed out", "No space left", or "unreachable" IS a real problem - rate the batch warning (or critical if it is a host down). The rule is: judge by the literal words in the message, never invent a failure, never ignore a stated one.
+NEVER invent or extrapolate a failure. Judge ONLY by the literal words: "start NTP update" means a routine sync STARTED, not a failure; a cron line means the script was SCHEDULED, not failed. A message that LITERALLY says "failed" / "cURL Error" / "connection refused" / "timed out" / "No space left" / "unreachable" IS a real problem - rate the batch warning (or critical if a host is down). Never invent a failure, never ignore a stated one.
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"

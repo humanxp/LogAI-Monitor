@@ -171,7 +171,7 @@
                     <input type="checkbox" class="form-check-input" id="aiCacheOptimized">
                     <span>优化 AI 模型缓存效率（前缀缓存）</span>
                 </label>
-                <small style="color: var(--lm-ink-2);">开启后批量分析用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、缓存命中率更高、更省算力；few-shot 专门锚定"例行噪音/启动日志不算故障"，不影响判定精度。关闭用简单提示词。改动从下一轮分析开始生效，无需重启。</small>
+                <small style="color: var(--lm-ink-2);">开启后批量分析用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、缓存命中率更高、更省算力；few-shot 按 Qwen3.5-9B 的行为调校，锚定"例行噪音/启动日志不算故障"，不影响判定精度。关闭用简单提示词。改动从下一轮分析开始生效，无需重启。</small>
             </div>
 
             <div class="section-save">
@@ -378,7 +378,7 @@
         <ul>
             <li><b>纯模型判定</b>（与 python-legacy 一致）：模型的 <code>overall_status</code> 判什么就是什么，程序只做同义词归一（critical/error → critical，warning/notice → warning，info/healthy → healthy，其余 → other），不做任何修正。</li>
             <li>提示词用简单版本：无 few-shot 示例、无前缀缓存优化；日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
-            <li>小模型（3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围。</li>
+            <li>过小的模型（如 3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围；默认的 Qwen3.5-9B 已明显改善。</li>
         </ul>
 
         <h4><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
