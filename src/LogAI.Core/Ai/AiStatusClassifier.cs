@@ -52,10 +52,13 @@ public static class AiStatusClassifier
         }
 
         // 同义写法一并归一，避免模型偶尔换个词就掉进 other。
+        // 单条分析的 category 是"类型"（security/network/...）而非级别，这里把类型
+        // 也归到 4 档：security → critical，performance/application/system/network → warning。
         string bucket = status.ToLowerInvariant() switch
         {
-            "critical" or "fatal" or "emergency" or "alert" => "critical",
-            "error" or "err" or "warning" or "warn" or "notice" => "warning",
+            "critical" or "fatal" or "emergency" or "alert" or "security" => "critical",
+            "error" or "err" or "warning" or "warn" or "notice"
+                or "performance" or "application" or "system" or "network" => "warning",
             "info" or "informational" or "healthy" or "ok" or "normal" => "healthy",
             _ => "other",
         };
