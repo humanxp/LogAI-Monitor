@@ -83,7 +83,7 @@ internal static class AnalyzeApi
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
                 string prompt = PromptBuilderSingle.Build(fields);
-                var analysis = await CompleteAndExtractAsync(client, prompt, 1024, AiClient.AiDedupEnabledIn(settings));
+                var analysis = await CompleteAndExtractAsync(client, prompt, 1024, AiClient.AiDedupOutputEnabledIn(settings));
                 if (analysis is null)
                     return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -119,7 +119,7 @@ internal static class AnalyzeApi
                     batchFields,
                     int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
                                  out int sample) && sample > 0 ? sample : 200,
-                    AiClient.AiDedupEnabledIn(settings))), 2048, AiClient.AiDedupEnabledIn(settings));
+                    AiClient.AiDedupEnabledIn(settings))), 2048, AiClient.AiDedupOutputEnabledIn(settings));
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -203,7 +203,7 @@ internal static class AnalyzeApi
             string prompt = single
                 ? PromptBuilderSingle.Build(available[0])
                 : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit, AiClient.AiDedupEnabledIn(settings)));
-            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048, AiClient.AiDedupEnabledIn(settings));
+            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048, AiClient.AiDedupOutputEnabledIn(settings));
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });

@@ -169,9 +169,17 @@
             <div class="form-group">
                 <label class="form-check">
                     <input type="checkbox" class="form-check-input" id="aiDedupEnabled" checked>
-                    <span>Deduplicate log lines &amp; analysis results</span>
+                    <span>Deduplicate log lines before sending to the model</span>
                 </label>
-                <small style="color: var(--lm-ink-2);">一个开关控制两处去重：① 发送前——把只有 pid / 时间戳 / 数字 / IP / sleep 延迟不同的例行消息折叠成一条（带 ×N，保留重复次数）；② 返回后——模型重复列的 issues / 建议去重、critical_count 封顶。提示词更短、缓存命中更高、结果更干净。改动从下一轮开始生效，无需重启。</small>
+                <small style="color: var(--lm-ink-2);">把只有 pid / 时间戳 / 数字 / IP / sleep 延迟不同的例行消息折叠成一条（带 ×N，保留重复次数）。提示词更短、缓存命中更高。改动从下一轮开始生效，无需重启。</small>
+            </div>
+
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="aiDedupOutputEnabled" checked>
+                    <span>Deduplicate analysis results (issues &amp; recommendations)</span>
+                </label>
+                <small style="color: var(--lm-ink-2);">模型返回后，把重复列的 issues / 处理建议去重、critical_count 封顶。结果更干净。改动从下一轮开始生效，无需重启。</small>
             </div>
 
             <div class="section-save">

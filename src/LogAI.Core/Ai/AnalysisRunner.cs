@@ -27,7 +27,7 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
     /// 每轮多一次 HGET 完全可以忽略，换来的是文案与行为一致。
     /// 读取失败时退回启动时的取值，不让一次抖动影响分析。
     /// </summary>
-    private (int BatchSize, int SampleLimit, bool Dedup) ReadLimits()
+    private (int BatchSize, int SampleLimit, bool InputDedup, bool OutputDedup) ReadLimits()
     {
         try
         {
@@ -48,19 +48,20 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
                 int.TryParse(RedisStore.ToText(sampleRaw).Trim().Trim('"'), out sample);
             if (sample <= 0) sample = fallbackSampleLimit;
 
-            bool dedup = AiClient.AiDedupEnabledIn(settings);
+            bool dedup = AiClient.AiDedupEnabledIn(settings);          // 输入去重（发送前折叠日志）
+            bool outputDedup = AiClient.AiDedupOutputEnabledIn(settings);   // 输出去重（结果去重）
 
-            return (batch, sample, dedup);
+            return (batch, sample, dedup, outputDedup);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
-            return (fallbackBatchSize, fallbackSampleLimit, true);
+            return (fallbackBatchSize, fallbackSampleLimit, true, true);
         }
     }
 
     public async Task<Outcome> RunOnceAsync(CancellationToken cancellationToken = default)
     {
-        var (batchSize, sampleLimit, dedup) = ReadLimits();
+        var (batchSize, sampleLimit, inputDedup, outputDedup) = ReadLimits();
         var batch = await UnanalyzedBatch.FetchAsync(store, batchSize, cancellationToken);
         if (batch.Count == 0) return new Outcome("empty", 0, null, null);
 
@@ -69,14 +70,14 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
 
         // 取批上限与送给模型的样本数是两件事：批次决定"这一轮处理多少条"，
         // 样本上限决定"其中多少条真正进入提示词"（按级别优先）。
-        string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs, sampleLimit, dedup));
+        string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs, sampleLimit, inputDedup));
         string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
-        var analysis = JsonExtractor.Extract(reply, dedup);
+        var analysis = JsonExtractor.Extract(reply, outputDedup);
 
         if (analysis is null)
         {
             reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken);
-            analysis = JsonExtractor.Extract(reply, dedup);
+            analysis = JsonExtractor.Extract(reply, outputDedup);
         }
 
         if (analysis is null)
