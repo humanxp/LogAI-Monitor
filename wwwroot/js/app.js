@@ -279,14 +279,13 @@ function updateTelegramUsage() {
 
 // 复位清零：清掉累计与所有日用量（管理员限定，不可撤销）。
 async function resetTokenUsage() {
-    if (!confirm('确定清零 AI Token 用量统计吗？\n\n累计与所有日用量都会被删除，不可撤销。')) return;
     const btn = document.getElementById('resetTokenUsageBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清零中...'; }
     try {
         const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
-            showToast('✅ 已清零', `AI Token 用量已归零（删除 ${data.deleted} 个键）`, 'success');
+            showToast('Success', `Token 用量已清零（删除 ${data.deleted} 个键）`, 'success');
             await fetchStats();
         } else if (response.status === 403) {
             showToast('Access denied', '只有管理员可以清零用量统计', 'error');
@@ -303,14 +302,13 @@ async function resetTokenUsage() {
 
 // Telegram 发送量复位清零（管理员限定，不可撤销）。
 async function resetTelegramUsage() {
-    if (!confirm('确定清零 Telegram 推送计数吗？\n\n累计与所有日计数都会被删除，不可撤销。')) return;
     const btn = document.getElementById('resetTelegramUsageBtn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清零中...'; }
     try {
         const response = await fetch('/api/telegram-usage/reset', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
-            showToast('✅ 已清零', `Telegram 推送计数已归零（删除 ${data.deleted} 个键）`, 'success');
+            showToast('Success', `Telegram 推送计数已清零（删除 ${data.deleted} 个键）`, 'success');
             await fetchStats();
         } else if (response.status === 403) {
             showToast('Access denied', '只有管理员可以清零', 'error');
