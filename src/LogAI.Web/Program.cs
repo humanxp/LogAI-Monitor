@@ -587,15 +587,39 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
     var statusById = new Dictionary<string, string>(StringComparer.Ordinal);
     const int ShChunk = 500;
 
-    // 0) critical 闸门用的"危急级别日志 id"集合：热 ZSET + 归档表。批次里没有这些
-    //    id 就不认模型说的 critical（3B 模型会把一长串良性重复消息说成 critical）。
+    // 0) critical 闸门用的"真正危急"日志 id 集合：级别危急 且 消息含故障特征词。
+    //    只按级别会被设备的乱标骗过（"start NTP update" 被标成 emergency）。
+    //    与 AiHistoryWriter 的写入路径同一个判定口径（IsGenuinelyCritical）。
     var critIds = new HashSet<string>(StringComparer.Ordinal);
     foreach (string sev in new[] { "emergency", "alert", "critical" })
-        foreach (var m in await shStore.Db.SortedSetRangeByRankAsync(
-                     LogAI.Core.Store.Keys.LogSeverity(sev), 0, -1))
-            critIds.Add(m.ToString());
-    foreach (string cid in await shArchive.ListCriticalSeverityIdsAsync()) critIds.Add(cid);
-    Console.WriteLine("[backfill] critical-severity log ids: " + critIds.Count);
+    {
+        var members = await shStore.Db.SortedSetRangeByRankAsync(
+            LogAI.Core.Store.Keys.LogSeverity(sev), 0, -1);
+        foreach (var m in members)
+        {
+            string id = m.ToString();
+            string msg = (await shStore.Db.HashGetAsync(id, "message")).ToString();
+            if (LogAI.Core.Ai.AiStatusClassifier.IsGenuinelyCritical(sev, msg))
+                critIds.Add(id);
+        }
+    }
+    var shArchivedCritical = await shArchive.ListCriticalSeverityIdsAsync();
+    if (shArchivedCritical.Count > 0)
+    {
+        var shRows = await shArchive.GetFieldsBatchAsync(shArchivedCritical);
+        for (int i = 0; i < shArchivedCritical.Count; i++)
+        {
+            string sev = "", msg = "";
+            foreach (var f in shRows[i])
+            {
+                if (f.Name.ToString() == "severity") sev = f.Value.ToString();
+                else if (f.Name.ToString() == "message") msg = f.Value.ToString();
+            }
+            if (LogAI.Core.Ai.AiStatusClassifier.IsGenuinelyCritical(sev, msg))
+                critIds.Add(shArchivedCritical[i]);
+        }
+    }
+    Console.WriteLine("[backfill] genuinely-critical log ids: " + critIds.Count);
 
     Func<string, bool> hasCriticalLog = raw =>
     {
@@ -667,6 +691,29 @@ if (args.Length >= 1 && args[0] == "--backfill-ai-status-hash")
             shEntries.Skip(offset).Take(size).ToArray());
     }
     Console.WriteLine($"[backfill] set status-hash on {shEntries.Length} ai_history records");
+
+    // 4) 同步写回每条记录哈希的 status 字段——详情页从记录哈希读 status（不是独立
+    //    哈希），只改独立哈希会让详情页仍显示旧值。热记录 HSET，已归档的写 SQLite。
+    var shMissingSet = new HashSet<string>(shMissing, StringComparer.Ordinal);
+    int hotWritten = 0;
+    for (int offset = 0; offset < shEntries.Length; offset += ShChunk)
+    {
+        int size = Math.Min(ShChunk, shEntries.Length - offset);
+        var b = shStore.Db.CreateBatch();
+        var tasks = new List<Task>(size);
+        for (int i = 0; i < size; i++)
+        {
+            string id = shEntries[offset + i].Name.ToString();
+            if (shMissingSet.Contains(id)) continue;      // 归档的走 SQLite
+            tasks.Add(b.HashSetAsync(id, "status", shEntries[offset + i].Value));
+            hotWritten++;
+        }
+        if (tasks.Count > 0) { b.Execute(); await Task.WhenAll(tasks); }
+    }
+    foreach (string id in shMissing)
+        if (statusById.TryGetValue(id, out string? st))
+            await shArchive.UpdateHashFieldAsync(id, "status", st);
+    Console.WriteLine($"[backfill] wrote record-hash status on {hotWritten} hot + {shMissing.Count} archived records");
     Environment.Exit(0);
 }
 
