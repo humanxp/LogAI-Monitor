@@ -77,7 +77,6 @@ run_cmd() {
   docker run -d --name logaimonitor \
     --restart unless-stopped \
     --network logradarai_logaimonitor-net \
-    --network-alias redis \
     -p 5059:5059 -p 514:514/udp -p 515:515/tcp \
     -v /var/run/docker.sock:/var/run/docker.sock:ro \
     -v /root/logai-archive:/data \
