@@ -225,10 +225,16 @@ public static class JsonExtractor
         if (obj["affected_hosts"] is not JsonArray) obj["affected_hosts"] = new JsonArray();
         if (obj["critical_count"] is null) obj["critical_count"] = 0;
         if (obj["alert_message"] is null) obj["alert_message"] = "";
+        EnsureRecommendation(obj);
+    }
 
-        // 兜底：模型常给"有 issues 但 recommendations 空"，界面就只剩"发现的问题"没有
-        // "处理建议"。这里补一条通用建议，保证这两块始终成对出现（模型能给的还是用模型的，
-        // 只有为空时才兜底）。
+    /// <summary>
+    /// 若已有 issues 但 recommendations 为空，补一条通用建议。有两处调用：
+    /// 1) EnsureFields（提取时）；2) warning 下限注入故障行之后——那时 issues 才刚被补上，
+    ///    EnsureFields 早已跑过，必须再补一次，否则就出现"有 issues 无 recommendations"。
+    /// </summary>
+    public static void EnsureRecommendation(JsonObject obj)
+    {
         if (obj["issues_found"] is JsonArray iss && iss.Count > 0
             && obj["recommendations"] is JsonArray rec && rec.Count == 0)
         {

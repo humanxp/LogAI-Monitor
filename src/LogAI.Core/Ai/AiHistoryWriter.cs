@@ -58,6 +58,9 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
                     foreach (string line in failureLines.Take(8))
                         if (issues.All(x => x?.ToString() != line)) issues.Add(line);
                     obj["issues_found"] = issues;
+                    // 刚注入的 issues 是在 EnsureFields 之后才出现的，这里补一条建议，
+                    // 避免"有 issues 无 recommendations"。
+                    JsonExtractor.EnsureRecommendation(obj);
                 }
             }
         }
