@@ -148,13 +148,18 @@ public sealed class AiClient(HttpClient? http = null)
         AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
     /// <summary>
-    /// 「优化 AI 模型缓存效率」开关（默认关闭）。开启时用 BatchPromptCached（few-shot
-    /// 前缀缓存版，静态块在日志前、命中率高），关闭时用简单版 BatchPrompt。与 AiEnabledIn
-    /// 相反的判定：这是 opt-in，只有显式 true/1/yes/on 才视为开启。
+    /// 提示词模式（设置页「建议使用模型匹配优化」下拉框）。值：default（简单提示词）、
+    /// qwen35 / qwen36（few-shot 前缀缓存版，静态块在日志前、命中率高）。缺省回退旧键
+    /// ai_cache_optimized。opt-in：只有非 default 才用缓存提示词。
     /// </summary>
     public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, object?> settings)
     {
-        if (!settings.TryGetValue("ai_cache_optimized", out object? raw) || raw is null)
+        if (settings.TryGetValue("ai_prompt_mode", out object? raw) && raw is not null)
+        {
+            string mode = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
+            if (mode.Length > 0) return mode != "default";
+        }
+        if (!settings.TryGetValue("ai_cache_optimized", out raw) || raw is null)
             return false;
         string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
         return text is "true" or "1" or "yes" or "on";

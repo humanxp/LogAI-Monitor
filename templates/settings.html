@@ -167,10 +167,11 @@
             </div>
 
             <div class="form-group">
-                <label class="form-label" for="aiPromptMode">建议使用模型</label>
+                <label class="form-label" for="aiPromptMode">建议使用模型匹配优化</label>
                 <select class="form-control form-select" id="aiPromptMode">
-                    <option value="false">Llama3.2-3B（默认）</option>
-                    <option value="true">Qwen3.5-9B（优化缓存效率）</option>
+                    <option value="default">Llama3.2-3B（默认）</option>
+                    <option value="qwen35">Qwen3.5-9B（优化缓存效率）</option>
+                    <option value="qwen36">Qwen3.6-35B-A3B（优化缓存效率）</option>
                 </select>
                 <small style="color: var(--lm-ink-2);">「Qwen3.5-9B」用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力；「Llama3.2-3B」用默认简单提示词。改动从下一轮分析开始生效，无需重启。</small>
             </div>
