@@ -127,8 +127,7 @@ internal static class AnalyzeApi
                     ["error"] = "model reply was not a valid JSON object",
                 });
 
-            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0,
-                recommendAsync: lines => client.RecommendFailureLinesAsync(lines));
+            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0);
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -210,47 +209,29 @@ internal static class AnalyzeApi
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
 
             // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
-            string status;
-            if (single)
+            string status = AiStatusClassifier.Classify(type, analysis,
+                allowCritical: single || HasCriticalLog(available));
+
+            // warning 下限：判 healthy 但日志消息里有真实故障词 → 升 warning 并补进 issues。
+            if (string.Equals(status, "healthy", StringComparison.Ordinal) && !single)
             {
-                status = AiStatusClassifier.Classify(type, analysis, allowCritical: true);
-            }
-            else
-            {
-                // 方向 A：批分析的状态/计数/issues 完全由程序按日志确定性判定，不看模型 overall_status。
                 var failureLines = available
                     .Where(log => AiStatusClassifier.HasFailureWord(log.GetValueOrDefault("message")))
-                    .Select(log => "[" + (log.GetValueOrDefault("hostname") ?? log.GetValueOrDefault("source") ?? "?") + "] " + log.GetValueOrDefault("message"))
-                    .Distinct(StringComparer.Ordinal)
                     .Take(8)
+                    .Select(log => "[" + (log.GetValueOrDefault("hostname") ?? log.GetValueOrDefault("source") ?? "?") + "] " + log.GetValueOrDefault("message"))
                     .ToList();
-                int criticalCount = available.Count(log =>
-                    AiStatusClassifier.IsGenuinelyCritical(log.GetValueOrDefault("severity"), log.GetValueOrDefault("message")));
-                status = AiStatusClassifier.ClassifyFromLogs(criticalCount > 0, failureLines.Count > 0);
-
-                if (analysis is JsonObject obj)
+                if (failureLines.Count > 0)
                 {
-                    obj["overall_status"] = status;
-                    obj["critical_count"] = status == "critical" ? Math.Min(criticalCount, 8) : 0;
-                    var issueArray = new JsonArray();
-                    foreach (string line in failureLines) issueArray.Add(line);
-                    obj["issues_found"] = issueArray;
-
-                    // 建议交给模型生成（针对检出的故障行）。
-                    if (failureLines.Count > 0)
+                    status = "warning";
+                    if (analysis is JsonObject obj)
                     {
-                        try
-                        {
-                            var modelRecs = await client.RecommendFailureLinesAsync(failureLines);
-                            if (modelRecs.Count > 0)
-                            {
-                                var recArray = obj["recommendations"] as JsonArray ?? new JsonArray();
-                                foreach (string r in modelRecs)
-                                    if (recArray.All(x => x?.ToString() != r)) recArray.Add(r);
-                                obj["recommendations"] = recArray;
-                            }
-                        }
-                        catch { /* 模型失败就留空，不影响写库 */ }
+                        var issues = obj["issues_found"] as JsonArray ?? new JsonArray();
+                        foreach (string line in failureLines)
+                            if (issues.All(x => x?.ToString() != line)) issues.Add(line);
+                        obj["issues_found"] = issues;
+                        // 刚注入的 issues 是在 EnsureFields 之后才出现的，这里补一条建议，
+                        // 避免"有 issues 无 recommendations"。
+                        JsonExtractor.EnsureRecommendation(obj);
                     }
                 }
             }
@@ -348,6 +329,11 @@ internal static class AnalyzeApi
                 logs.Add(entries.ToDictionary(e => e.Name.ToString(), e => e.Value.ToString(), StringComparer.Ordinal));
         return logs;
     }
+
+    /// <summary>这批日志里是否有 emergency/alert/critical 级别的（与 AiHistoryWriter 的 critical 闸门同口径）。</summary>
+    private static bool HasCriticalLog(IEnumerable<IReadOnlyDictionary<string, string>> logs) =>
+        logs.Any(log => LogAI.Core.Ai.AiStatusClassifier.IsGenuinelyCritical(
+            log.GetValueOrDefault("severity"), log.GetValueOrDefault("message")));
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
     private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool dedup)

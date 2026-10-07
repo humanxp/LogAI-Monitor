@@ -71,16 +71,6 @@ public static class AiStatusClassifier
     }
 
     /// <summary>
-    /// 确定性分类（方向 A）：完全不看模型的 overall_status，只按原始日志判定。
-    /// hasCriticalLog = 批里存在 critical 级日志（emergency/alert/critical 且消息含故障词）；
-    /// hasFailureLine = 批里存在含故障词的日志（任意级别）。
-    /// 3B 模型的 overall_status 只会 healthy/critical 两极（实测 12% 判对 warning），
-    /// 所以总判断交给程序，模型只负责找问题与给建议。
-    /// </summary>
-    public static string ClassifyFromLogs(bool hasCriticalLog, bool hasFailureLine)
-        => hasCriticalLog ? "critical" : (hasFailureLine ? "warning" : "healthy");
-
-    /// <summary>
     /// 字符串重载：先解析再分类。刻意不依赖 JsonNode 对 string 的隐式转换——
     /// 那会把整串 JSON 变成单个 JsonValue（而非 JsonObject），从而把一切误判成
     /// "other"（回填时踩过这个坑，加 allowCritical 参数时又踩了一次）。

@@ -225,6 +225,79 @@ public static class JsonExtractor
         if (obj["affected_hosts"] is not JsonArray) obj["affected_hosts"] = new JsonArray();
         if (obj["critical_count"] is null) obj["critical_count"] = 0;
         if (obj["alert_message"] is null) obj["alert_message"] = "";
+        EnsureRecommendation(obj);
+    }
+
+    /// <summary>故障词 → 具体处置建议（兜底建议按此生成）。</summary>
+    private static readonly (string Marker, string Advice)[] FailureAdvice =
+    {
+        ("no space left", "清理磁盘空间或扩容"),
+        ("out of memory", "检查内存占用并适当扩容"),
+        ("connection refused", "确认目标服务在线且端口开放"),
+        ("refused", "确认目标服务在线且端口开放"),
+        ("unreachable", "检查网络连通性与目标主机状态"),
+        ("timed out", "检查网络延迟或目标服务响应"),
+        ("timeout", "检查网络延迟或目标服务响应"),
+        ("panic", "检查程序日志与运行环境"),
+        ("segfault", "检查程序与依赖库"),
+        ("crashed", "检查程序日志与重启策略"),
+        ("fatal", "检查对应服务日志"),
+        ("failed", "检查对应服务/设备的运行状态与系统日志"),
+        ("down", "检查目标主机/服务的运行状态"),
+    };
+
+    /// <summary>
+    /// 若已有 issues 但 recommendations 为空，补兜底建议。建议点名主机、并按故障词给
+    /// 针对性提示，比一句"请检查上述主机"更具体。有两处调用：
+    /// 1) EnsureFields（提取时）；2) warning 下限注入故障行之后——那时 issues 才刚被补上，
+    ///    EnsureFields 早已跑过，必须再补一次，否则就出现"有 issues 无 recommendations"。
+    /// </summary>
+    public static void EnsureRecommendation(JsonObject obj)
+    {
+        if (obj["issues_found"] is JsonArray iss && iss.Count > 0
+            && obj["recommendations"] is JsonArray rec && rec.Count == 0)
+        {
+            foreach (string r in BuildFallbackRecommendations(iss))
+                rec.Add(r);
+        }
+    }
+
+    private static List<string> BuildFallbackRecommendations(JsonArray issues)
+    {
+        var hosts = new List<string>();
+        var foundMarkers = new List<string>();
+        foreach (var item in issues)
+        {
+            string line = item?.ToString() ?? "";
+            string host = "?";
+            string msg = line;
+            if (line.StartsWith("[", StringComparison.Ordinal))
+            {
+                int close = line.IndexOf(']');
+                if (close > 1) { host = line.Substring(1, close - 1); msg = line.Substring(close + 1).Trim(); }
+            }
+            if (host.Length > 0 && host != "?" && !hosts.Contains(host)) hosts.Add(host);
+            foreach (var (marker, _) in FailureAdvice)
+                if (msg.Contains(marker, StringComparison.OrdinalIgnoreCase) && !foundMarkers.Contains(marker))
+                    foundMarkers.Add(marker);
+        }
+
+        var result = new List<string>();
+        if (foundMarkers.Count == 0)
+        {
+            result.Add("检查相关主机的服务与日志，确认问题并处理");
+            return result;
+        }
+
+        string hostPart = hosts.Count > 0 ? "主机 " + string.Join("、", hosts) + " 出现" : "日志出现";
+        foreach (string marker in foundMarkers)
+        {
+            string advice = "";
+            foreach (var (m, a) in FailureAdvice)
+                if (m == marker) { advice = a; break; }
+            result.Add(hostPart + "「" + marker + "」故障：请" + advice);
+        }
+        return result;
     }
 
     /// <summary>

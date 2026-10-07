@@ -47,12 +47,23 @@ internal static class JsonSelfTest
         Check("dedup off keeps the raw output", JsonExtractor.Extract(dup, dedup: false),
             n => n["issues_found"] is JsonArray { Count: 3 } && n["critical_count"]?.GetValue<int>() == 5);
 
-        // 7) 有 issues 但 recommendations 空：HasRequiredFields 判不自洽（触发重试让模型补）。
-        //    建议一律由模型生成，程序不再塞模板建议，所以这里只校验"判不自洽"。
+        // 7) 有 issues 但 recommendations 空：HasRequiredFields 判不自洽（触发重试），
+        //    提取时兜底补一条通用建议，保证"发现的问题"与"处理建议"成对出现。
         string noRec = """{"overall_status":"warning","issues_found":["a"],"recommendations":[],"critical_count":0}""";
         Check("issues without recommendations is incomplete",
             System.Text.Json.Nodes.JsonNode.Parse(noRec),
             n => !JsonExtractor.HasRequiredFields(n));
+        Check("issues without recommendations gets a fallback recommendation",
+            JsonExtractor.Extract(noRec),
+            n => n["recommendations"] is JsonArray { Count: 1 });
+
+        // 8) 兜底建议要"具体"：点名主机 + 按故障词给针对性提示。
+        string failLine = """{"overall_status":"warning","issues_found":["[web01] IpmiIfcOpenIpmiOpen: open(/dev/ipmi0) failed"],"recommendations":[],"critical_count":0}""";
+        Check("fallback recommendation names host and failure word",
+            JsonExtractor.Extract(failLine),
+            n => n["recommendations"] is JsonArray { Count: 1 } rec
+                 && rec[0]?.ToString().Contains("web01") == true
+                 && rec[0]?.ToString().Contains("failed") == true);
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;

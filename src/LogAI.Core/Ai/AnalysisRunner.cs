@@ -85,8 +85,7 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         if (analysis is null)
             return new Outcome("failed", batch.Count, null, "reply was not a valid JSON object after a corrective retry");
 
-        string historyId = await history.WriteAsync(ids, analysis,
-            recommendAsync: lines => client.RecommendFailureLinesAsync(lines, cancellationToken));
+        string historyId = await history.WriteAsync(ids, analysis);
         await AnalysisCommit.ApplyAsync(store, ids, analysis, cancellationToken);
         return new Outcome("analyzed", batch.Count, historyId, null);
     }
