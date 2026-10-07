@@ -380,6 +380,70 @@ internal static class ReadApi
         return groups;
     }
 
+    /// <summary>
+    /// 每小时从存量日志采样推导 ip -> 主要 hostname 映射（python-legacy 的
+    /// rebuild_host_ipname_map）。没这个映射，All Hosts 里主机名和 IP 会显示成两条，
+    /// 而不是合并成一条 "名称 (IP)"。每个非 IP 主机名索引取最近 sampleLimit 条日志、
+    /// 数其来源 IP，取多数（≥2 票才认）作为该 IP 的显示名，然后权威重写 host:ipname。
+    /// </summary>
+    public static async Task<Dictionary<string, string>> RebuildHostIpNameMapAsync(RedisStore store, int sampleLimit = 400)
+    {
+        var mapping = new Dictionary<string, string>(StringComparer.Ordinal);
+        try
+        {
+            var hosts = (await store.Db.SetMembersAsync(Keys.HostsIndex))
+                .Select(m => m.ToString())
+                .OrderBy(v => v, StringComparer.Ordinal)
+                .ToList();
+
+            var votes = new Dictionary<string, Dictionary<string, int>>(StringComparer.Ordinal);
+            foreach (string name in hosts)
+            {
+                if (IsIp(name) || LooksLikeProgramTag(name)) continue;
+                RedisValue[] ids;
+                try { ids = await store.Db.SortedSetRangeByRankAsync(Keys.LogHost(name), 0, sampleLimit - 1, Order.Descending); }
+                catch { continue; }
+                if (ids.Length == 0) continue;
+
+                var batch = store.Db.CreateBatch();
+                var reads = ids.Select(id => batch.HashGetAsync(id.ToString(), "source")).ToArray();
+                batch.Execute();
+                var sources = await Task.WhenAll(reads);
+
+                foreach (var src in sources)
+                {
+                    string s = src.ToString();
+                    if (s.Length == 0 || !IsIp(s)) continue;
+                    if (!votes.TryGetValue(s, out var names))
+                        votes[s] = names = new Dictionary<string, int>(StringComparer.Ordinal);
+                    names[name] = names.GetValueOrDefault(name) + 1;
+                }
+            }
+
+            foreach (var pair in votes)
+            {
+                var best = pair.Value.OrderByDescending(kv => kv.Value).First();
+                if (best.Value >= 2) mapping[pair.Key] = best.Key;
+            }
+
+            // 权威重写：有票才重写，或主机索引整个为空时清空旧映射（避免旧错误标签残留）。
+            if (votes.Count > 0 || hosts.Count == 0)
+            {
+                await store.Db.KeyDeleteAsync(Keys.HostIpName);
+                if (mapping.Count > 0)
+                {
+                    var entries = mapping.Select(kv => new HashEntry(kv.Key, kv.Value)).ToArray();
+                    await store.Db.HashSetAsync(Keys.HostIpName, entries);
+                }
+            }
+        }
+        catch
+        {
+            // 采样失败不致命：保留旧映射，下个小时再试。
+        }
+        return mapping;
+    }
+
     private static string ShortHostLabel(string name)
     {
         name = (name ?? "").Trim();

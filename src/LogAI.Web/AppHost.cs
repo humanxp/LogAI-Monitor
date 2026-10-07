@@ -512,13 +512,15 @@ internal static class AppHost
             {
                 var cleanup = await LogAI.Core.Scheduler.CleanupJob.RunAsync(
                     store, retentionHours, archive: archive, cancellationToken: ct);
+                // 每小时从存量日志重建 ip->hostname 映射，让 All Hosts 合并成"名称 (IP)"。
+                var hostMap = await LogAI.Web.Api.ReadApi.RebuildHostIpNameMapAsync(store);
                 // Log the outcome even when nothing was removed: without a positive
                 // line, "the job ran and found nothing" and "the job never ran" look
                 // identical in the log, which is exactly how a data deletion can go
                 // unexplained.
                 Console.WriteLine("[Cleanup] removed " + cleanup.Removed + " logs, "
                     + cleanup.AiHistoryRemoved + " ai_history, " + cleanup.AlertsRemoved + " alerts, purged "
-                    + cleanup.DeadPurged + " dead ids");
+                    + cleanup.DeadPurged + " dead ids; host-map " + hostMap.Count + " ip->name");
 
             },
             firstDelay: TimeSpan.FromMinutes(1));
