@@ -18,9 +18,8 @@ public static class AiStatusClassifier
     public static readonly string[] Statuses = ["critical", "warning", "healthy", "other"];
 
     /// <summary>
-    /// 归类。<paramref name="allowCritical"/> = 这批日志里确实存在 emergency/alert/critical
-    /// 级别的原始日志（由调用方查级别后传入）。传 false 时即便模型说 critical 也降级为
-    /// warning——3B 模型习惯把一长串重复的 error/info 消息说成 critical，光靠提示词压不住。
+    /// 归类：纯模型模式——只做同义词归一（critical/error/... → 4 档），不做任何修正。
+    /// <paramref name="allowCritical"/> 已废弃（保留仅为兼容旧调用），不再起闸门作用。
     /// </summary>
     public static string Classify(string type, JsonNode? analysis, bool allowCritical = true)
     {
@@ -44,11 +43,8 @@ public static class AiStatusClassifier
         {
             status = Text(obj, "overall_status");
             if (status.Length == 0) status = Text(obj, "category");
-            // 保险：模型说 critical 却又数不出一个 critical 问题（critical_count=0），
-            // 按 warning 处理——critical 至少要有它自己认定的一个问题撑着。
-            if (status.Equals("critical", StringComparison.OrdinalIgnoreCase)
-                && obj["critical_count"] is JsonValue cc && cc.TryGetValue<int>(out int n) && n <= 0)
-                status = "warning";
+            // 100% 纯模型：不再做 critical_count<=0 / allowCritical / HasFailureIssue 修正，
+            // 模型说什么就是什么（下面只做同义词归一）。
         }
 
         // 同义写法一并归一，避免模型偶尔换个词就掉进 other。
@@ -63,10 +59,6 @@ public static class AiStatusClassifier
             _ => "other",
         };
 
-        if (bucket == "critical" && !allowCritical) return "warning";
-        // 模型偶尔判 healthy 却在 issues_found 里列了真实故障（Transfer failed / open
-        // failed / Failed to send），自相矛盾。按"字面故障词"确定性升到 warning。
-        if (bucket == "healthy" && HasFailureIssue(obj)) return "warning";
         return bucket;
     }
 

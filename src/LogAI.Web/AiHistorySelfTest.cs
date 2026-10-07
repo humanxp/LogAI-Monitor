@@ -84,21 +84,17 @@ internal static class AiHistorySelfTest
             && AiStatusClassifier.Classify("auto", """{"overall_status":"notice"}""") == "warning");
         Check("info folds into healthy",
             AiStatusClassifier.Classify("auto", """{"overall_status":"info"}""") == "healthy");
-        Check("critical without any critical_count is downgraded",
-            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""") == "warning");
-        Check("critical gate blocks when batch has no critical log",
-            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false) == "warning");
-        Check("critical gate allows through when batch has a critical log",
-            AiStatusClassifier.Classify("auto", CritJson, allowCritical: true) == "critical");
+        Check("critical without any critical_count stays critical (pure model)",
+            AiStatusClassifier.Classify("auto", """{"overall_status":"critical","critical_count":0}""") == "critical");
+        Check("allowCritical is ignored (pure model)",
+            AiStatusClassifier.Classify("auto", CritJson, allowCritical: false) == "critical"
+            && AiStatusClassifier.Classify("auto", CritJson, allowCritical: true) == "critical");
         Check("non-object analysis is other",
             AiStatusClassifier.Classify("auto", "not json") == "other");
-        // 模型自相矛盾：判 healthy 却在 issues 里列了真实故障 → 确定性升到 warning；
-        // 若 issues 全是例行（无故障词），则仍是 healthy。
-        Check("healthy with a failure-word issue is bumped to warning",
+        // 100% 纯模型：判 healthy 就 healthy，即使 issues 里列了故障词也不改。
+        Check("healthy with a failure-word issue stays healthy (pure model)",
             AiStatusClassifier.Classify("auto",
-                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""") == "warning"
-            && AiStatusClassifier.Classify("auto",
-                """{"overall_status":"healthy","issues_found":["[h1] open(/dev/ipmi0) failed"]}""") == "warning");
+                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""") == "healthy");
         Check("healthy with only routine issues stays healthy",
             AiStatusClassifier.Classify("auto",
                 """{"overall_status":"healthy","issues_found":["[h1] Load template from file","[h2] Injector: Sleeping!"]}""") == "healthy");
