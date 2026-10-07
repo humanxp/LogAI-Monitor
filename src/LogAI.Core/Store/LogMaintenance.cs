@@ -163,6 +163,24 @@ public static class LogMaintenance
     }
 
     /// <summary>
+    /// 清空分析历史 + 告警（Redis 与 SQLite 冷归档一并删），配 "Clear All Logs" 的
+    /// "一键回到初始状态"。只删 ai_history:* / alert:* / alerts:*，不动设置与过滤器。
+    /// </summary>
+    public static async Task ClearAnalysisAndAlertsAsync(RedisStore store,
+                                                         LogArchive? archive = null,
+                                                         CancellationToken cancellationToken = default)
+    {
+        await store.DeleteKeysByPatternAsync("ai_history:*");
+        await store.DeleteKeysByPatternAsync("alert:*");
+        await store.DeleteKeysByPatternAsync("alerts:*");
+        if (archive is not null)
+        {
+            await archive.DeleteHashesByPrefixAsync("ai_history:", cancellationToken);
+            await archive.DeleteHashesByPrefixAsync("alert:", cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Forgets a connected-client record. A client owns FOUR keys (see
     /// ClientTracker): removing only the index entry leaves the hash, the
     /// protocol set and the recent-window zset behind, so the record reappears

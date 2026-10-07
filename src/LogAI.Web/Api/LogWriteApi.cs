@@ -28,6 +28,8 @@ internal static class LogWriteApi
             long deleted = await LogMaintenance.ClearAllAsync(store, archive);
             LogAI.Web.Api.StatsApi.PushIfNeeded(store);
             await LogMaintenance.DeleteAllClientsAsync(store);
+            // "一键回到初始状态"：连分析历史 + 告警一起清（Redis + SQLite 冷归档）。
+            await LogMaintenance.ClearAnalysisAndAlertsAsync(store, archive);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["deleted"] = deleted,

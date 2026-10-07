@@ -483,7 +483,7 @@ function currentSettingsTab() {
 document.addEventListener('DOMContentLoaded', initSettingsTabs);
 
 async function clearAllLogs() {
-    if (!confirm('确定删除数据库中的全部日志吗？此操作不可撤销！\n\n同时会清空 Connected Clients 的主机记录（主机下次发日志会自动回来）。')) return;
+    if (!confirm('确定删除数据库中的全部数据吗？此操作不可撤销！\n\n将一并清空：\n· 全部日志（Redis + SQLite 冷归档）\n· AI 分析历史（Analysis History）\n· 全部告警（Alerts）\n· Connected Clients 主机记录（主机下次发日志会自动回来）\n\n设置、过滤器与账号会保留。')) return;
     const btn = document.getElementById('clearAllLogsBtn');
     try {
         if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deleting all logs...'; }
