@@ -23,7 +23,7 @@ public sealed class AiClient(HttpClient? http = null)
     public string BaseUrl { get; init; } = "";
     public string Model { get; init; } = "";
     public string ApiKey { get; init; } = "";
-    public int MaxTokens { get; init; } = 2048;
+    public int MaxTokens { get; init; } = 8192;
 
     /// <summary>
     /// 可选：设置后每次调用都会把响应里的 usage（token 数）累加进 Redis，
@@ -40,11 +40,11 @@ public sealed class AiClient(HttpClient? http = null)
     public double FrequencyPenalty { get; init; } = 0.3;
 
     /// <summary>
-    /// 是否启用模型的"思考模式"（Qwen3.5 这类推理模型默认会先输出一段 Thinking
-    /// Process 再给答案，烧 token 又破坏 JSON 提取）。syslog 分析是直接 JSON 任务，
-    /// 固定关闭。传给 OpenAI 兼容后端为 enable_thinking:false（非推理模型忽略它）。
+    /// 是否启用模型的"思考模式"。Qwen3.5/3.6 这类推理模型：开着思考（不传
+    /// enable_thinking:false）精度更好 + omlx 前缀缓存能命中；代价是推理过程烧 token、
+    /// 速度慢（约 1-2 分钟/批）。false 时才传 enable_thinking:false（会连带禁用前缀缓存）。
     /// </summary>
-    public bool EnableThinking { get; init; } = false;
+    public bool EnableThinking { get; init; } = true;
 
     public async Task<string> CompleteAsync(string prompt, string? system = null,
                                             CancellationToken cancellationToken = default)

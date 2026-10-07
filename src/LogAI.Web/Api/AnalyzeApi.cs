@@ -83,7 +83,7 @@ internal static class AnalyzeApi
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
                 string prompt = PromptBuilderSingle.Build(fields);
-                var analysis = await CompleteAndExtractAsync(client, prompt, 1024);
+                var analysis = await CompleteAndExtractAsync(client, prompt, 4096);
                 if (analysis is null)
                     return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -121,7 +121,7 @@ internal static class AnalyzeApi
             string batchPrompt = AiClient.AiCacheOptimizedEnabledIn(settings)
                 ? PromptBuilder.BatchPromptCached(batchSummary)
                 : PromptBuilder.BatchPrompt(batchSummary);
-            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 2048);
+            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 8192);
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -223,7 +223,7 @@ internal static class AnalyzeApi
                     ? PromptBuilder.BatchPromptCached(reSummary)
                     : PromptBuilder.BatchPrompt(reSummary);
             }
-            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048);
+            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192);
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
