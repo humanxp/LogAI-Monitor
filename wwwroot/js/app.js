@@ -286,7 +286,7 @@ async function resetTokenUsage() {
         const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
-            showToast('Success', `Token 用量已清零（删除 ${data.deleted} 个键）`, 'success');
+            showToast('✅ 已清零', `AI Token 用量已归零（删除 ${data.deleted} 个键）`, 'success');
             await fetchStats();
         } else if (response.status === 403) {
             showToast('Access denied', '只有管理员可以清零用量统计', 'error');
@@ -297,7 +297,7 @@ async function resetTokenUsage() {
         console.error('Error resetting token usage:', error);
         showToast('Error', '清零失败', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 复位清零'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 复位'; }
     }
 }
 
@@ -310,7 +310,7 @@ async function resetTelegramUsage() {
         const response = await fetch('/api/telegram-usage/reset', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
-            showToast('Success', `Telegram 计数已清零（删除 ${data.deleted} 个键）`, 'success');
+            showToast('✅ 已清零', `Telegram 推送计数已归零（删除 ${data.deleted} 个键）`, 'success');
             await fetchStats();
         } else if (response.status === 403) {
             showToast('Access denied', '只有管理员可以清零', 'error');
