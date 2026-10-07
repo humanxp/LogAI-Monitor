@@ -167,11 +167,12 @@
             </div>
 
             <div class="form-group">
-                <label class="form-check">
-                    <input type="checkbox" class="form-check-input" id="aiCacheOptimized">
-                    <span>优化 AI 模型缓存效率（前缀缓存）</span>
-                </label>
-                <small style="color: var(--lm-ink-2);">开启后批量分析用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、缓存命中率更高、更省算力；few-shot 按 Qwen3.5-9B 的行为调校，锚定"例行噪音/启动日志不算故障"，不影响判定精度。关闭用简单提示词。改动从下一轮分析开始生效，无需重启。</small>
+                <label class="form-label" for="aiPromptMode">AI 分析提示词（缓存效率）</label>
+                <select class="form-control form-select" id="aiPromptMode">
+                    <option value="false">默认（简单提示词，Llama3.2-3B 高效）</option>
+                    <option value="true">按 Qwen3.5-9B 调校（前缀缓存）</option>
+                </select>
+                <small style="color: var(--lm-ink-2);">「按 Qwen3.5-9B 调校」用带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力，且锚定"例行噪音/启动日志不算故障"；「默认」用简单提示词。改动从下一轮分析开始生效，无需重启。</small>
             </div>
 
             <div class="section-save">
