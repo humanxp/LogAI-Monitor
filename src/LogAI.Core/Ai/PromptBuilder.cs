@@ -151,7 +151,7 @@ REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing 
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
 - "alert_message": short admin alert if critical, else ""
 The fields MUST agree with overall_status: a "healthy" batch has issues_found [], critical_count 0, recommendations [], alert_message "". A "warning" or "critical" batch has at least one issue in issues_found and at least one action in recommendations. Never list routine chatter (cron lines, startup messages, "already registered", "Sleeping!") in issues_found.
-Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
+ALL 6 keys MUST appear in the output every time, even if their value is empty - never omit a key. Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
 
 EXAMPLES
 

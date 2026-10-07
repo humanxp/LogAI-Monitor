@@ -196,8 +196,8 @@ public static class JsonExtractor
     /// <summary>
     /// 对提取出的分析结果做确定性后处理。小模型常把同一个问题重复列进
     /// issues_found / recommendations（尤其当输入里同一条例行消息出现很多遍时），
-    /// 并据此把 critical_count 数大。这里按字符串精确去重，并把 critical_count
-    /// 收进去重后的条数（critical_count 永远不该超过 issues 的条数）。与输入去重
+    /// 并据此把 critical_count 数大；有时还会"吐一半就停"漏掉 recommendations 等
+    /// 字段。这里按字符串精确去重、封顶 critical_count，并补齐缺失字段。与输入去重
     /// 共用一个开关：dedup=false 时跳过（保持模型原始输出）。
     /// </summary>
     private static JsonNode? Normalize(JsonNode? node, bool dedup)
@@ -210,7 +210,32 @@ public static class JsonExtractor
                 && cc.TryGetValue<int>(out int n) && n > issues.Count)
                 obj["critical_count"] = issues.Count;
         }
+        if (node is JsonObject obj2) EnsureFields(obj2);
         return node;
+    }
+
+    /// <summary>
+    /// 补齐模型偶尔漏掉的字段，保证结果 JSON 始终有全部 6 个键。值给安全默认：
+    /// 数组→[]、critical_count→0、alert_message→""。这样界面不会因为缺字段而空一块。
+    /// </summary>
+    private static void EnsureFields(JsonObject obj)
+    {
+        if (obj["issues_found"] is not JsonArray) obj["issues_found"] = new JsonArray();
+        if (obj["recommendations"] is not JsonArray) obj["recommendations"] = new JsonArray();
+        if (obj["affected_hosts"] is not JsonArray) obj["affected_hosts"] = new JsonArray();
+        if (obj["critical_count"] is null) obj["critical_count"] = 0;
+        if (obj["alert_message"] is null) obj["alert_message"] = "";
+    }
+
+    /// <summary>
+    /// 批量分析结果的必需字段是否齐全（模型偶尔漏掉 recommendations/critical_count）。
+    /// 不齐全时调用方触发纠正性重试，让模型补一次完整 JSON。
+    /// </summary>
+    public static bool HasRequiredFields(JsonNode? node)
+    {
+        if (node is not JsonObject obj) return false;
+        return obj.ContainsKey("overall_status") && obj.ContainsKey("issues_found")
+            && obj.ContainsKey("recommendations") && obj.ContainsKey("critical_count");
     }
 
     private static void DedupeStringArray(JsonObject obj, string key)

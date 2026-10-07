@@ -316,7 +316,7 @@ internal static class AnalyzeApi
         try
         {
             var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt), dedup);
-            if (analysis is not null) return analysis;
+            if (analysis is not null && JsonExtractor.HasRequiredFields(analysis)) return analysis;
             return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt)), dedup);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException

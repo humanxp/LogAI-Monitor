@@ -74,7 +74,9 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
         var analysis = JsonExtractor.Extract(reply, outputDedup);
 
-        if (analysis is null)
+        // 解析失败，或模型漏了必需字段（overall_status/issues/recommendations/
+        // critical_count）时，纠正性重试一次。
+        if (analysis is null || !JsonExtractor.HasRequiredFields(analysis))
         {
             reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken);
             analysis = JsonExtractor.Extract(reply, outputDedup);
