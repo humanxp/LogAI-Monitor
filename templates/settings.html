@@ -182,6 +182,14 @@
                 <small style="color: var(--lm-ink-2);">模型返回后，把重复列的 issues / 处理建议去重、critical_count 封顶。结果更干净。改动从下一轮开始生效，无需重启。</small>
             </div>
 
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="aiStatusGuard" checked>
+                    <span>AI 判定修正（程序兜底）</span>
+                </label>
+                <small style="color: var(--lm-ink-2);">开启：程序按日志里的故障词（failed / refused / out of memory 等）确定性修正模型判定——critical 闸门、healthy 却含故障词时升 warning、warning 下限注入故障行并让模型补建议。关闭：100% 纯模型原始数据，模型判什么就显示什么。改动从下一轮开始生效，无需重启。</small>
+            </div>
+
             <div class="section-save">
                 <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('ai')">
                     <i class="fas fa-save"></i> 保存本类目（Save Section）

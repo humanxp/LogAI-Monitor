@@ -127,7 +127,8 @@ internal static class AnalyzeApi
                     ["error"] = "model reply was not a valid JSON object",
                 });
 
-            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0);
+            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0,
+                recommendAsync: lines => client.RecommendFailureLinesAsync(lines));
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -209,8 +210,53 @@ internal static class AnalyzeApi
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
 
             // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
-            // 100% 纯模型：status 直接用模型的 overall_status（不做任何修正）。
-            string status = AiStatusClassifier.Classify(type, analysis);
+            bool guard = AiClient.AiStatusGuardEnabledIn(settings);
+            string status;
+            if (single || !guard)
+            {
+                status = AiStatusClassifier.Classify(type, analysis, allowCritical: true, guard: guard);
+            }
+            else
+            {
+                // 程序兜底：critical 闸门 + warning 下限。
+                status = AiStatusClassifier.Classify(type, analysis, allowCritical: HasCriticalLog(available), guard: true);
+                if (string.Equals(status, "healthy", StringComparison.Ordinal))
+                {
+                    var failureLines = available
+                        .Where(log => AiStatusClassifier.HasFailureWord(log.GetValueOrDefault("message")))
+                        .Take(8)
+                        .Select(log => "[" + (log.GetValueOrDefault("hostname") ?? log.GetValueOrDefault("source") ?? "?") + "] " + log.GetValueOrDefault("message"))
+                        .ToList();
+                    if (failureLines.Count > 0)
+                    {
+                        status = "warning";
+                        if (analysis is JsonObject obj)
+                        {
+                            var issues = obj["issues_found"] as JsonArray ?? new JsonArray();
+                            foreach (string line in failureLines)
+                                if (issues.All(x => x?.ToString() != line)) issues.Add(line);
+                            obj["issues_found"] = issues;
+
+                            try
+                            {
+                                var modelRecs = await client.RecommendFailureLinesAsync(failureLines);
+                                if (modelRecs.Count > 0)
+                                {
+                                    var recArray = obj["recommendations"] as JsonArray ?? new JsonArray();
+                                    foreach (string r in modelRecs)
+                                        if (recArray.All(x => x?.ToString() != r)) recArray.Add(r);
+                                    obj["recommendations"] = recArray;
+                                }
+                            }
+                            catch { /* 模型失败就留空 */ }
+                        }
+                    }
+                }
+
+                // 程序兜底模式：把模型原始 overall_status 覆盖成修正后的 status。
+                if (analysis is JsonObject objFinal)
+                    objFinal["overall_status"] = status;
+            }
 
             string analysisJson = analysis.ToJsonString();
             bool inRedis = await store.Db.KeyExistsAsync(historyId);
@@ -305,6 +351,11 @@ internal static class AnalyzeApi
                 logs.Add(entries.ToDictionary(e => e.Name.ToString(), e => e.Value.ToString(), StringComparer.Ordinal));
         return logs;
     }
+
+    /// <summary>这批日志里是否有 emergency/alert/critical 级别的（critical 闸门口径）。</summary>
+    private static bool HasCriticalLog(IEnumerable<IReadOnlyDictionary<string, string>> logs) =>
+        logs.Any(log => AiStatusClassifier.IsGenuinelyCritical(
+            log.GetValueOrDefault("severity"), log.GetValueOrDefault("message")));
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
     private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool dedup)

@@ -2055,6 +2055,8 @@ async function loadSettings() {
         if (dedupEl) dedupEl.checked = settings.ai_dedup_enabled !== false;
         const dedupOutEl = document.getElementById('aiDedupOutputEnabled');
         if (dedupOutEl) dedupOutEl.checked = settings.ai_dedup_output_enabled !== false;
+        const guardEl = document.getElementById('aiStatusGuard');
+        if (guardEl) guardEl.checked = settings.ai_status_guard !== false;
         const hwEl = document.getElementById('healthWatchMinutes');
         if (hwEl) hwEl.value = settings.health_watch_minutes ?? 5;
         const hbEl = document.getElementById('healthBacklogWarn');
@@ -2113,6 +2115,7 @@ const SETTINGS_SECTIONS = {
         auto_analyze: document.getElementById('autoAnalyze').checked,
         ai_dedup_enabled: document.getElementById('aiDedupEnabled')?.checked ?? true,
         ai_dedup_output_enabled: document.getElementById('aiDedupOutputEnabled')?.checked ?? true,
+        ai_status_guard: document.getElementById('aiStatusGuard')?.checked ?? true,
     }),
     theme: () => ({
         ui_theme: document.getElementById('uiTheme')?.value || 'default',
