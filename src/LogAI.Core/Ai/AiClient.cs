@@ -160,22 +160,6 @@ public sealed class AiClient(HttpClient? http = null)
     public static bool AiDedupOutputEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiDedupOutputEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
-    /// <summary>
-    /// 严格模式开关（默认关）。开启后，只要批次里有 error/warning 及以上级别的
-    /// 原始日志（不看内容），healthy 就升到 warning。供设置页「Strict mode」。
-    /// 与其它布尔判定相反：这里默认关，只有显式 true/1/yes/on 才开启。
-    /// </summary>
-    public static bool AiStrictModeIn(IReadOnlyDictionary<string, object?> settings)
-    {
-        if (!settings.TryGetValue("ai_strict_mode", out object? raw) || raw is null)
-            return false;
-        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-        return text is "true" or "1" or "yes" or "on";
-    }
-
-    public static bool AiStrictModeIn(IReadOnlyDictionary<string, string> settings) =>
-        AiStrictModeIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
-
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {
         try

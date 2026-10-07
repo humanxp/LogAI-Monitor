@@ -211,10 +211,6 @@ internal static class AnalyzeApi
             // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
             string status = AiStatusClassifier.Classify(type, analysis,
                 allowCritical: single || HasCriticalLog(available));
-            // 严格模式（默认关）：healthy 但批次里有 error/warning 及以上级别 → warning
-            status = AiStatusClassifier.ApplyStrictMode(status,
-                AiClient.AiStrictModeIn(settings),
-                available.Any(log => AiStatusClassifier.IsWarningOrHigherSeverity(log.GetValueOrDefault("severity"))));
             string analysisJson = analysis.ToJsonString();
             bool inRedis = await store.Db.KeyExistsAsync(historyId);
             if (inRedis)
