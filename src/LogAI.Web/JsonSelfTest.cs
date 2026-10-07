@@ -57,6 +57,14 @@ internal static class JsonSelfTest
             JsonExtractor.Extract(noRec),
             n => n["recommendations"] is JsonArray { Count: 1 });
 
+        // 8) 兜底建议要"具体"：点名主机 + 按故障词给针对性提示。
+        string failLine = """{"overall_status":"warning","issues_found":["[web01] IpmiIfcOpenIpmiOpen: open(/dev/ipmi0) failed"],"recommendations":[],"critical_count":0}""";
+        Check("fallback recommendation names host and failure word",
+            JsonExtractor.Extract(failLine),
+            n => n["recommendations"] is JsonArray { Count: 1 } rec
+                 && rec[0]?.ToString().Contains("web01") == true
+                 && rec[0]?.ToString().Contains("failed") == true);
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }
