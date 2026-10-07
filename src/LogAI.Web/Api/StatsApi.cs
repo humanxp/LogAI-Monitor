@@ -45,6 +45,8 @@ internal static class StatsApi
 
             long removed = await LogAI.Core.Ai.AiUsage.ResetAsync(store);
             Console.WriteLine("[AiUsage] reset, " + removed + " key(s) deleted");
+            // 立即推一版清零后的 stats，让所有在看的页面同步刷新（前端还有 fetchStats 兜底）。
+            PushIfNeeded(store);
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["deleted"] = removed,
