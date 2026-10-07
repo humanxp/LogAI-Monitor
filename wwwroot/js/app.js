@@ -2088,8 +2088,6 @@ async function loadSettings() {
             promptModeEl.value = ['default', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
             updatePromptModeHint();
         }
-        const thinkEl = document.getElementById('aiThinkingEnabled');
-        if (thinkEl) thinkEl.checked = settings.ai_thinking_enabled !== false;
         
         // Hide duplicates default setting
         const hideDuplicatesDefaultEl = document.getElementById('hideDuplicatesDefault');
@@ -2138,7 +2136,6 @@ const SETTINGS_SECTIONS = {
         ollama_model: document.getElementById('ollamaModel').value,
         auto_analyze: document.getElementById('autoAnalyze').checked,
         ai_prompt_mode: document.getElementById('aiPromptMode')?.value || 'default',
-        ai_thinking_enabled: document.getElementById('aiThinkingEnabled')?.checked ?? true,
     }),
     theme: () => ({
         ui_theme: document.getElementById('uiTheme')?.value || 'default',
@@ -2552,9 +2549,9 @@ function updatePromptModeHint() {
     const hint = document.getElementById('aiPromptModeHint');
     if (!el || !hint) return;
     const hints = {
-        'default': 'Llama3.2-3B：默认简单提示词（无 few-shot）。改动从下一轮分析开始生效，无需重启。',
-        'qwen35': 'Qwen3.5-9B：带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力。改动从下一轮分析开始生效，无需重启。',
-        'qwen36': 'Qwen3.6-35B-A3B：带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力。改动从下一轮分析开始生效，无需重启。',
+        'default': 'Llama3.2-3B：默认简单提示词。改动从下一轮分析开始生效，无需重启。',
+        'qwen35': 'Qwen3.5-9B：带 few-shot 示例的提示词。改动从下一轮分析开始生效，无需重启。',
+        'qwen36': 'Qwen3.6-35B-A3B：带 few-shot 示例的提示词。改动从下一轮分析开始生效，无需重启。',
     };
     hint.textContent = hints[el.value] || '';
 }
