@@ -249,7 +249,6 @@ function updateTokenUsage() {
 
     setText('aiTokensTotal', fmtCount(total));
     setText('aiTokensToday', fmtCount(state.stats.ai_tokens_today));
-    setText('aiTokensWeek', fmtCount(state.stats.ai_tokens_week));
     setText('aiTokensPrompt', fmtCount(state.stats.ai_tokens_prompt));
     setText('aiTokensCompletion', fmtCount(state.stats.ai_tokens_completion));
     setText('aiTokensCached', fmtCount(state.stats.ai_tokens_cached));
