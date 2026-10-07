@@ -27,7 +27,7 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
     /// 每轮多一次 HGET 完全可以忽略，换来的是文案与行为一致。
     /// 读取失败时退回启动时的取值，不让一次抖动影响分析。
     /// </summary>
-    private (int BatchSize, int SampleLimit, bool CacheOptimized) ReadLimits()
+    private (int BatchSize, int SampleLimit, bool CacheOptimized, bool ThinkingEnabled) ReadLimits()
     {
         try
         {
@@ -49,17 +49,18 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
             if (sample <= 0) sample = fallbackSampleLimit;
 
             bool cacheOptimized = AiClient.AiCacheOptimizedEnabledIn(settings);
-            return (batch, sample, cacheOptimized);
+            bool thinkingEnabled = AiClient.AiThinkingEnabledIn(settings);
+            return (batch, sample, cacheOptimized, thinkingEnabled);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
-            return (fallbackBatchSize, fallbackSampleLimit, false);
+            return (fallbackBatchSize, fallbackSampleLimit, false, true);
         }
     }
 
     public async Task<Outcome> RunOnceAsync(CancellationToken cancellationToken = default)
     {
-        var (batchSize, sampleLimit, cacheOptimized) = ReadLimits();
+        var (batchSize, sampleLimit, cacheOptimized, thinkingEnabled) = ReadLimits();
         var batch = await UnanalyzedBatch.FetchAsync(store, batchSize, cancellationToken);
         if (batch.Count == 0) return new Outcome("empty", 0, null, null);
 
@@ -72,14 +73,16 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         string prompt = cacheOptimized
             ? PromptBuilder.BatchPromptCached(summary)
             : PromptBuilder.BatchPrompt(summary);
-        string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
+        string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken,
+                                                 enableThinking: thinkingEnabled);
         var analysis = JsonExtractor.Extract(reply);
 
         // 解析失败，或模型漏了必需字段（overall_status/issues/recommendations/
         // critical_count）时，纠正性重试一次。
         if (analysis is null || !JsonExtractor.HasRequiredFields(analysis))
         {
-            reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken);
+            reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken,
+                                               enableThinking: thinkingEnabled);
             analysis = JsonExtractor.Extract(reply);
         }
 

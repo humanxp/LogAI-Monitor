@@ -176,6 +176,14 @@
                 <small style="color: var(--lm-ink-2);" id="aiPromptModeHint"></small>
             </div>
 
+            <div class="form-group">
+                <label class="form-check">
+                    <input type="checkbox" class="form-check-input" id="aiThinkingEnabled" checked>
+                    <span>思考模式（推理）</span>
+                </label>
+                <small style="color: var(--lm-ink-2);">开启：Qwen3.5/3.6 这类推理模型先思考再给 JSON，精度更好 + omlx 前缀缓存命中，但每批约 1-2 分钟；关闭：直接出 JSON、快，但精度略降 + 前缀缓存失效。改动从下一轮分析开始生效，无需重启。</small>
+            </div>
+
             <div class="section-save">
                 <button type="button" class="btn btn-primary btn-sm" onclick="saveSettings('ai')">
                     <i class="fas fa-save"></i> 保存本类目（Save Section）

@@ -83,7 +83,7 @@ internal static class AnalyzeApi
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
                 string prompt = PromptBuilderSingle.Build(fields);
-                var analysis = await CompleteAndExtractAsync(client, prompt, 4096);
+                var analysis = await CompleteAndExtractAsync(client, prompt, 4096, AiClient.AiThinkingEnabledIn(settings));
                 if (analysis is null)
                     return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -121,7 +121,7 @@ internal static class AnalyzeApi
             string batchPrompt = AiClient.AiCacheOptimizedEnabledIn(settings)
                 ? PromptBuilder.BatchPromptCached(batchSummary)
                 : PromptBuilder.BatchPrompt(batchSummary);
-            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 8192);
+            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 8192, AiClient.AiThinkingEnabledIn(settings));
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -223,7 +223,7 @@ internal static class AnalyzeApi
                     ? PromptBuilder.BatchPromptCached(reSummary)
                     : PromptBuilder.BatchPrompt(reSummary);
             }
-            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192);
+            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192, AiClient.AiThinkingEnabledIn(settings));
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
@@ -336,13 +336,13 @@ internal static class AnalyzeApi
     }
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
-    private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens)
+    private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool enableThinking)
     {
         try
         {
-            var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt));
+            var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt, enableThinking: enableThinking));
             if (analysis is not null && JsonExtractor.HasRequiredFields(analysis)) return analysis;
-            return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt)));
+            return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), enableThinking: enableThinking));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or System.Text.Json.JsonException or InvalidOperationException)

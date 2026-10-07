@@ -2088,6 +2088,8 @@ async function loadSettings() {
             promptModeEl.value = ['default', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
             updatePromptModeHint();
         }
+        const thinkEl = document.getElementById('aiThinkingEnabled');
+        if (thinkEl) thinkEl.checked = settings.ai_thinking_enabled !== false;
         
         // Hide duplicates default setting
         const hideDuplicatesDefaultEl = document.getElementById('hideDuplicatesDefault');
@@ -2136,6 +2138,7 @@ const SETTINGS_SECTIONS = {
         ollama_model: document.getElementById('ollamaModel').value,
         auto_analyze: document.getElementById('autoAnalyze').checked,
         ai_prompt_mode: document.getElementById('aiPromptMode')?.value || 'default',
+        ai_thinking_enabled: document.getElementById('aiThinkingEnabled')?.checked ?? true,
     }),
     theme: () => ({
         ui_theme: document.getElementById('uiTheme')?.value || 'default',

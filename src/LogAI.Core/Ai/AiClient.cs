@@ -47,7 +47,8 @@ public sealed class AiClient(HttpClient? http = null)
     public bool EnableThinking { get; init; } = true;
 
     public async Task<string> CompleteAsync(string prompt, string? system = null,
-                                            CancellationToken cancellationToken = default)
+                                            CancellationToken cancellationToken = default,
+                                            bool? enableThinking = null)
     {
         var messages = new JsonArray();
         if (!string.IsNullOrEmpty(system))
@@ -71,7 +72,7 @@ public sealed class AiClient(HttpClient? http = null)
             payload["temperature"] = Temperature;
             if (FrequencyPenalty > 0)
                 payload["frequency_penalty"] = FrequencyPenalty;
-            if (!EnableThinking)
+            if (!(enableThinking ?? EnableThinking))
                 payload["enable_thinking"] = false;
         }
 
@@ -167,6 +168,22 @@ public sealed class AiClient(HttpClient? http = null)
 
     public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiCacheOptimizedEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
+
+    /// <summary>
+    /// 「思考模式」开关（默认开启）。关掉时传 enable_thinking:false（Qwen3.5/3.6 这类
+    /// 推理模型直接出 JSON、快，但精度略降 + 前缀缓存失效）；开启时不传（思考推理、
+    /// 精度更好 + 缓存命中，但慢）。布尔判定同 AiEnabledIn：只有显式 false/0/no/off 才关闭。
+    /// </summary>
+    public static bool AiThinkingEnabledIn(IReadOnlyDictionary<string, object?> settings)
+    {
+        if (!settings.TryGetValue("ai_thinking_enabled", out object? raw) || raw is null)
+            return true;
+        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
+        return text is not ("false" or "0" or "no" or "off");
+    }
+
+    public static bool AiThinkingEnabledIn(IReadOnlyDictionary<string, string> settings) =>
+        AiThinkingEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {
