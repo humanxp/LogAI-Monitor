@@ -328,15 +328,15 @@
             <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--lm-line);">
             <h4 style="margin: 0 0 0.75rem 0; font-size: 1rem;"><i class="fas fa-broom"></i> 清理操作</h4>
             <button type="button" class="btn btn-danger" id="clearAllLogsBtn" onclick="clearAllLogs()">
-                <i class="fas fa-trash-alt"></i> Clear All Logs
+                <i class="fas fa-trash-alt"></i> Clear All Data
             </button>
             {% if current_user.is_admin %}
             <button type="button" class="btn btn-outline" id="runCleanupBtn" onclick="runCleanupNow()" style="margin-left:0.5rem;">
-                <i class="fas fa-broom"></i> Run Cleanup Now
+                <i class="fas fa-broom"></i> Purge Expired Data
             </button>
-            <small style="color: var(--lm-ink-2); display: block; margin-top: 0.5rem;">Run cleanup to remove logs older than the configured retention period.</small>
+            <small style="color: var(--lm-ink-2); display: block; margin-top: 0.5rem;">Remove logs, AI analysis history and alerts older than the configured retention period.</small>
             {% endif %}
-            <small style="color: var(--lm-danger-ink); display: block; margin-top: 0.5rem;">Warning: This will permanently delete all logs from the database.</small>
+            <small style="color: var(--lm-danger-ink); display: block; margin-top: 0.5rem;">Warning: This permanently deletes ALL data — logs, AI analysis history, alerts and connected clients.</small>
             <small style="color: var(--lm-ink-2); display: block; margin-top: 0.25rem;">Note: It may take a few moments for the dashboard and counts to reflect the change.</small>
             </div>
         </div>
@@ -396,7 +396,7 @@
             <li><b>Redis Hot Data Window (days)</b>：超过此时长的日志/分析/告警哈希会归档到 SQLite（冷存储），
                 Redis 只留索引。<b>设为 0 表示关闭归档。</b></li>
             <li><b>Alert Retention (days)</b>：告警记录的保留天数。</li>
-            <li><b>Clear All Logs</b> / <b>Run Cleanup Now</b>：清理会<b>同时作用于 Redis 与 SQLite 两个库</b>，且不可撤销。</li>
+            <li><b>Clear All Data</b> / <b>Purge Expired Data</b>：清理会<b>同时作用于 Redis 与 SQLite 两个库</b>，且不可撤销。</li>
         </ul>
 
         <h4><i class="fas fa-clock"></i> 各项改动何时生效</h4>
@@ -486,7 +486,7 @@ async function clearAllLogs() {
     if (!confirm('确定删除数据库中的全部数据吗？此操作不可撤销！\n\n将一并清空：\n· 全部日志（Redis + SQLite 冷归档）\n· AI 分析历史（Analysis History）\n· 全部告警（Alerts）\n· Connected Clients 主机记录（主机下次发日志会自动回来）\n\n设置、过滤器与账号会保留。')) return;
     const btn = document.getElementById('clearAllLogsBtn');
     try {
-        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deleting all logs...'; }
+        if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Deleting all data...'; }
         const response = await fetch('/api/logs/clear', {
             method: 'POST'
         });
@@ -501,19 +501,19 @@ async function clearAllLogs() {
         console.error('Error clearing logs:', error);
         showToast('Error', 'Failed to clear logs', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt"></i> Clear All Logs'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt"></i> Clear All Data'; }
     }
 }
 
 async function runCleanupNow() {
-    if (!confirm('Run cleanup now? This will remove logs older than the configured retention period.')) return;
+    if (!confirm('Purge expired data now? This removes logs, AI analysis history and alerts older than the configured retention period.')) return;
     const btn = document.getElementById('runCleanupBtn');
     try {
         if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running...'; }
         const response = await fetch('/api/logs/cleanup', { method: 'POST' });
         if (response.ok) {
             const data = await response.json();
-            showToast('Success', `Removed ${data.deleted} old logs`, 'success');
+            showToast('Success', `Removed ${data.deleted} expired logs`, 'success');
             try { fetchStats(); } catch(e) {}
         } else if (response.status === 403) {
             showToast('Access denied', 'You must be an admin to run cleanup', 'error');
@@ -525,7 +525,7 @@ async function runCleanupNow() {
         console.error('Error running cleanup:', error);
         showToast('Error', 'Cleanup failed', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-broom"></i> Run Cleanup Now'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-broom"></i> Purge Expired Data'; }
     }
 }
 </script>
