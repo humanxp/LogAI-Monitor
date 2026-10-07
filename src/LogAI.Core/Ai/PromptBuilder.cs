@@ -86,36 +86,99 @@ public static partial class PromptBuilder
     }
 
     /// <summary>
-    /// 批量提示词。**指令刻意排在日志之后，这个顺序是被实测验证过的产品决策，不要
-    /// 为了缓存命中率把它挪到前面**：
-    /// omlx/vLLM 的前缀缓存按 256 token 块对齐、不足 256 不命中，把整块 schema 提前
-    /// 确实能每批多命中一个 256 块（约 +7% 预填充，每次省 ~0.85s）；但同一批日志
-    /// （30 条真实日志、本质健康：12 条是例行 crond 记录 + 一次无害的
-    /// ERROR_FILE_NOT_FOUND）各跑 15 次的判定差异很大：
-    ///   指令在末尾 → healthy 9 / warning 6
-    ///   指令在前   → warning 13 / healthy 2
-    ///   指令进 system message → warning 15
-    /// 即那点缓存是用"把健康批次误判成 warning"换来的，不划算。
+    /// 批量提示词。**静态块（规则 + few-shot 示例）必须在日志之前**——omlx/vLLM 的
+    /// 前缀缓存按 256 token 块对齐、不足 256 不命中；静态块现在约 800+ token，
+    /// 每批能稳定命中 3 个块。few-shot 的 token 成本近似为零（被缓存），
+    /// 只有第一次调用付全价。
+    ///
+    /// 示例不是装饰：3B 小模型原先会把 issues_found 输出成 {"host":"msg"} 对象、
+    /// 把 overall_status 写成 schema 里没有的 "error"，而且会把一长串例行 crond
+    /// 记录（设备标成 error）当成 warning。示例 1 专门示范"标了 error 但其实是
+    /// 例行噪音 → healthy"，示例 2/3 示范 critical/warning 的边界与 issues 的字符串格式。
     /// </summary>
-    public static string BatchPrompt(string logSummary) => $"""
-You are a syslog security/health analyzer. Assess the logs below.
+    public static string BatchPrompt(string logSummary) => $$"""
+You are a syslog security/health analyzer. You are given a batch of logs; rate the batch by its SINGLE WORST issue.
 
-LOGS:
-{logSummary}
+RATING RULES
+- "critical" = a host/server is DOWN or UNREACHABLE right now, a confirmed security breach (break-in, malware, credential theft), or data loss. Nothing else qualifies.
+- "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
+- "healthy" = only routine / informational messages.
+How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
+The severity label on a line is NOT the rating: devices routinely mark routine chatter as "error" (see Example 1).
 
-Reply with ONLY a JSON object having exactly these keys:
-- "overall_status": rate the batch by its SINGLE WORST issue, one of "healthy", "warning", "critical".
-  * "critical" = a host/server is DOWN or UNREACHABLE right now, a confirmed security breach (break-in, malware, credential theft), or data loss. Nothing else qualifies.
-  * "warning" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).
-  * "healthy" = only routine / informational messages.
-  How MANY issues there are must NOT change the rating. A long list of minor, repetitive or service-restart messages is "warning", never "critical". If you are unsure, use "warning".
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). Do NOT copy raw log lines; summarize each distinct pattern in one short line (max 150 chars). Empty array if none
-- "critical_count": integer, how many DISTINCT issues meet the strict "critical" definition above (host down/unreachable, confirmed breach, data loss). This is normally 0. NEVER count warnings, retries, "already registered", "Sleeping!", service-restart chatter, or benign repeated messages here
-- "recommendations": array of short "[HOST] action" strings (actions to fix the issues), at most 5. Empty array if none
-- "affected_hosts": array of bare hostname/IP strings involved (no brackets), empty array if none
+REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
+- "overall_status": one of "healthy", "warning", "critical"
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER objects, never raw log lines. Empty array if none
+- "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
+- "recommendations": array of short "[HOST] action" strings (at most 5). Empty array if none
+- "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
 - "alert_message": short admin alert if critical, else ""
+Every array and object MUST be closed. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
 
-Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.
+EXAMPLES
+
+Example 1 - routine chatter; the device marks lines "error" but nothing is actually wrong:
+LOGS:
+[ERROR] [routerA] crond: USER root pid 31556 cmd /usr/bin/wg-watchdog
+[ERROR] [routerA] crond: USER root pid 31512 cmd sleep 50; /usr/bin/modem_sim_status_check.sh
+[INFO] [routerA] hostapd: wlan0: AP-STA-CONNECTED 9c:5c:8e:11:22:33
+[NOTICE] [nas1] Injector: Sleeping!
+REPLY:
+{
+  "overall_status": "healthy",
+  "issues_found": [],
+  "critical_count": 0,
+  "recommendations": [],
+  "affected_hosts": [],
+  "alert_message": ""
+}
+
+Example 2 - a service is down on a host that must be reachable:
+LOGS:
+[CRITICAL] [db01] systemd: mysqld.service: Main process exited, code=exited, status=1/FAILURE
+[ERROR] [db01] mysqld: Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock'
+[ERROR] [web01] nagios: CRITICAL - db01:3306 - connection refused
+REPLY:
+{
+  "overall_status": "critical",
+  "issues_found": [
+    "[db01] mysqld failed to start (socket unreachable)",
+    "[db01] port 3306 refusing connections"
+  ],
+  "critical_count": 2,
+  "recommendations": [
+    "[db01] check mysqld logs and restart the service"
+  ],
+  "affected_hosts": [
+    "db01"
+  ],
+  "alert_message": "db01 MySQL is down (3306 refused)"
+}
+
+Example 3 - a real problem that is not an outage:
+LOGS:
+[ERROR] [web02] nginx: connect() failed (111: Connection refused) while connecting to upstream
+[WARNING] [web02] kernel: TCP: request_sock_TCP: Possible SYN flooding on port 443
+[INFO] [web02] systemd: Started Session 9912 of user deploy.
+REPLY:
+{
+  "overall_status": "warning",
+  "issues_found": [
+    "[web02] nginx upstream connection refused (repeated)"
+  ],
+  "critical_count": 0,
+  "recommendations": [
+    "[web02] check the service behind the nginx upstream"
+  ],
+  "affected_hosts": [
+    "web02"
+  ],
+  "alert_message": ""
+}
+
+NOW ANALYZE THIS BATCH.
+LOGS:
+{{logSummary}}
 """;
 
     /// <summary>Second attempt sent when the first reply could not be parsed.</summary>

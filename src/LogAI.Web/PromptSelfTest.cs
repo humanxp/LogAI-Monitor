@@ -46,21 +46,29 @@ internal static class PromptSelfTest
         Check("hostname falls back to source", summary.Contains("[10.10.10.7]", StringComparison.Ordinal));
 
         string prompt = PromptBuilder.BatchPrompt(summary);
-        // 结构是产品决策、不是风格：实测把指令块挪到日志之前，同一批本质健康的日志
-        // 会被判成 warning（healthy 9/warning 6 → warning 13/healthy 2），换来的只是
-        // 每批多命中一个 256 token 的缓存块。所以顺序固定为
-        // 引导语 → 日志 → 指令与 JSON schema，这条断言防止它被"顺手优化"回去。
+        // 结构是产品决策、不是风格，两个方向都实测过：
+        //   · 指令在末尾、无示例      → healthy 15 / warning 10，缓存 0%
+        //   · 指令在前、无示例        → warning 13 / healthy 2（把健康批次误判），缓存 6.9%
+        //   · 指令在前 + few-shot 示例 → healthy 25/25、故障批次 critical 25/25、
+        //     warning 批次 warning 15/15，缓存 22.8%
+        // 示例把"设备标了 error 但其实是例行噪音 → healthy"锚住，于是既能吃到
+        // 前缀缓存（静态块 966 token → 稳定命中 768）又不牺牲判定。改动这段前请重跑
+        // 上述三组 A/B。
         Check("prompt starts with the opening line",
-            prompt.StartsWith("You are a syslog security/health analyzer. Assess the logs below.\n\nLOGS:\n", StringComparison.Ordinal),
+            prompt.StartsWith("You are a syslog security/health analyzer.", StringComparison.Ordinal),
             prompt[..Math.Min(80, prompt.Length)]);
-        Check("logs come BEFORE the instruction block",
-            prompt.IndexOf(expectedSummary, StringComparison.Ordinal) <
-            prompt.IndexOf("Reply with ONLY a JSON object", StringComparison.Ordinal),
-            "schema must follow the logs");
-        Check("prompt embeds the summary verbatim", prompt.Contains(expectedSummary, StringComparison.Ordinal));
-        Check("prompt ends with the exact closing sentence",
-            prompt.EndsWith("Base everything ONLY on the logs given. Keep the JSON compact. The reply MUST be one single complete valid JSON object - no markdown, no text before or after it, no truncation.", StringComparison.Ordinal),
+        Check("static rules + examples come BEFORE the logs (cacheable prefix)",
+            prompt.IndexOf("REPLY FORMAT", StringComparison.Ordinal) <
+            prompt.IndexOf("NOW ANALYZE THIS BATCH.", StringComparison.Ordinal),
+            "static block must precede the logs");
+        Check("logs come last",
+            prompt.EndsWith(expectedSummary, StringComparison.Ordinal),
             prompt[^60..]);
+        Check("three few-shot examples present (they anchor the routine-chatter case)",
+            prompt.Contains("Example 1 - routine chatter", StringComparison.Ordinal)
+            && prompt.Contains("Example 2 - a service is down", StringComparison.Ordinal)
+            && prompt.Contains("Example 3 - a real problem", StringComparison.Ordinal));
+        Check("prompt embeds the summary verbatim", prompt.Contains(expectedSummary, StringComparison.Ordinal));
         Check("prompt carries every required key name",
             new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
                 .All(key => prompt.Contains('"' + key + '"', StringComparison.Ordinal)),
