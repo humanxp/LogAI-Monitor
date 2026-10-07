@@ -129,22 +129,6 @@ public sealed class AiClient(HttpClient? http = null)
     public static bool AiEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
-    /// <summary>
-    /// 输出去重开关（默认开启）。设置页「Deduplicate analysis results」。控制
-    /// JsonExtractor 对模型重复列的 issues/建议去重 + critical_count 封顶。
-    /// 与 AiEnabledIn 相同的布尔判定：只有显式 false/0/no/off 才视为关闭。
-    /// </summary>
-    public static bool AiDedupOutputEnabledIn(IReadOnlyDictionary<string, object?> settings)
-    {
-        if (!settings.TryGetValue("ai_dedup_output_enabled", out object? raw) || raw is null)
-            return true;
-        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-        return text is not ("false" or "0" or "no" or "off");
-    }
-
-    public static bool AiDedupOutputEnabledIn(IReadOnlyDictionary<string, string> settings) =>
-        AiDedupOutputEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
-
     public static string ResolveModel(RedisStore? store, string? fallback = null)
     {
         try

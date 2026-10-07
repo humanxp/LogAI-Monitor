@@ -38,14 +38,12 @@ internal static class JsonSelfTest
         // 5) nothing usable
         Check("garbage returns null", JsonExtractor.Extract("I cannot analyse this."), n => n is null);
 
-        // 6) 去重开关：默认开时重复的 issues/建议折叠 + critical_count 封顶；关时保留原样。
+        // 6) 不再去重：保留模型原始输出（重复的 issues/建议原样保留，critical_count 不改）。
         string dup = """{"overall_status":"warning","issues_found":["a","a","a"],"recommendations":["r","r"],"critical_count":5}""";
-        Check("dedup on collapses duplicates and caps critical_count", JsonExtractor.Extract(dup),
-            n => n["issues_found"] is JsonArray { Count: 1 }
-                 && n["recommendations"] is JsonArray { Count: 1 }
-                 && n["critical_count"]?.GetValue<int>() == 1);
-        Check("dedup off keeps the raw output", JsonExtractor.Extract(dup, dedup: false),
-            n => n["issues_found"] is JsonArray { Count: 3 } && n["critical_count"]?.GetValue<int>() == 5);
+        Check("raw output kept (no dedup)", JsonExtractor.Extract(dup),
+            n => n["issues_found"] is JsonArray { Count: 3 }
+                 && n["recommendations"] is JsonArray { Count: 2 }
+                 && n["critical_count"]?.GetValue<int>() == 5);
 
         // 7) 有 issues 但 recommendations 空：HasRequiredFields 判不自洽（触发重试让模型补）。
         //    100% 纯模型：程序不再塞模板建议，所以这里只校验"判不自洽"。
@@ -54,18 +52,17 @@ internal static class JsonSelfTest
             System.Text.Json.Nodes.JsonNode.Parse(noRec),
             n => !JsonExtractor.HasRequiredFields(n));
 
-        // 8) EnsureHostPrefix：给 issues/处理建议补 [HOST] 前缀；已有可信前缀的不动。
+        // 8) EnsureHostPrefix：只在文本里显式出现主机时才补前缀；已有可信前缀保留；不猜主机。
         var hostObj = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
             """{"overall_status":"warning","issues_found":["磁盘满","[db01] 服务宕机"],"recommendations":["清理磁盘"],"critical_count":0}""")!;
         JsonExtractor.EnsureHostPrefix(hostObj, new List<string> { "db01" });
-        Check("host prefix added to issues and recommendations",
+        Check("host prefix only added when text mentions it (no guessing)",
             hostObj,
-            n => n["issues_found"]?[0]?.ToString() == "[db01] 磁盘满"
+            n => n["issues_found"]?[0]?.ToString() == "磁盘满"
                  && n["issues_found"]?[1]?.ToString() == "[db01] 服务宕机"
-                 && n["recommendations"]?[0]?.ToString() == "[db01] 清理磁盘");
+                 && n["recommendations"]?[0]?.ToString() == "清理磁盘");
 
-        // 9) 显式主机优先：建议文本里写了"on 192.168.50.15"，前缀必须是它，不能被关键词
-        //    误匹配到 issue 里的 192.168.50.3（纯数字 token 已过滤）。
+        // 9) 显式主机：建议文本里写了"on 192.168.50.15"，前缀必须是它（不猜主机）。
         var hostObj2 = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
             """{"overall_status":"critical","affected_hosts":["192.168.50.3","192.168.50.15"],"issues_found":["[192.168.50.3] 192.168.50.3: Injector: Sleeping!"],"recommendations":["Check for duplicate VM registrations on 192.168.50.15"],"critical_count":1}""")!;
         JsonExtractor.EnsureHostPrefix(hostObj2, new List<string> { "192.168.50.3" });

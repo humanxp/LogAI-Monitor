@@ -83,7 +83,7 @@ internal static class AnalyzeApi
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
                 string prompt = PromptBuilderSingle.Build(fields);
-                var analysis = await CompleteAndExtractAsync(client, prompt, 1024, AiClient.AiDedupOutputEnabledIn(settings));
+                var analysis = await CompleteAndExtractAsync(client, prompt, 1024);
                 if (analysis is null)
                     return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -118,7 +118,7 @@ internal static class AnalyzeApi
                 client, PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(
                     batchFields,
                     int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
-                                 out int sample) && sample > 0 ? sample : 200)), 2048, AiClient.AiDedupOutputEnabledIn(settings));
+                                 out int sample) && sample > 0 ? sample : 200)), 2048);
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -211,7 +211,7 @@ internal static class AnalyzeApi
             string prompt = single
                 ? PromptBuilderSingle.Build(available[0])
                 : PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(available, sampleLimit));
-            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048, AiClient.AiDedupOutputEnabledIn(settings));
+            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 1024 : 2048);
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
@@ -324,13 +324,13 @@ internal static class AnalyzeApi
     }
 
     /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
-    private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool dedup)
+    private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens)
     {
         try
         {
-            var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt), dedup);
+            var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt));
             if (analysis is not null && JsonExtractor.HasRequiredFields(analysis)) return analysis;
-            return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt)), dedup);
+            return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt)));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or System.Text.Json.JsonException or InvalidOperationException)

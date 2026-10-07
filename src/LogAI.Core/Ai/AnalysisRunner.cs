@@ -27,7 +27,7 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
     /// 每轮多一次 HGET 完全可以忽略，换来的是文案与行为一致。
     /// 读取失败时退回启动时的取值，不让一次抖动影响分析。
     /// </summary>
-    private (int BatchSize, int SampleLimit, bool OutputDedup) ReadLimits()
+    private (int BatchSize, int SampleLimit) ReadLimits()
     {
         try
         {
@@ -48,19 +48,17 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
                 int.TryParse(RedisStore.ToText(sampleRaw).Trim().Trim('"'), out sample);
             if (sample <= 0) sample = fallbackSampleLimit;
 
-            bool outputDedup = AiClient.AiDedupOutputEnabledIn(settings);   // 输出去重（结果去重）
-
-            return (batch, sample, outputDedup);
+            return (batch, sample);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not OutOfMemoryException)
         {
-            return (fallbackBatchSize, fallbackSampleLimit, true);
+            return (fallbackBatchSize, fallbackSampleLimit);
         }
     }
 
     public async Task<Outcome> RunOnceAsync(CancellationToken cancellationToken = default)
     {
-        var (batchSize, sampleLimit, outputDedup) = ReadLimits();
+        var (batchSize, sampleLimit) = ReadLimits();
         var batch = await UnanalyzedBatch.FetchAsync(store, batchSize, cancellationToken);
         if (batch.Count == 0) return new Outcome("empty", 0, null, null);
 
@@ -71,14 +69,14 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         // 样本上限决定"其中多少条真正进入提示词"（按级别优先）。
         string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs, sampleLimit));
         string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
-        var analysis = JsonExtractor.Extract(reply, outputDedup);
+        var analysis = JsonExtractor.Extract(reply);
 
         // 解析失败，或模型漏了必需字段（overall_status/issues/recommendations/
         // critical_count）时，纠正性重试一次。
         if (analysis is null || !JsonExtractor.HasRequiredFields(analysis))
         {
             reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken);
-            analysis = JsonExtractor.Extract(reply, outputDedup);
+            analysis = JsonExtractor.Extract(reply);
         }
 
         if (analysis is null)

@@ -20,14 +20,13 @@ namespace LogAI.Core.Ai;
 public static class JsonExtractor
 {
     /// <summary>Extracts the first usable JSON object; null when nothing parses.</summary>
-    /// <param name="dedup">是否去重 issues_found/recommendations 并封顶 critical_count（与输入去重同一个开关）。</param>
-    public static JsonNode? Extract(string reply, bool dedup = true)
+    public static JsonNode? Extract(string reply)
     {
         if (string.IsNullOrWhiteSpace(reply)) return null;
 
         foreach (string candidate in Candidates(reply))
         {
-            if (TryParse(candidate, out JsonNode? node)) return Normalize(node, dedup);
+            if (TryParse(candidate, out JsonNode? node)) return Normalize(node);
         }
         return null;
     }
@@ -194,23 +193,12 @@ public static class JsonExtractor
     }
 
     /// <summary>
-    /// 对提取出的分析结果做确定性后处理。小模型常把同一个问题重复列进
-    /// issues_found / recommendations（尤其当输入里同一条例行消息出现很多遍时），
-    /// 并据此把 critical_count 数大；有时还会"吐一半就停"漏掉 recommendations 等
-    /// 字段。这里按字符串精确去重、封顶 critical_count，并补齐缺失字段。与输入去重
-    /// 共用一个开关：dedup=false 时跳过（保持模型原始输出）。
+    /// 对提取出的分析结果做最轻的后处理：只补齐缺失字段（数组→[]、critical_count→0、
+    /// alert_message→""），保留模型原始输出（不去重、不封顶 critical_count）。
     /// </summary>
-    private static JsonNode? Normalize(JsonNode? node, bool dedup)
+    private static JsonNode? Normalize(JsonNode? node)
     {
-        if (node is JsonObject obj && dedup)
-        {
-            DedupeStringArray(obj, "issues_found");
-            DedupeStringArray(obj, "recommendations");
-            if (obj["critical_count"] is JsonValue cc && obj["issues_found"] is JsonArray issues
-                && cc.TryGetValue<int>(out int n) && n > issues.Count)
-                obj["critical_count"] = issues.Count;
-        }
-        if (node is JsonObject obj2) EnsureFields(obj2);
+        if (node is JsonObject obj) EnsureFields(obj);
         return node;
     }
 
@@ -229,16 +217,15 @@ public static class JsonExtractor
     }
 
     /// <summary>
-    /// 给 issues_found / recommendations 补 "[HOST] " 前缀。模型偶尔漏掉主机名。
-    /// 优先用 affected_hosts（模型自己列的受影响主机）+ 内容关键词匹配到 issue，
-    /// 避免把通用建议错挂到批里第一个主机（之前"主机名对不上"就是它）。
+    /// 主机前缀交给模型自己匹配（提示词已要求每条 issue/建议带 [HOST]）。这里只做最轻的
+    /// 整理、不猜主机：已有可信 [host] 前缀的保留；没有前缀但文本里显式写了某台主机
+    /// （模型自己写的"on 192.168.50.15"）就补上；两者都没有就原样留空，不再程序猜测。
     /// </summary>
     public static void EnsureHostPrefix(JsonObject obj, List<string> batchHosts)
     {
         if (obj["issues_found"] is not JsonArray issues) return;
         if (obj["recommendations"] is not JsonArray recs) return;
 
-        // 受影响主机：affected_hosts 优先，其次批里的主机。
         var hosts = new List<string>();
         if (obj["affected_hosts"] is JsonArray affected)
             foreach (var h in affected)
@@ -248,33 +235,9 @@ public static class JsonExtractor
             }
         foreach (string h in batchHosts)
             if (!string.IsNullOrEmpty(h) && !hosts.Contains(h)) hosts.Add(h);
-        if (hosts.Count == 0) return;
 
-        // 1) issues 先补前缀。
         PrefixHostList(issues, hosts);
-
-        // 2) 收集 issue -> 主机，供 recommendations 关键词匹配。
-        var issueHosts = new List<(string Text, string Host)>();
-        foreach (var issue in issues)
-        {
-            string text = issue?.ToString()?.Trim() ?? "";
-            if (text.Length == 0) continue;
-            string host = ExtractHostPrefix(text);
-            if (host.Length == 0) host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
-            if (host.Length > 0) issueHosts.Add((text, host));
-        }
-
-        // 3) recommendations：先看文本里显式出现的主机（模型自己写的"on 192.168.50.15"最可信），
-        //    再按关键词匹配到 issue，最后退第一个受影响主机。
-        for (int i = 0; i < recs.Count; i++)
-        {
-            string text = recs[i]?.ToString()?.Trim() ?? "";
-            if (text.Length == 0 || ExtractHostPrefix(text).Length > 0) continue;
-            string host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
-            if (host.Length == 0) host = MatchIssueHost(text, issueHosts);
-            if (host.Length == 0) host = hosts[0];
-            recs[i] = "[" + host + "] " + text;
-        }
+        PrefixHostList(recs, hosts);
     }
 
     /// <summary>text 以可信的 "[host]" 开头时返回该 host；否则返回空串。</summary>
@@ -308,44 +271,10 @@ public static class JsonExtractor
                     if (text.Length == 0) continue;
                 }
             }
-            string matched = hosts.FirstOrDefault(h => !string.IsNullOrEmpty(h) && text.Contains(h, StringComparison.Ordinal)) ?? hosts[0];
-            arr[i] = "[" + matched + "] " + text;
+            // 只认文本里显式出现的主机；没有就不加（交给模型自己匹配）。
+            string matched = hosts.FirstOrDefault(h => !string.IsNullOrEmpty(h) && text.Contains(h, StringComparison.Ordinal)) ?? "";
+            if (matched.Length > 0) arr[i] = "[" + matched + "] " + text;
         }
-    }
-
-    /// <summary>
-    /// 把建议文本按关键词（长度≥3 的字母数字词）与每条 issue 做子串重叠计数，返回重叠最多
-    /// 的 issue 的主机；无任何重叠返回空。用于把通用建议挂到它真正对应的那台机器。
-    /// </summary>
-    private static string MatchIssueHost(string text, List<(string Text, string Host)> issueHosts)
-    {
-        if (issueHosts.Count == 0) return "";
-        string[] words = Tokenize(text);
-        if (words.Length == 0) return "";
-        string best = "";
-        int bestScore = 0;
-        foreach (var (issueText, host) in issueHosts)
-        {
-            int score = 0;
-            foreach (string w in words)
-                if (issueText.Contains(w, StringComparison.OrdinalIgnoreCase)) score++;
-            if (score > bestScore) { bestScore = score; best = host; }
-        }
-        return bestScore >= 1 ? best : "";
-    }
-
-    private static string[] Tokenize(string text)
-    {
-        var words = new List<string>();
-        var sb = new System.Text.StringBuilder();
-        foreach (char c in text)
-        {
-            if (char.IsLetterOrDigit(c)) { sb.Append(c); }
-            else if (sb.Length > 0) { words.Add(sb.ToString()); sb.Clear(); }
-        }
-        if (sb.Length > 0) words.Add(sb.ToString());
-        // 去掉纯数字 token（IP 的 192/168/50、pid、时间戳），避免误匹配到别的 IP 主机名。
-        return words.Where(w => w.Length >= 3 && !w.All(char.IsDigit)).ToArray();
     }
 
     /// <summary>
@@ -383,24 +312,5 @@ public static class JsonExtractor
             && obj["recommendations"] is JsonArray rec && rec.Count == 0)
             return false;
         return true;
-    }
-
-    private static void DedupeStringArray(JsonObject obj, string key)
-    {
-        if (obj[key] is not JsonArray arr) return;
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var unique = new JsonArray();
-        foreach (var item in arr)
-        {
-            if (item is JsonValue jv && jv.TryGetValue<string>(out string? text) && text is not null)
-            {
-                if (seen.Add(text)) unique.Add(text);
-            }
-            else
-            {
-                unique.Add(item?.DeepClone());   // 非字符串（对象型 issue）原样保留
-            }
-        }
-        obj[key] = unique;
     }
 }
