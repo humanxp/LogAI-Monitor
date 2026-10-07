@@ -1273,12 +1273,12 @@ function showAlertDetail(alertId) {
             `<button type="button" class="btn btn-primary" id="alertAiBtn" onclick="analyzeAlertFromDetail('${alert.id}')">
                  <i class="fas fa-robot"></i> AI 分析
              </button>` +
-            `<button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>` +
             (!alert.acknowledged
                 ? `<button type="button" class="btn btn-success" onclick="acknowledgeAlertFromDetail('${alert.id}')">
                        <i class="fas fa-check"></i> Acknowledge
                    </button>`
-                : '');
+                : '') +
+            `<button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>`;
     }
     openModal('alertDetailModal');
 }
