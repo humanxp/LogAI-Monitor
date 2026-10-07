@@ -64,6 +64,9 @@ public static class AiStatusClassifier
         };
 
         if (bucket == "critical" && !allowCritical) return "warning";
+        // 模型偶尔判 healthy 却在 issues_found 里列了真实故障（Transfer failed / open
+        // failed / Failed to send），自相矛盾。按"字面故障词"确定性升到 warning。
+        if (bucket == "healthy" && HasFailureIssue(obj)) return "warning";
         return bucket;
     }
 
@@ -113,4 +116,23 @@ public static class AiStatusClassifier
         "out of memory", "panic", "segfault", "breach", "crashed",
         "fatal", "halted", "timed out", "unresponsive", "data loss",
     ];
+
+    /// <summary>
+    /// issues_found 里是否有一条带故障词。模型偶尔判 healthy（认为整体没问题）却把
+    /// 真实故障也列进了 issues（Transfer failed / open(...) failed / Failed to send），
+    /// 二者自相矛盾。按"字面故障词"这个确定性规则把 healthy 升到 warning——
+    /// 与提示词里的"字面出现 failed 即算真问题"同一口径，只是不指望模型自觉遵守。
+    /// </summary>
+    private static bool HasFailureIssue(JsonObject obj)
+    {
+        if (obj["issues_found"] is not JsonArray arr) return false;
+        foreach (var item in arr)
+        {
+            string text = (item as JsonValue)?.TryGetValue<string>(out string? s) == true && s is not null
+                ? s.ToLowerInvariant() : item?.ToString().ToLowerInvariant() ?? "";
+            foreach (string marker in FailureMarkers)
+                if (text.Contains(marker, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
 }

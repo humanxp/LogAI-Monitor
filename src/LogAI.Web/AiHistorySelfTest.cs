@@ -92,6 +92,16 @@ internal static class AiHistorySelfTest
             AiStatusClassifier.Classify("auto", CritJson, allowCritical: true) == "critical");
         Check("non-object analysis is other",
             AiStatusClassifier.Classify("auto", "not json") == "other");
+        // 模型自相矛盾：判 healthy 却在 issues 里列了真实故障 → 确定性升到 warning；
+        // 若 issues 全是例行（无故障词），则仍是 healthy。
+        Check("healthy with a failure-word issue is bumped to warning",
+            AiStatusClassifier.Classify("auto",
+                """{"overall_status":"healthy","issues_found":["[h1] myddns: Transfer failed - retry 12/"]}""") == "warning"
+            && AiStatusClassifier.Classify("auto",
+                """{"overall_status":"healthy","issues_found":["[h1] open(/dev/ipmi0) failed"]}""") == "warning");
+        Check("healthy with only routine issues stays healthy",
+            AiStatusClassifier.Classify("auto",
+                """{"overall_status":"healthy","issues_found":["[h1] Load template from file","[h2] Injector: Sleeping!"]}""") == "healthy");
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
