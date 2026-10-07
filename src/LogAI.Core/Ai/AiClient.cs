@@ -98,6 +98,40 @@ public sealed class AiClient(HttpClient? http = null)
     }
 
     /// <summary>
+    /// 让模型针对 warning 下限检出的故障行生成具体建议（返回空列表表示模型失败/无输出）。
+    /// 这是"发现的问题 没有处理建议"的模型化兜底：程序只负责确定性检出故障行，
+    /// 建议本身交给模型；模型失败时调用方再退回程序模板。
+    /// </summary>
+    public async Task<List<string>> RecommendFailureLinesAsync(List<string> failureLines,
+                                                               CancellationToken cancellationToken = default)
+    {
+        if (failureLines.Count == 0) return [];
+
+        var prompt = new System.Text.StringBuilder();
+        prompt.AppendLine("以下是系统检测到含故障词（failed / refused / out of memory 等）的日志行，此前的批量分析没有覆盖这些故障。");
+        prompt.AppendLine("请针对这些具体问题给出简洁、可执行的处置建议。要求：每条建议单独一行、纯文本、不要 JSON、不要编号或项目符号；建议要具体到主机和问题（例如引用 /dev/ipmi0、磁盘、服务名等），不要空泛地说\"请检查日志\"。");
+        prompt.AppendLine();
+        foreach (string line in failureLines.Take(8))
+            prompt.AppendLine("- " + line);
+
+        string reply;
+        try { reply = await CompleteAsync(prompt.ToString(), cancellationToken: cancellationToken); }
+        catch { return []; }
+
+        var recs = new List<string>();
+        foreach (string raw in reply.Split('\n'))
+        {
+            string t = raw.Trim();
+            int start = 0;
+            while (start < t.Length && !char.IsLetter(t[start]))
+                start++;
+            t = t[start..].Trim();
+            if (t.Length >= 4) recs.Add(t);
+        }
+        return recs;
+    }
+
+    /// <summary>
     /// The configured host often lacks the /v1 suffix (the deployment stores
     /// http://192.168.50.23:8000 while the OpenAI-compatible route lives under
     /// /v1), which produced a 404 until this normalisation was added.
