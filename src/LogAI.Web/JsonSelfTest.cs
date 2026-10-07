@@ -54,6 +54,16 @@ internal static class JsonSelfTest
             System.Text.Json.Nodes.JsonNode.Parse(noRec),
             n => !JsonExtractor.HasRequiredFields(n));
 
+        // 8) EnsureHostPrefix：给 issues/处理建议补 [HOST] 前缀；已有可信前缀的不动。
+        var hostObj = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
+            """{"overall_status":"warning","issues_found":["磁盘满","[db01] 服务宕机"],"recommendations":["清理磁盘"],"critical_count":0}""")!;
+        JsonExtractor.EnsureHostPrefix(hostObj, new List<string> { "db01" });
+        Check("host prefix added to issues and recommendations",
+            hostObj,
+            n => n["issues_found"]?[0]?.ToString() == "[db01] 磁盘满"
+                 && n["issues_found"]?[1]?.ToString() == "[db01] 服务宕机"
+                 && n["recommendations"]?[0]?.ToString() == "[db01] 清理磁盘");
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }

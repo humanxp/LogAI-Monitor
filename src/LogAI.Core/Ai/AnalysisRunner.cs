@@ -84,6 +84,15 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         if (analysis is null)
             return new Outcome("failed", batch.Count, null, "reply was not a valid JSON object after a corrective retry");
 
+        // 给 issues/处理建议补 "[HOST] " 前缀（python-legacy 的 _ensure_host_prefix）。
+        var hosts = logs
+            .Select(l => l.GetValueOrDefault("hostname") ?? l.GetValueOrDefault("source") ?? "")
+            .Where(h => !string.IsNullOrEmpty(h))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        if (analysis is System.Text.Json.Nodes.JsonObject obj && hosts.Count > 0)
+            JsonExtractor.EnsureHostPrefix(obj, hosts);
+
         string historyId = await history.WriteAsync(ids, analysis);
         await AnalysisCommit.ApplyAsync(store, ids, analysis, cancellationToken);
         return new Outcome("analyzed", batch.Count, historyId, null);

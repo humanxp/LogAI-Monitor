@@ -126,6 +126,15 @@ internal static class AnalyzeApi
                     ["error"] = "model reply was not a valid JSON object",
                 });
 
+            // 给 issues/处理建议补 "[HOST] " 前缀。
+            var batchHosts = batchFields
+                .Select(l => l.GetValueOrDefault("hostname") ?? l.GetValueOrDefault("source") ?? "")
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (batchAnalysis is JsonObject bObj && batchHosts.Count > 0)
+                JsonExtractor.EnsureHostPrefix(bObj, batchHosts);
+
             await history.WriteAsync(batchIds, batchAnalysis, "batch", 0);
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -206,6 +215,15 @@ internal static class AnalyzeApi
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
+
+            // 给 issues/处理建议补 "[HOST] " 前缀。
+            var reHosts = available
+                .Select(l => l.GetValueOrDefault("hostname") ?? l.GetValueOrDefault("source") ?? "")
+                .Where(h => !string.IsNullOrEmpty(h))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (analysis is JsonObject reObj && reHosts.Count > 0)
+                JsonExtractor.EnsureHostPrefix(reObj, reHosts);
 
             // ④ 写回原记录（热库 HSET / 冷库改 JSON），并同步两处状态
             // 纯模型：status 直接用模型的 overall_status（只做同义词归一）。

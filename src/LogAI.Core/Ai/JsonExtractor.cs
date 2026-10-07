@@ -229,6 +229,44 @@ public static class JsonExtractor
     }
 
     /// <summary>
+    /// 给 issues_found / recommendations 补 "[HOST] " 前缀（python-legacy 的
+    /// _ensure_host_prefix）。模型偶尔漏掉主机名，导致"发现的问题/处理建议"看不出是哪台
+    /// 机器。已有可信 [host] 前缀的条目不动；其余按内容匹配主机、匹配不到就用第一个主机。
+    /// </summary>
+    public static void EnsureHostPrefix(JsonObject obj, List<string> hosts)
+    {
+        if (hosts.Count == 0) return;
+        if (obj["issues_found"] is JsonArray issues) PrefixHostList(issues, hosts);
+        if (obj["recommendations"] is JsonArray recs) PrefixHostList(recs, hosts);
+    }
+
+    private static void PrefixHostList(JsonArray arr, List<string> hosts)
+    {
+        for (int i = 0; i < arr.Count; i++)
+        {
+            string text = arr[i]?.ToString()?.Trim() ?? "";
+            if (text.Length == 0) continue;
+            if (text.StartsWith("[", StringComparison.Ordinal))
+            {
+                int close = text.IndexOf(']');
+                if (close != -1)
+                {
+                    string inner = text.Substring(1, close - 1).Trim();
+                    // 只有"像主机名"（无空格/冒号/等号/嵌套括号）才算已有前缀，否则剥掉重加。
+                    bool plausible = inner.Length > 0
+                        && !inner.Any(c => c is ' ' or ':' or '=')
+                        && !inner.Contains('[');
+                    if (plausible) continue;
+                    text = text.Substring(close + 1).Trim();
+                    if (text.Length == 0) continue;
+                }
+            }
+            string matched = hosts.FirstOrDefault(h => !string.IsNullOrEmpty(h) && text.Contains(h, StringComparison.Ordinal)) ?? hosts[0];
+            arr[i] = "[" + matched + "] " + text;
+        }
+    }
+
+    /// <summary>
     /// 批量分析结果的必需字段是否齐全且自洽（模型偶尔漏掉 recommendations/critical_count，
     /// 或给了"有 issues 但 recommendations 空"）。不齐全/不自洽时调用方触发纠正性重试。
     /// </summary>
