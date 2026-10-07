@@ -2086,6 +2086,7 @@ async function loadSettings() {
         if (promptModeEl) {
             const mode = settings.ai_prompt_mode || (settings.ai_cache_optimized === true ? 'qwen35' : 'default');
             promptModeEl.value = ['default', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
+            updatePromptModeHint();
         }
         
         // Hide duplicates default setting
@@ -2523,6 +2524,19 @@ function openModal(modalId) {
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (modal) modal.classList.remove('active');
+}
+
+// 提示词模式下拉框的说明文字，随选中项变化
+function updatePromptModeHint() {
+    const el = document.getElementById('aiPromptMode');
+    const hint = document.getElementById('aiPromptModeHint');
+    if (!el || !hint) return;
+    const hints = {
+        'default': 'Llama3.2-3B：默认简单提示词（无 few-shot）。改动从下一轮分析开始生效，无需重启。',
+        'qwen35': 'Qwen3.5-9B：带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力。改动从下一轮分析开始生效，无需重启。',
+        'qwen36': 'Qwen3.6-35B-A3B：带 few-shot 示例的提示词（静态规则 + 示例放日志之前），让 omlx/vLLM 命中前缀缓存、更省算力。改动从下一轮分析开始生效，无需重启。',
+    };
+    hint.textContent = hints[el.value] || '';
 }
 
 // Toast notifications
