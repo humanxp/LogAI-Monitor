@@ -173,7 +173,7 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
-            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；提示词用简单版本（无 few-shot 示例、无前缀缓存优化），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带上 <code>[主机名/IP]</code> 前缀，返回结果原样保留（不去重、不封顶 critical_count）</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页选：默认简单版，或「按 Qwen3.5-9B 调校」的 few-shot 前缀缓存版（静态规则 + 示例放日志前，命中前缀缓存更省算力）</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
             <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
             <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>

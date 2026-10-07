@@ -378,7 +378,7 @@
         <h4><i class="fas fa-balance-scale"></i> AI 判定口径（critical / warning / healthy）</h4>
         <ul>
             <li><b>纯模型判定</b>（与 python-legacy 一致）：模型的 <code>overall_status</code> 判什么就是什么，程序只做同义词归一（critical/error → critical，warning/notice → warning，info/healthy → healthy，其余 → other），不做任何修正。</li>
-            <li>提示词用简单版本：无 few-shot 示例、无前缀缓存优化；日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
+            <li>提示词可选：默认简单版，或「按 Qwen3.5-9B 调校」的 few-shot 前缀缓存版（见「建议使用模型」下拉框）；日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
             <li>过小的模型（如 3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围；默认的 Qwen3.5-9B 已明显改善。</li>
         </ul>
 
