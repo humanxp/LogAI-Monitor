@@ -230,6 +230,12 @@ function fmtCount(v) {
     return (v === undefined || v === null || v === '' || isNaN(Number(v)))
         ? '—' : Number(v).toLocaleString();
 }
+// token 量按"百万"显示：266762 → 0.27M。总量用百万更省眼，均次仍用原始 token。
+function fmtMillions(v) {
+    const n = Number(v);
+    if (v === undefined || v === null || v === '' || isNaN(n)) return '—';
+    return (n / 1e6).toFixed(2) + 'M';
+}
 function setText(id, value) {
     const el = document.getElementById(id);
     if (el) el.textContent = value;
@@ -247,11 +253,11 @@ function updateTokenUsage() {
     const total = Number(state.stats.ai_tokens_total || 0);
     const calls = Number(state.stats.ai_calls || 0);
 
-    setText('aiTokensTotal', fmtCount(total));
-    setText('aiTokensToday', fmtCount(state.stats.ai_tokens_today));
-    setText('aiTokensPrompt', fmtCount(state.stats.ai_tokens_prompt));
-    setText('aiTokensCompletion', fmtCount(state.stats.ai_tokens_completion));
-    setText('aiTokensCached', fmtCount(state.stats.ai_tokens_cached));
+    setText('aiTokensTotal', fmtMillions(total));
+    setText('aiTokensToday', fmtMillions(state.stats.ai_tokens_today));
+    setText('aiTokensPrompt', fmtMillions(state.stats.ai_tokens_prompt));
+    setText('aiTokensCompletion', fmtMillions(state.stats.ai_tokens_completion));
+    setText('aiTokensCached', fmtMillions(state.stats.ai_tokens_cached));
     setText('aiCalls', fmtCount(calls));
     setText('aiTokensAvg', calls > 0 ? fmtCount(Math.round(total / calls)) : '—');
     setText('aiTokensUpdated', fmtUpdated(state.stats.ai_tokens_updated_at));
