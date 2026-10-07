@@ -71,12 +71,12 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         // 样本上限决定"其中多少条真正进入提示词"（按级别优先）。
         string prompt = PromptBuilder.BatchPrompt(PromptBuilder.LogSummary(logs, sampleLimit, dedup));
         string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken);
-        var analysis = JsonExtractor.Extract(reply);
+        var analysis = JsonExtractor.Extract(reply, dedup);
 
         if (analysis is null)
         {
             reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken);
-            analysis = JsonExtractor.Extract(reply);
+            analysis = JsonExtractor.Extract(reply, dedup);
         }
 
         if (analysis is null)

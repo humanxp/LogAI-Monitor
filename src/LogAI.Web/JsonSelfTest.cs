@@ -38,6 +38,15 @@ internal static class JsonSelfTest
         // 5) nothing usable
         Check("garbage returns null", JsonExtractor.Extract("I cannot analyse this."), n => n is null);
 
+        // 6) 去重开关：默认开时重复的 issues/建议折叠 + critical_count 封顶；关时保留原样。
+        string dup = """{"overall_status":"warning","issues_found":["a","a","a"],"recommendations":["r","r"],"critical_count":5}""";
+        Check("dedup on collapses duplicates and caps critical_count", JsonExtractor.Extract(dup),
+            n => n["issues_found"] is JsonArray { Count: 1 }
+                 && n["recommendations"] is JsonArray { Count: 1 }
+                 && n["critical_count"]?.GetValue<int>() == 1);
+        Check("dedup off keeps the raw output", JsonExtractor.Extract(dup, dedup: false),
+            n => n["issues_found"] is JsonArray { Count: 3 } && n["critical_count"]?.GetValue<int>() == 5);
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }

@@ -20,13 +20,14 @@ namespace LogAI.Core.Ai;
 public static class JsonExtractor
 {
     /// <summary>Extracts the first usable JSON object; null when nothing parses.</summary>
-    public static JsonNode? Extract(string reply)
+    /// <param name="dedup">是否去重 issues_found/recommendations 并封顶 critical_count（与输入去重同一个开关）。</param>
+    public static JsonNode? Extract(string reply, bool dedup = true)
     {
         if (string.IsNullOrWhiteSpace(reply)) return null;
 
         foreach (string candidate in Candidates(reply))
         {
-            if (TryParse(candidate, out JsonNode? node)) return Normalize(node);
+            if (TryParse(candidate, out JsonNode? node)) return Normalize(node, dedup);
         }
         return null;
     }
@@ -196,11 +197,12 @@ public static class JsonExtractor
     /// 对提取出的分析结果做确定性后处理。小模型常把同一个问题重复列进
     /// issues_found / recommendations（尤其当输入里同一条例行消息出现很多遍时），
     /// 并据此把 critical_count 数大。这里按字符串精确去重，并把 critical_count
-    /// 收进去重后的条数（critical_count 永远不该超过 issues 的条数）。
+    /// 收进去重后的条数（critical_count 永远不该超过 issues 的条数）。与输入去重
+    /// 共用一个开关：dedup=false 时跳过（保持模型原始输出）。
     /// </summary>
-    private static JsonNode? Normalize(JsonNode? node)
+    private static JsonNode? Normalize(JsonNode? node, bool dedup)
     {
-        if (node is JsonObject obj)
+        if (node is JsonObject obj && dedup)
         {
             DedupeStringArray(obj, "issues_found");
             DedupeStringArray(obj, "recommendations");
