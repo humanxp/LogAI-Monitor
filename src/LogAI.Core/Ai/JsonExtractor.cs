@@ -264,13 +264,14 @@ public static class JsonExtractor
             if (host.Length > 0) issueHosts.Add((text, host));
         }
 
-        // 3) recommendations：关键词匹配到 issue 拿主机；匹配不到再退内容匹配，最后退第一个受影响主机。
+        // 3) recommendations：先看文本里显式出现的主机（模型自己写的"on 192.168.50.15"最可信），
+        //    再按关键词匹配到 issue，最后退第一个受影响主机。
         for (int i = 0; i < recs.Count; i++)
         {
             string text = recs[i]?.ToString()?.Trim() ?? "";
             if (text.Length == 0 || ExtractHostPrefix(text).Length > 0) continue;
-            string host = MatchIssueHost(text, issueHosts);
-            if (host.Length == 0) host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
+            string host = hosts.FirstOrDefault(h => text.Contains(h, StringComparison.Ordinal)) ?? "";
+            if (host.Length == 0) host = MatchIssueHost(text, issueHosts);
             if (host.Length == 0) host = hosts[0];
             recs[i] = "[" + host + "] " + text;
         }
@@ -343,7 +344,8 @@ public static class JsonExtractor
             else if (sb.Length > 0) { words.Add(sb.ToString()); sb.Clear(); }
         }
         if (sb.Length > 0) words.Add(sb.ToString());
-        return words.Where(w => w.Length >= 3).ToArray();
+        // 去掉纯数字 token（IP 的 192/168/50、pid、时间戳），避免误匹配到别的 IP 主机名。
+        return words.Where(w => w.Length >= 3 && !w.All(char.IsDigit)).ToArray();
     }
 
     /// <summary>

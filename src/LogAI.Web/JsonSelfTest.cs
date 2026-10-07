@@ -64,6 +64,15 @@ internal static class JsonSelfTest
                  && n["issues_found"]?[1]?.ToString() == "[db01] 服务宕机"
                  && n["recommendations"]?[0]?.ToString() == "[db01] 清理磁盘");
 
+        // 9) 显式主机优先：建议文本里写了"on 192.168.50.15"，前缀必须是它，不能被关键词
+        //    误匹配到 issue 里的 192.168.50.3（纯数字 token 已过滤）。
+        var hostObj2 = (System.Text.Json.Nodes.JsonObject)System.Text.Json.Nodes.JsonNode.Parse(
+            """{"overall_status":"critical","affected_hosts":["192.168.50.3","192.168.50.15"],"issues_found":["[192.168.50.3] 192.168.50.3: Injector: Sleeping!"],"recommendations":["Check for duplicate VM registrations on 192.168.50.15"],"critical_count":1}""")!;
+        JsonExtractor.EnsureHostPrefix(hostObj2, new List<string> { "192.168.50.3" });
+        Check("explicit host in recommendation text wins",
+            hostObj2,
+            n => n["recommendations"]?[0]?.ToString() == "[192.168.50.15] Check for duplicate VM registrations on 192.168.50.15");
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }
