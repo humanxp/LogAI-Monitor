@@ -113,4 +113,28 @@ public static class AiStatusClassifier
         "out of memory", "panic", "segfault", "breach", "crashed",
         "fatal", "halted", "timed out", "unresponsive", "data loss",
     ];
+
+    /// <summary>
+    /// 级别是否达到 warning（含）以上。严格模式用它：不看内容，只要级别是
+    /// emergency/alert/critical/error/warning 就算"有值得看的日志"。notice/info/debug
+    /// 不算（"Sleeping!" 之类就落在这里）。
+    /// </summary>
+    public static bool IsWarningOrHigherSeverity(string? severity)
+    {
+        string s = (severity ?? "").ToLowerInvariant();
+        return s is "emergency" or "emerg" or "alert" or "critical" or "crit" or "fatal"
+            or "error" or "err" or "warning" or "warn";
+    }
+
+    /// <summary>
+    /// 严格模式：模型判 healthy，但批次里有 warning 及以上级别的日志时，升到 warning。
+    /// 用户可选择"宁可多看 warning 也不漏"——这批设备天天报 error，所以只有显式开启
+    /// 才生效（默认关，保持内容判定的口径）。
+    /// </summary>
+    public static string ApplyStrictMode(string bucket, bool strictMode, bool hasWarningOrHigher)
+    {
+        if (strictMode && string.Equals(bucket, "healthy", StringComparison.Ordinal) && hasWarningOrHigher)
+            return "warning";
+        return bucket;
+    }
 }

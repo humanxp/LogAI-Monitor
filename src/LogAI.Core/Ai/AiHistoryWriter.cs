@@ -33,11 +33,20 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
                                          IReadOnlyDictionary<string, string>? extra = null)
     {
         string id = $"ai_history:{NextMilliseconds()}";
+        // 提前读设置：strict mode 与保留期共用，避免重复取。
+        var settings = await store.GetSettingsAsync();
+        bool strictMode = AiClient.AiStrictModeIn(settings);
+
         // 确定性兜底：批分析里没有 emergency/alert/critical 级别的原始日志时不允许判
         // critical（单条分析走 is_critical，不受此限）。
         bool allowCritical = string.Equals(type, "single", StringComparison.Ordinal)
             || await AnyCriticalSeverityAsync(logIds);
         string status = AiStatusClassifier.Classify(type, analysis, allowCritical);
+
+        // 严格模式（设置页开关，默认关）：模型判 healthy，但批次里有 error/warning
+        // 及以上级别的日志时升到 warning——"宁可多看 warning 也不漏"。
+        status = AiStatusClassifier.ApplyStrictMode(status, strictMode,
+            await AnyWarningOrHigherSeverityAsync(logIds));
 
         var ids = new JsonArray();
         foreach (string logId in logIds) ids.Add(logId);
@@ -68,7 +77,6 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
 
         // 保留期跟着 log_retention_hours 走（手动改设置也同步，不必重启）。
         // 设置缺失/非法时回退到构造函数参数（默认 720 = 30 天）。
-        var settings = await store.GetSettingsAsync();
         int hours = retentionHours;
         if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("log_retention_hours")), out int configured)
             && configured > 0)
@@ -116,6 +124,29 @@ public sealed class AiHistoryWriter(RedisStore store, int retentionHours = 720)
             for (int i = 0; i < size; i++)
                 if (AiStatusClassifier.IsGenuinelyCritical(sevs[i].ToString(), msgs[i].ToString()))
                     return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// 批次里是否存在 warning 及以上级别的原始日志（只看级别，不看内容）。
+    /// 供严格模式使用：error/warning 级日志即使内容例行，也把 healthy 升到 warning。
+    /// </summary>
+    private async Task<bool> AnyWarningOrHigherSeverityAsync(IReadOnlyList<string> logIds)
+    {
+        if (logIds.Count == 0) return false;
+        const int Chunk = 500;
+        for (int offset = 0; offset < logIds.Count; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, logIds.Count - offset);
+            var batch = store.Db.CreateBatch();
+            var reads = new Task<RedisValue>[size];
+            for (int i = 0; i < size; i++)
+                reads[i] = batch.HashGetAsync(logIds[offset + i], "severity");
+            batch.Execute();
+            var loaded = await Task.WhenAll(reads);
+            foreach (var value in loaded)
+                if (AiStatusClassifier.IsWarningOrHigherSeverity(value.ToString())) return true;
         }
         return false;
     }
