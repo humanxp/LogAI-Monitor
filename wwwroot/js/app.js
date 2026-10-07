@@ -2526,6 +2526,23 @@ function closeModal(modalId) {
     if (modal) modal.classList.remove('active');
 }
 
+// Model 下拉框切换后，把「建议使用模型匹配优化」同步到对应项
+function syncPromptModeToModel() {
+    const modelEl = document.getElementById('ollamaModel');
+    const modeEl = document.getElementById('aiPromptMode');
+    if (!modelEl || !modeEl) return;
+    const m = (modelEl.value || '').toLowerCase();
+    let mode;
+    if (m.includes('qwen3.6') || m.includes('35b')) mode = 'qwen36';
+    else if (m.includes('qwen3.5') || m.includes('9b')) mode = 'qwen35';
+    else if (m.includes('llama')) mode = 'default';
+    else mode = 'default';
+    if (modeEl.value !== mode) {
+        modeEl.value = mode;
+        updatePromptModeHint();
+    }
+}
+
 // 提示词模式下拉框的说明文字，随选中项变化
 function updatePromptModeHint() {
     const el = document.getElementById('aiPromptMode');

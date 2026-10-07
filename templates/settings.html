@@ -153,7 +153,7 @@
             
             <div class="form-group">
                 <label class="form-label" for="ollamaModel">Model</label>
-                <select class="form-control form-select" id="ollamaModel">
+                <select class="form-control form-select" id="ollamaModel" onchange="syncPromptModeToModel()">
                     <option value="">Loading models...</option>
                 </select>
                 <small style="color: var(--lm-ink-2);">Available models are loaded from your OpenAI-compatible endpoint (host + /v1/models)</small>
