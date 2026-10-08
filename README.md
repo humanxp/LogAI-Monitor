@@ -11,7 +11,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 | **syslog 采集** | UDP + TCP；RFC3164 / RFC5424 解析（PRI、facility/severity、程序名、消息），发送方省略主机名时**不把程序名误当主机名**；编码三级回退（UTF-8 → GB18030 → Latin-1，替换非法序列） |
 | **Docker 容器日志** | 通过 Docker Engine API（只读 unix socket）读取运行中容器日志；**排除列表**避免采集自身；8 字节帧解复用；按"最后一行"标记**跨轮询去重** |
 | **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志/分析/告警哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
-| **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试。整体状态分 **critical / warning / healthy / other** 四档，**纯模型判定**（与 python-legacy 一致）——模型判什么就是什么，程序只做同义词归一；默认模型 **Qwen3.5-9B**（MoE，快且准），日志按级别排序、带 `[SEVERITY]` 前缀原样交给模型；「发现的问题/处理建议」由模型自己带 `[主机名/IP]` 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词可选：Llama3.2-3B 默认简单版，Qwen3.5-9B / Qwen3.6-35B-A3B 用 few-shot 版 |
+| **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试。整体状态分 **critical / warning / healthy / other** 四档，**纯模型判定**（与 python-legacy 一致）——模型判什么就是什么，程序只做同义词归一；默认模型 **Qwen3.5-9B**（MoE，快且准），日志按级别排序、带 `[SEVERITY]` 前缀原样交给模型；「发现的问题/处理建议」由模型自己带 `[主机名/IP]` 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词按模型匹配（设置页「建议使用模型匹配优化」下拉框，选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化；**模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启**。另有管理员专用的**模型评测页 `/bench`**：任选多模型 × 多评测集（内置 27 例或上传自定义 JSON）跑一轮并打分对比 |
 | **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**最低推送级别可配**（critical/error/warning/notice/info/debug，低于它的仍入库但不推），另有单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
 | **Telegram 推送** | 总开关（设置页不勾则完全不发）+ 两类通知独立控制：**告警**按最低推送级别，**AI 汇总**按 4 档状态勾选并可设冷却；固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
 | **REST API** | 读 20 个 + 写 21 个端点；响应契约固定（键序、非 ASCII 转义、换行），界面与外部脚本依赖它 |
@@ -30,7 +30,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 - **System.Text.Json** — 自定义序列化选项以固定响应契约（键排序、非 ASCII 转义）
 - **Docker Engine API** — 经 unix socket 只读访问，无 SDK 依赖
 - **自实现**：Jinja2 模板子集引擎、Engine.IO v4 长轮询、scrypt 口令哈希生成
-- 部署：多阶段 `Dockerfile`（`dotnet publish` → `aspnet:8.0`），静态资源 gzip 压缩 + 5 分钟缓存头
+- 部署：多阶段 `Dockerfile`（`dotnet publish` → `sdk:8.0` 运行时；`nuget.config` 指向国内镜像做离线构建兜底），静态资源 gzip 压缩 + 5 分钟缓存 + `?v=` 缓存破坏
 
 ---
 
@@ -61,7 +61,7 @@ docker run -d --name logaimonitor \
 | `SECRET_KEY` | 会话签名密钥，**必须固定不变**，否则每次重启都要重新登录 |
 | `SYSLOG_UDP_PORT` / `SYSLOG_TCP_PORT` | 默认 514 / 515 |
 | `AI_BASE_URL` | AI 端点（OpenAI 兼容），如 `http://192.168.50.23:8000/v1`。**设置页的 AI Endpoint 留空即用这个值**；若在设置页手动填了别的地址（尤其 `http://localhost:11434`）就会盖掉它——容器里没有本地 Ollama，会让全部分析报 `Connection refused`（线上踩过） |
-| `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥；模型名同样以设置页的 `ollama_model` 优先，为空才回退到这里 |
+| `OLLAMA_MODEL` / `AI_API_KEY` | 模型名与（可选）API 密钥；模型名同样以设置页的 `ollama_model` 优先，为空才回退到这里。模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启 |
 | `DOCKER_COLLECTION` | 设为 `off` 可关闭容器日志采集 |
 | `LOG_ARCHIVE_PATH` | 冷热分层的 SQLite 归档文件路径，默认 `/data/logai-archive.db`（应指向持久卷，否则容器重建归档就丢了） |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Telegram 凭据的**备选来源**：设置页里的值优先（那是用户能改的地方、改完立刻生效），为空时回退到这两个环境变量。只配环境变量、不配设置页也能正常推送 |
@@ -137,6 +137,9 @@ dotnet LogAI.Web.dll --purge-sources "docker:cs-" --confirm
 
 # 签发一个临时会话 cookie（验证受保护端点时用，不必知道账号口令）
 dotnet LogAI.Web.dll --mint-session <用户名> <角色>
+
+# 模型评测（CLI 版；设置页/侧栏的 /bench 页是其 Web 版，仅管理员）
+dotnet LogAI.Web.dll --analysis-bench [--models a,b] [--mode qwen25] [--repeat 2]
 
 # 打印冷归档（SQLite）两张表的条数——核对"清理是否同时清了两库"
 dotnet LogAI.Web.dll --archive-counts

@@ -8,6 +8,7 @@
 //     not 401.
 
 using LogAI.Core.Auth;
+using LogAI.Web;
 using LogAI.Core.Store;
 using LogAI.Web.Rendering;
 
@@ -100,7 +101,7 @@ internal static class AuthApi
         {
             string endpoint = ValueFormatter.ToText(call[0]);
             return endpoint == "static"
-                ? "/static/" + ValueFormatter.ToText(call.Get("filename"))
+                ? "/static/" + ValueFormatter.ToText(call.Get("filename")) + "?v=" + StaticAssets.Version
                 : "/" + endpoint;
         }));
         return scope;

@@ -2085,7 +2085,7 @@ async function loadSettings() {
         const promptModeEl = document.getElementById('aiPromptMode');
         if (promptModeEl) {
             const mode = settings.ai_prompt_mode || (settings.ai_cache_optimized === true ? 'qwen35' : 'default');
-            promptModeEl.value = ['default', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
+            promptModeEl.value = ['default', 'qwen25', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
             updatePromptModeHint();
         }
         
@@ -2533,7 +2533,10 @@ function syncPromptModeToModel() {
     if (!modelEl || !modeEl) return;
     const m = (modelEl.value || '').toLowerCase();
     let mode;
-    if (m.includes('qwen3.6') || m.includes('35b')) mode = 'qwen36';
+    // 顺序有讲究：先认 qwen2.5/coder，避免被后面的宽泛匹配（9b/35b）抢走。
+    if (m.includes('qwen2.5') || m.includes('coder')) mode = 'qwen25';
+    else if (m.includes('gemma')) mode = 'gemma';
+    else if (m.includes('qwen3.6') || m.includes('35b')) mode = 'qwen36';
     else if (m.includes('qwen3.5') || m.includes('9b')) mode = 'qwen35';
     else if (m.includes('llama')) mode = 'default';
     else mode = 'default';
@@ -2549,11 +2552,259 @@ function updatePromptModeHint() {
     const hint = document.getElementById('aiPromptModeHint');
     if (!el || !hint) return;
     const hints = {
-        'default': 'Llama3.2-3B：默认简单提示词。改动从下一轮分析开始生效，无需重启。',
-        'qwen35': 'Qwen3.5-9B：带 few-shot 示例的提示词。改动从下一轮分析开始生效，无需重启。',
-        'qwen36': 'Qwen3.6-35B-A3B：带 few-shot 示例的提示词。改动从下一轮分析开始生效，无需重启。',
+        'default': 'Llama3.2-3B：默认简单提示词（保持不变）。改动从下一轮分析开始生效，无需重启。',
+        'qwen25': 'Qwen2.5-Coder-7B：few-shot + 安全段（爆破成功/木马=critical）+ 防过度合并段。改动从下一轮分析开始生效，无需重启。',
+        'qwen35': 'Qwen3.5-9B：与 Qwen2.5-Coder-7B 相同的短提示词（实测比长模板更准：13/15、召回 6/6）。改动从下一轮分析开始生效，无需重启。',
+        'qwen36': 'Qwen3.6-35B-A3B：few-shot + 输出精简段（降 token 降延迟，完整性护栏防漏报）。改动从下一轮分析开始生效，无需重启。',
+        'gemma': 'Gemma-3-12B-it：短提示词 + 爆破强化（未成功爆破也=critical）。改动从下一轮分析开始生效，无需重启。',
     };
     hint.textContent = hints[el.value] || '';
+}
+
+// ---- 模型评测（管理员） ----
+let _benchPollTimer = null;
+
+async function loadBenchPanel() {
+    const box = document.getElementById('benchModelList');
+    if (!box) return;                    // 非管理员页面没有这个面板
+    try {
+        const data = await loadOllamaModels();
+        if (data && data.models && data.models.length > 0) {
+            const cur = (document.getElementById('ollamaModel')?.value) || data.current_model;
+            renderBenchModelCheckboxes(data.models, cur);
+        }
+    } catch (e) { /* ignore: 模型列表会自己重试 */ }
+    await loadBenchCorpora();
+    restoreBenchState();
+}
+
+// 评测模型选择器 = 复选框列表（比 <select multiple> 直观）
+function renderBenchModelCheckboxes(models, current) {
+    const box = document.getElementById('benchModelList');
+    if (!box) return;
+    if (!models || !models.length) {
+        box.innerHTML = '<span style="color:var(--lm-ink-2);">无可用模型</span>';
+        return;
+    }
+    box.innerHTML = models.map(m => `
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;margin:0;font-weight:normal;">
+            <input type="checkbox" value="${escapeHtml(m)}" ${m === current ? 'checked' : ''}>
+            <span>${escapeHtml(m)}</span>
+        </label>`).join('');
+}
+
+function selectedBenchModels() {
+    return Array.from(document.querySelectorAll('#benchModelList input[type=checkbox]:checked'))
+        .map(c => c.value).filter(Boolean);
+}
+
+// 回到本页时恢复上一次评测的进度/结果：评测跑在服务端，切页不中断，
+// 这里从 GET /api/ai/bench 读当前状态，running 就续上轮询，done 就回填结果。
+async function restoreBenchState() {
+    try {
+        const res = await fetch('/api/ai/bench');
+        const d = await res.json();
+        if (!res.ok) return;
+        if (d.phase === 'running') {
+            const status = document.getElementById('benchStatus');
+            const btn = document.getElementById('benchStartBtn');
+            status.style.display = 'block';
+            status.innerHTML = `<span class="status-dot warning"></span> 评测中… ${d.done}/${d.total} 例（${escapeHtml(d.model || '')}）`;
+            if (btn) btn.disabled = true;
+            pollBench();
+        } else if (d.phase === 'done' && d.results && d.results.length) {
+            renderBenchResults(d.results);
+        } else if (d.phase === 'failed') {
+            const status = document.getElementById('benchStatus');
+            status.style.display = 'block';
+            status.innerHTML = `<span class="status-dot offline"></span> 上次评测失败：${escapeHtml(d.error || '')}`;
+        }
+    } catch (e) { /* ignore */ }
+}
+
+async function refreshBenchModels() {
+    const box = document.getElementById('benchModelList');
+    if (!box) return;
+    try {
+        const data = await loadOllamaModels(null, true);   // force 刷新
+        if (data && data.models && data.models.length > 0) {
+            const cur = (selectedBenchModels()[0]) || data.current_model;
+            renderBenchModelCheckboxes(data.models, cur);
+        }
+        showToast('模型评测', `已刷新 ${(data?.models || []).length} 个模型`, 'info');
+    } catch (e) { showToast('模型评测', '刷新失败: ' + (e.message || e), 'error'); }
+}
+
+async function loadBenchCorpora(selectNew = false) {
+    const box = document.getElementById('benchCorpusList');
+    if (!box) return;
+    const prev = new Set(Array.from(box.querySelectorAll('input:checked')).map(c => c.value));
+    const firstLoad = !box.dataset.loaded;   // 首次加载：默认全选
+    try {
+        const res = await fetch('/api/ai/bench/corpora');
+        const list = await res.json();
+        box.innerHTML = list.map(c => {
+            // 首次全选；重渲染时保留用户勾选；新上传的（selectNew 且非 builtin）也勾上。
+            const on = firstLoad || prev.has(c.id) || (selectNew && c.id !== 'builtin' && !prev.has(c.id));
+            const del = c.id === 'builtin' ? '' :
+                `<button type="button" class="btn btn-outline btn-sm" onclick="deleteBenchCorpus('${c.id}')" title="删除该评测集" style="padding:0 0.45rem;line-height:1.4;"><i class="fas fa-trash"></i></button>`;
+            return `<label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer;margin:0;font-weight:normal;">
+                <input type="checkbox" value="${c.id}" ${on ? 'checked' : ''}>
+                <span>${escapeHtml(c.name)}（${c.case_count} 例）</span>${del}
+            </label>`;
+        }).join('');
+        box.dataset.loaded = '1';
+    } catch (e) { /* ignore */ }
+}
+
+function selectedBenchCorpora() {
+    return Array.from(document.querySelectorAll('#benchCorpusList input[type=checkbox]:checked'))
+        .map(c => c.value).filter(Boolean);
+}
+
+async function startBench() {
+    const models = selectedBenchModels();
+    const corpora = selectedBenchCorpora();
+    const repeat = parseInt(document.getElementById('benchRepeat').value || '1', 10);
+    if (!models.length) { showToast('模型评测', '请先勾选至少一个模型', 'error'); return; }
+    if (!corpora.length) { showToast('模型评测', '请先勾选至少一个评测集', 'error'); return; }
+    const status = document.getElementById('benchStatus');
+    const btn = document.getElementById('benchStartBtn');
+    status.style.display = 'block';
+    status.innerHTML = '<span class="status-dot warning"></span> 正在启动评测…';
+    document.getElementById('benchResult').innerHTML = '';
+    btn.disabled = true;
+    try {
+        const res = await fetch('/api/ai/bench', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ models, corpora, repeat })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            showToast('模型评测', data.error || ('HTTP ' + res.status), 'error');
+            status.style.display = 'none';
+            btn.disabled = false;
+            return;
+        }
+        pollBench();
+    } catch (e) {
+        showToast('模型评测', '启动失败: ' + (e.message || e), 'error');
+        status.style.display = 'none';
+        btn.disabled = false;
+    }
+}
+
+async function pollBench() {
+    const status = document.getElementById('benchStatus');
+    const btn = document.getElementById('benchStartBtn');
+    try {
+        const res = await fetch('/api/ai/bench');
+        const d = await res.json();
+        if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+        if (d.phase === 'running') {
+            status.style.display = 'block';
+            status.innerHTML = `<span class="status-dot warning"></span> 评测中… ${d.done}/${d.total} 例（${escapeHtml(d.model || '')}）`;
+            clearTimeout(_benchPollTimer);
+            _benchPollTimer = setTimeout(pollBench, 2000);
+            return;
+        }
+        if (d.phase === 'failed') {
+            status.innerHTML = `<span class="status-dot offline"></span> 评测失败：${escapeHtml(d.error || '')}`;
+        } else {
+            status.style.display = 'none';
+            renderBenchResults(d.results);
+        }
+    } catch (e) {
+        status.style.display = 'block';
+        status.innerHTML = `<span class="status-dot offline"></span> ${escapeHtml(e.message || e)}`;
+    }
+    btn.disabled = false;
+}
+
+function renderBenchResults(list) {
+    if (!list || !list.length) return;
+    const el = document.getElementById('benchResult');
+    const pct = (n, d) => (d ? `${n}/${d}` : '-');
+
+    // 汇总对比表：一行一个模型
+    const rows = list.map(r => {
+        const best = (r.exact / (r.attempts || 1)) >= (list.reduce((m, x) => Math.max(m, x.exact / (x.attempts || 1)), 0) || 0) - 1e-9;
+        return `<tr style="border-bottom:1px solid var(--lm-line);${best ? 'background:var(--lm-subtle);' : ''}">
+            <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.model || '')}</td>
+            <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.prompt_mode || '')}</td>
+            <td style="padding:0.3rem 0.5rem;"><b>${pct(r.exact, r.attempts)}</b></td>
+            <td style="padding:0.3rem 0.5rem;">${pct(r.tolerant, r.attempts)}</td>
+            <td style="padding:0.3rem 0.5rem;">${pct(r.crit_recall, r.crit_total)}</td>
+            <td style="padding:0.3rem 0.5rem;">${pct(r.healthy_clean, r.healthy_total)}</td>
+            <td style="padding:0.3rem 0.5rem;">${pct(r.issue_hit, r.issue_total)}</td>
+            <td style="padding:0.3rem 0.5rem;">${r.fabricated ?? 0}</td>
+            <td style="padding:0.3rem 0.5rem;">${r.parse_fail ?? 0}</td>
+            <td style="padding:0.3rem 0.5rem;">${r.avg_seconds ?? '-'}s</td>
+        </tr>`;
+    }).join('');
+
+    // 每个模型的用例明细（可折叠）
+    const details = list.map((r, i) => {
+        const caseRows = (r.cases || []).map(c => {
+            const verdicts = (c.verdicts || []).join('/');
+            const allExact = (c.verdicts || []).every(v => v === c.expected);
+            return `<tr style="border-bottom:1px solid var(--lm-line);">
+                <td style="padding:0.2rem 0.5rem;">${escapeHtml(c.id)}</td>
+                <td style="padding:0.2rem 0.5rem;">${escapeHtml(c.expected)}</td>
+                <td style="padding:0.2rem 0.5rem;">${escapeHtml(verdicts)}</td>
+                <td style="padding:0.2rem 0.5rem;">${allExact ? '✓' : '✗'}${c.fabricated ? ' · 误报' : ''}</td>
+                <td style="padding:0.2rem 0.5rem;max-width:360px;white-space:normal;">${escapeHtml(c.last_issues || '')}</td>
+            </tr>`;
+        }).join('');
+        return `<details ${i === 0 ? 'open' : ''} style="margin-top:0.6rem;">
+            <summary style="cursor:pointer;font-weight:600;">${escapeHtml(r.model || '')} · 用例明细</summary>
+            <table style="width:100%;border-collapse:collapse;font-size:0.78rem;">
+                <thead><tr style="text-align:left;border-bottom:1px solid var(--lm-line);">
+                    <th style="padding:0.2rem 0.5rem;">用例</th><th>期望</th><th>判定</th><th>结果</th><th>问题摘要</th>
+                </tr></thead>
+                <tbody>${caseRows}</tbody>
+            </table>
+        </details>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="border:1px solid var(--lm-line);border-radius:8px;padding:0.75rem;">
+        <div style="font-weight:600;margin-bottom:0.5rem;">对比（${list.length} 个模型，高亮为档位命中最高者）</div>
+        <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+          <thead><tr style="text-align:left;border-bottom:1px solid var(--lm-line);">
+            <th style="padding:0.3rem 0.5rem;">模型</th><th>提示词</th><th>档位命中</th><th>±1容差</th><th>critical召回</th><th>healthy无虚警</th><th>关键词命中</th><th>无中生有</th><th>解析失败</th><th>平均</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${details}
+      </div>`;
+}
+
+async function uploadBenchCorpus() {
+    const f = document.getElementById('benchCorpusFile');
+    if (!f || !f.files || !f.files[0]) { showToast('模型评测', '请先选择 JSON 文件', 'error'); return; }
+    try {
+        const text = await f.files[0].text();
+        const res = await fetch('/api/ai/bench/corpus', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text });
+        const data = await res.json();
+        if (!res.ok) { showToast('模型评测', data.error || ('HTTP ' + res.status), 'error'); return; }
+        showToast('模型评测', `已上传评测集「${data.name}」(${data.case_count} 例)`, 'success');
+        f.value = '';
+        await loadBenchCorpora(true);   // 新上传的自动勾选
+    } catch (e) {
+        showToast('模型评测', '上传失败: ' + (e.message || e), 'error');
+    }
+}
+
+async function deleteBenchCorpus(id) {
+    if (!id || id === 'builtin') return;
+    try {
+        const res = await fetch('/api/ai/bench/corpus/' + encodeURIComponent(id), { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) { showToast('模型评测', data.error || ('HTTP ' + res.status), 'error'); return; }
+        showToast('模型评测', '已删除评测集', 'success');
+        await loadBenchCorpora();
+    } catch (e) { showToast('模型评测', '删除失败: ' + (e.message || e), 'error'); }
 }
 
 // Toast notifications
@@ -2936,6 +3187,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (path === '/settings') {
         state.currentPage = 'settings';
         loadSettings();
+    } else if (path === '/bench') {
+        state.currentPage = 'bench';
+        loadBenchPanel();
     }
     
     // Refresh stats periodically

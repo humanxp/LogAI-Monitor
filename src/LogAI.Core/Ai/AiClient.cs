@@ -21,7 +21,13 @@ public sealed class AiClient(HttpClient? http = null)
 
     public string Provider { get; init; } = "openai";
     public string BaseUrl { get; init; } = "";
-    public string Model { get; init; } = "";
+    /// <summary>
+    /// 本次要调用的模型名。可写是刻意的：分析循环每轮把它刷新成设置页当前的值
+    /// （见 AnalysisRunner.ReadLimits / RunOnceAsync）。此前它是 init-only，
+    /// 于是模型名只在容器启动时解析一次——设置页改了模型、接口显示的也是新值，
+    /// 唯独每两分钟的自动分析还按旧模型发请求，必须重启容器才对得上。
+    /// </summary>
+    public string Model { get; set; } = "";
     public string ApiKey { get; init; } = "";
     public int MaxTokens { get; init; } = 8192;
 
@@ -149,22 +155,39 @@ public sealed class AiClient(HttpClient? http = null)
         AiEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
 
     /// <summary>
-    /// 提示词模式（设置页「建议使用模型匹配优化」下拉框）。值：default（简单提示词）、
-    /// qwen35 / qwen36（few-shot 前缀缓存版，静态块在日志前、命中率高）。缺省回退旧键
-    /// ai_cache_optimized。opt-in：只有非 default 才用缓存提示词。
+    /// 提示词模式（设置页「建议使用模型匹配优化」下拉框）。值：
+    ///   default —— 简单提示词（Llama3.2-3B 用，行为不变）
+    ///   qwen25  —— Qwen2.5-Coder 专用（安全段 + 防过度合并段）
+    ///   qwen35  —— Qwen3.5-9B 专用（安全段）
+    ///   qwen36  —— Qwen3.6-35B-A3B 专用（现有缓存版原文，实测 48/48 不动）
+    /// 缺省回退旧键 ai_cache_optimized=true → qwen35（与前端的历史映射保持一致）。
+    /// 返回的模式串直接交给 PromptBuilder.BatchPromptFor 选模板；未知值由它回退到缓存版。
     /// </summary>
-    public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, object?> settings)
+    public static string AiPromptModeIn(IReadOnlyDictionary<string, object?> settings)
     {
         if (settings.TryGetValue("ai_prompt_mode", out object? raw) && raw is not null)
         {
             string mode = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-            if (mode.Length > 0) return mode != "default";
+            if (mode.Length > 0) return mode;
         }
-        if (!settings.TryGetValue("ai_cache_optimized", out raw) || raw is null)
-            return false;
-        string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
-        return text is "true" or "1" or "yes" or "on";
+        if (settings.TryGetValue("ai_cache_optimized", out raw) && raw is not null)
+        {
+            string text = raw.ToString()?.Trim().Trim('"').ToLowerInvariant() ?? "";
+            if (text is "true" or "1" or "yes" or "on") return "qwen35";
+        }
+        return "default";
     }
+
+    public static string AiPromptModeIn(IReadOnlyDictionary<string, string> settings) =>
+        AiPromptModeIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));
+
+    /// <summary>
+    /// 是否使用缓存版（few-shot 前缀）提示词。保留这个方法是因为它表达的是
+    /// "静态规则块在日志之前、能命中前缀缓存"这个语义；具体选哪一份模板
+    /// 由 AiPromptModeIn + PromptBuilder.BatchPromptFor 决定。
+    /// </summary>
+    public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, object?> settings) =>
+        AiPromptModeIn(settings) != "default";
 
     public static bool AiCacheOptimizedEnabledIn(IReadOnlyDictionary<string, string> settings) =>
         AiCacheOptimizedEnabledIn(settings.ToDictionary(p => p.Key, p => (object?)p.Value, StringComparer.Ordinal));

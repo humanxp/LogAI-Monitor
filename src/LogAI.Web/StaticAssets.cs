@@ -27,6 +27,15 @@ internal static class StaticAssets
         [".map"] = "application/json; charset=utf-8",
     };
 
+    /// <summary>
+    /// 缓存破坏令牌：进程启动时取一个时间戳。容器每次部署都重建（=新进程），
+    /// 于是模板里 /static/...?v=&lt;token&gt; 会变，浏览器立刻拉新文件；进程存活期间
+    /// 令牌不变，仍享受下面的 max-age 缓存、不会每页导航都回源 304。
+    /// 这正是"部署即生效 + 平常零回源"的两全，补上原来只设 5 分钟缓存、
+    /// 部署后用户要等缓存过期才能看到新界面的坑。
+    /// </summary>
+    public static readonly string Version = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+
     public static void Map(WebApplication app)
     {
         string root = Path.Combine(AppContext.BaseDirectory, "wwwroot");

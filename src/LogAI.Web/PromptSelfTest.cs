@@ -144,6 +144,71 @@ internal static class PromptSelfTest
         Check("TRUE 大写视为启用",
             LogAI.Core.Ai.AiClient.AiEnabledIn(new Dictionary<string, string> { ["ollama_enabled"] = "TRUE" }));
 
+        // ---- 提示词模式 → 模板（「建议使用模型匹配优化」的后端一半）----
+        // 前端 syncPromptModeToModel() 负责把模型名映射成模式，后端 BatchPromptFor 负责把模式
+        // 映射成模板。这里把后端这一半钉死，尤其是"未知值必须回退到通用缓存版"——
+        // 老库里可能存着 ai_prompt_mode 的任意历史值，升级后提示词不能悄悄变样。
+        string q36 = PromptBuilder.BatchPromptFor("qwen36", summary);
+        Check("qwen36 取到自己的模板（含输出精简段与问题/噪声边界，不含安全段）",
+            q36.Contains("BREVITY (this monitor runs every 2 minutes", StringComparison.Ordinal)
+            && q36.Contains("PROBLEM vs NOISE - WHAT COUNTS AS AN ISSUE", StringComparison.Ordinal)
+            && !q36.Contains("SECURITY EVIDENCE IS LITERAL", StringComparison.Ordinal));
+        Check("qwen36 模板与通用缓存版不同（说明它确实被优化过）",
+            q36 != PromptBuilder.BatchPromptCached(summary));
+
+        string q35 = PromptBuilder.BatchPromptFor("qwen35", summary);
+        Check("qwen35 与 qwen25 用同一份短模板（长模板实测对 9B 是负收益，已删）",
+            q35 == PromptBuilder.BatchPromptQwen25(summary));
+        Check("qwen35 短模板仍带两条安全判据",
+            q35.Contains("A successful remote login (\"Accepted password\"", StringComparison.Ordinal)
+            && q35.Contains("from an antivirus is confirmed malware", StringComparison.Ordinal));
+
+        string gemma = PromptBuilder.BatchPromptFor("gemma", summary);
+        Check("gemma 短模板带两条安全判据",
+            gemma.Contains("A successful remote login (\"Accepted password\"", StringComparison.Ordinal)
+            && gemma.Contains("from an antivirus is confirmed malware", StringComparison.Ordinal));
+        Check("gemma 比 qwen25 多一条爆破强调（其余部分与短模板一致）",
+            gemma.Contains("an ACTIVE brute-force attack", StringComparison.Ordinal)
+            && !PromptBuilder.BatchPromptQwen25(summary).Contains("an ACTIVE brute-force attack", StringComparison.Ordinal));
+
+        string q25 = PromptBuilder.BatchPromptFor("qwen25", summary);
+        Check("qwen25 取到自己的模板（只有最短的安全判据，没有长段/示例）",
+            q25.Contains("A successful remote login (\"Accepted password\"", StringComparison.Ordinal)
+            && q25.Contains("from an antivirus is confirmed malware", StringComparison.Ordinal)
+            && !q25.Contains("PROBLEM vs NOISE", StringComparison.Ordinal)
+            && !q25.Contains("Example 5", StringComparison.Ordinal));
+
+        Check("default 与空串取简单版（Llama3.2 行为不变）",
+            PromptBuilder.BatchPromptFor("default", summary) == PromptBuilder.BatchPrompt(summary)
+            && PromptBuilder.BatchPromptFor("", summary) == PromptBuilder.BatchPrompt(summary));
+
+        Check("未知模式回退到通用缓存版（老配置升级不变样）",
+            PromptBuilder.BatchPromptFor("qwen3.5-legacy", summary) == PromptBuilder.BatchPromptCached(summary));
+
+        Check("模式名大小写与引号都容错",
+            PromptBuilder.BatchPromptFor("\"QWEN25\"", summary) == PromptBuilder.BatchPromptQwen25(summary));
+
+        Check("每个模式都必须带上 6 个键",
+            new[] { q36, q35, q25, gemma }.All(p =>
+                new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
+                    .All(key => p.Contains('"' + key + '"', StringComparison.Ordinal))));
+
+        Check("每个模式都必须嵌入日志正文",
+            new[] { q36, q35, q25, gemma }.All(p => p.Contains(expectedSummary, StringComparison.Ordinal)));
+
+        Check("qwen25/qwen35 同源、gemma 多一条、qwen36 与 default 各自独立（共 4 份）",
+            q35 == q25
+            && new HashSet<string> { q36, q25, gemma, PromptBuilder.BatchPromptFor("default", summary) }.Count == 4);
+
+        // 兼容层：ai_cache_optimized=true（旧键）→ qwen35；缺省 → default
+        Check("旧键 ai_cache_optimized=true 映射到 qwen35",
+            LogAI.Core.Ai.AiClient.AiPromptModeIn(new Dictionary<string, string> { ["ai_cache_optimized"] = "true" }) == "qwen35");
+        Check("两个键都缺省时映射到 default",
+            LogAI.Core.Ai.AiClient.AiPromptModeIn(new Dictionary<string, string>()) == "default");
+        Check("ai_prompt_mode 优先于旧键",
+            LogAI.Core.Ai.AiClient.AiPromptModeIn(new Dictionary<string, string>
+            { ["ai_prompt_mode"] = "qwen25", ["ai_cache_optimized"] = "true" }) == "qwen25");
+
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;
     }

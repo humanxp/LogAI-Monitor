@@ -65,7 +65,12 @@ internal static class OllamaApi
         var root = JsonNode.Parse(await response.Content.ReadAsStringAsync());
         var ids = new List<string>();
         foreach (JsonNode? node in root?["data"] as JsonArray ?? [])
-            if (node?["id"]?.GetValue<string>() is { } id) ids.Add(id);
+            if (node?["id"]?.GetValue<string>() is { } id)
+                // 只列能跑 /chat/completions 的模型：嵌入模型（Qwen3-Embedding-*）走
+                // /v1/embeddings，不能做日志分析，选了只会让评测/分析 15/15 全失败
+                // （HTTP 400 "not an LLM / chat model"）。按名字过滤，与 omlx 命名约定一致。
+                if (!id.Contains("embedding", StringComparison.OrdinalIgnoreCase))
+                    ids.Add(id);
         return ids;
     }
 }

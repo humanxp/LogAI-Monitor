@@ -10,12 +10,17 @@
 // stalled analyser.
 
 using System.Globalization;
+using LogAI.Core.Ai;
 using LogAI.Core.Scheduler;
 using LogAI.Core.Store;
 
 namespace LogAI.Web.Api;
 
-/// <summary>Snapshot published by the scheduler's health job.</summary>
+/// <summary>
+/// Snapshot published by the scheduler's health job. AiModel is only the fallback
+/// now: the endpoint resolves the model live, because the model can change every
+/// analysis round while this snapshot is republished every health_watch_minutes.
+/// </summary>
 internal static class HealthState
 {
     public static bool AiAvailable { get; set; }
@@ -40,7 +45,12 @@ internal static class HealthApi
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["ai_available"] = HealthState.AiAvailable,
-                ["ai_model"] = HealthState.AiModel,
+                // 模型名当场从设置里解析，不用巡检快照。快照只在 health_watch_minutes
+                // （默认 5 分钟）那一拍更新，而模型现在每轮分析都会重读——用它就会
+                // 出现"设置页已经改了、真正在跑的也是新模型，偏偏 /api/health 还报旧值
+                // 五分钟"，正是把上一次排查带偏的那个现象。/api/stats 本来就是这个口径。
+                // 解析不出来时退回巡检快照。backlog/total 本来就是当场读的，与它们一致。
+                ["ai_model"] = AiClient.ResolveModel(store, HealthState.AiModel),
                 ["backlog"] = backlog,
                 ["last_analysis_age_s"] = HealthState.LastAnalysisAgeSeconds,
                 ["ok"] = HealthCheck.IsOk(inputs),

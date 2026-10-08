@@ -18,10 +18,16 @@
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
+# 构建网络的网关会对 api.nuget.org 做 DNS 投毒（解析成 198.18.x.x 假地址），
+# 这里用 nuget.config 把还原源切到国内可达的华为云镜像，否则 dotnet publish 还原失败。
+COPY nuget.config ./nuget.config
 COPY src/ ./src/
 RUN dotnet publish src/LogAI.Web/LogAI.Web.csproj -c Release -o /app --nologo
 
-FROM mcr.microsoft.com/dotnet/aspnet:8.0
+# 运行时也用 sdk:8.0 而不是 aspnet:8.0：构建网络的网关对 mcr.microsoft.com 同样做
+# DNS 投毒，且 aspnet:8.0 未被本地缓存，pull 会 EOF。sdk 镜像自带完整 ASP.NET Core
+# 运行时、本地已缓存，改用它能离线构建（代价是最终镜像更大，可接受）。
+FROM mcr.microsoft.com/dotnet/sdk:8.0
 WORKDIR /app
 # Syslog timestamps and the diagnostics output are rendered in this timezone.
 ENV TZ=Asia/Shanghai

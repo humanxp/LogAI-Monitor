@@ -156,7 +156,7 @@
                 <select class="form-control form-select" id="ollamaModel" onchange="syncPromptModeToModel()">
                     <option value="">Loading models...</option>
                 </select>
-                <small style="color: var(--lm-ink-2);">Available models are loaded from your OpenAI-compatible endpoint (host + /v1/models)</small>
+                <small style="color: var(--lm-ink-2);">Available models are loaded from your OpenAI-compatible endpoint (host + /v1/models)。改动从下一轮分析开始生效，无需重启。</small>
             </div>
             
             <div class="form-group">
@@ -170,8 +170,10 @@
                 <label class="form-label" for="aiPromptMode">建议使用模型匹配优化</label>
                 <select class="form-control form-select" id="aiPromptMode" onchange="updatePromptModeHint()">
                     <option value="default">Llama3.2-3B（默认）</option>
+                    <option value="qwen25">Qwen2.5-Coder-7B</option>
                     <option value="qwen35">Qwen3.5-9B</option>
                     <option value="qwen36">Qwen3.6-35B-A3B</option>
+                    <option value="gemma">Gemma-3-12B-it</option>
                 </select>
                 <small style="color: var(--lm-ink-2);" id="aiPromptModeHint"></small>
             </div>
@@ -379,7 +381,7 @@
         <h4><i class="fas fa-balance-scale"></i> AI 判定口径（critical / warning / healthy）</h4>
         <ul>
             <li><b>纯模型判定</b>（与 python-legacy 一致）：模型的 <code>overall_status</code> 判什么就是什么，程序只做同义词归一（critical/error → critical，warning/notice → warning，info/healthy → healthy，其余 → other），不做任何修正。</li>
-            <li>提示词可选：Llama3.2-3B 默认简单版，Qwen3.5-9B / Qwen3.6-35B-A3B 用 few-shot 版（见「建议使用模型匹配优化」下拉框）；日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
+            <li>提示词按模型分别优化（见「建议使用模型匹配优化」下拉框，选模型时自动匹配，也可手动改）：<b>Llama3.2-3B</b> 用默认简单版（不变）；<b>Qwen2.5-Coder-7B</b> 用短提示词（few-shot + 两条安全判据 + 防过度合并）；<b>Qwen3.5-9B</b> 用同一份短提示词（实测长模板反而不准）；<b>Qwen3.6-35B-A3B</b> 用输出精简版（实测 48/48，刻意不动）；<b>Gemma-3-12B-it</b> 用短提示词 + 爆破强化（未成功爆破也=critical）。日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
             <li>过小的模型（如 3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围；默认的 Qwen3.5-9B 已明显改善。</li>
         </ul>
 

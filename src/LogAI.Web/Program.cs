@@ -22,6 +22,7 @@ var pages = new (string Path, string Template, string Title)[]
     ("/clients", "clients.html", "Syslog Clients"),
     ("/docker", "docker.html", "Docker Logs"),
     ("/analysis", "analysis.html", "AI Analysis"),
+    ("/bench", "bench.html", "Model Evaluation"),
     ("/settings", "settings.html", "Settings"),
     ("/users", "users.html", "Users"),
     ("/about", "about.html", "About"),
@@ -108,6 +109,12 @@ if (args.Length >= 1 && args[0] == "--scheduler-selftest")
 if (args.Length >= 1 && args[0] == "--runner-selftest")
 {
     Environment.Exit(await RunnerSelfTest.RunAsync());
+}
+
+// 模型分析正确性对比（不需要 Redis，只要 AI 端点）。见 AnalysisBench.cs。
+if (args.Length >= 1 && args[0] == "--analysis-bench")
+{
+    Environment.Exit(await AnalysisBench.RunAsync(args));
 }
 
 if (args.Length >= 1 && args[0] == "--commit-selftest")
@@ -257,6 +264,7 @@ LogAI.Web.Api.HealthApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Stor
 LogAI.Web.Api.AlertWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(),
     app.Services.GetRequiredService<LogAI.Core.Store.LogArchive>(), sessionCookies);
 LogAI.Web.Api.SettingsWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
+LogAI.Web.Api.AiBenchApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.CleanupApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.FilterWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
 LogAI.Web.Api.UserWriteApi.Map(app, app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>(), sessionCookies);
@@ -302,6 +310,8 @@ foreach (var page in pages)
         // /users is admin-only: a non-admin is sent
         // back to the dashboard instead of seeing the page.
         if (current.Path == "/users" && user.Role != "admin") return Results.Redirect("/");
+        // /bench 同样仅管理员（评测会触发真实模型调用）。
+        if (current.Path == "/bench" && user.Role != "admin") return Results.Redirect("/");
 
         var scope = BuildScope(current.Title, current.Path, CookiesOf(http), true);
         scope.Set("current_user", new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -842,7 +852,7 @@ static Scope BuildScope(string title, string path, Dictionary<string, string> co
     {
         string endpoint = ValueFormatter.ToText(call[0]);
         return endpoint == "static"
-            ? "/static/" + ValueFormatter.ToText(call.Get("filename"))
+            ? "/static/" + ValueFormatter.ToText(call.Get("filename")) + "?v=" + StaticAssets.Version
             : "/" + endpoint;
     }));
 

@@ -37,7 +37,7 @@ SSH="ssh -i $KEY -o BatchMode=yes -o PasswordAuthentication=no $SSH_OPTS"
 
 echo "== 1/4 sync working copy to $HOST:$TREE =="
 tar czf - --exclude=bin --exclude=obj \
-  src templates wwwroot Dockerfile README.md DEPLOY.md docker-compose.yml .env.example scripts \
+  src templates wwwroot Dockerfile README.md DEPLOY.md docker-compose.yml .env.example scripts nuget.config \
   | $SSH "$HOST" "rm -rf $TREE/src $TREE/templates $TREE/wwwroot $TREE/scripts && mkdir -p $TREE && tar xzf - -C $TREE"
 
 echo "== 2/4 read the live container's secrets so they survive the swap =="

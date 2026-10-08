@@ -118,9 +118,8 @@ internal static class AnalyzeApi
                 batchFields,
                 int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_sample_limit")),
                              out int sample) && sample > 0 ? sample : 200);
-            string batchPrompt = AiClient.AiCacheOptimizedEnabledIn(settings)
-                ? PromptBuilder.BatchPromptCached(batchSummary)
-                : PromptBuilder.BatchPrompt(batchSummary);
+            string batchPrompt = PromptBuilder.BatchPromptFor(
+                AiClient.AiPromptModeIn(settings), batchSummary);
             var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 8192, AiClient.AiThinkingEnabledIn(settings));
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -219,9 +218,7 @@ internal static class AnalyzeApi
             else
             {
                 string reSummary = PromptBuilder.LogSummary(available, sampleLimit);
-                prompt = AiClient.AiCacheOptimizedEnabledIn(settings)
-                    ? PromptBuilder.BatchPromptCached(reSummary)
-                    : PromptBuilder.BatchPrompt(reSummary);
+                prompt = PromptBuilder.BatchPromptFor(AiClient.AiPromptModeIn(settings), reSummary);
             }
             var analysis = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192, AiClient.AiThinkingEnabledIn(settings));
             if (analysis is null)

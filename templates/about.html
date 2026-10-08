@@ -173,12 +173,13 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
-            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选：Llama3.2-3B 默认简单版，Qwen3.5-9B / Qwen3.6-35B-A3B 用 few-shot 版（静态规则 + 示例放日志前）</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
             <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
             <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>
             <li><b>结果稳健性</b>：对模型返回做 JSON 提取、截断修复与纠正性重试；确认失败的批次不会污染历史，也不会被无限重试</li>
             <li><b>分析历史</b>：可按时间与关键字检索、查看完整结果、对历史批次<b>重新分析</b></li>
+            <li><b>模型评测</b>：管理员可在「模型评测」页任选多个模型 × 多份评测集（内置 27 例或上传自定义 JSON）跑一轮，横向对比档位命中 / critical 召回 / 关键词命中 / 延迟等</li>
         </ul>
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
@@ -206,12 +207,12 @@
             <li><b>可观测</b>：每个后台任务都留正向判据——分析成功写 <code>[Analysis] analyzed N log(s)</code>、清理写 <code>[Cleanup] removed …</code>、告警推送写 <code>[Telegram] alert sent</code>；分析失败除日志外还在存储里留一条带原因的记录，便于事后追溯</li>
             <li><b>单一容器部署</b>：应用与界面一体，仅依赖一个 Redis；配置经环境变量注入</li>
             <li><b>写入护栏</b>：连接到生产库时默认禁止后台写入组件启动，避免误操作污染数据；确认接管时显式放行</li>
-            <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；仅 AI 端点/协议在启动时读取。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
+            <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；AI 端点/协议在启动时读取，模型名与提示词模式每轮分析重读（改完下一轮生效、无需重启）。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
         </ul>
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
         <ul style="margin: 0;">
-            <li><b>11 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置、用户、关于；另有登录页与 404 页</li>
+            <li><b>12 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置、模型评测、用户、关于；另有登录页与 404 页</li>
             <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
             <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
         </ul>
@@ -256,7 +257,7 @@
 
         <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-cube" style="color:#2496ED;"></i> 部署与依赖</h4>
         <ul style="margin: 0;">
-            <li><b>Docker 多阶段构建</b> —— SDK 镜像编译，产物拷贝到 ASP.NET Core 运行时镜像</li>
+            <li><b>Docker 多阶段构建</b> —— SDK 镜像编译，产物拷贝到 SDK 运行时镜像（含 nuget.config 国内镜像，做离线构建兜底）</li>
             <li>对外端口 <b>5059</b>（HTTP）、<b>514/UDP</b> 与 <b>515/TCP</b>（syslog）；容器时区 Asia/Shanghai</li>
             <li>第三方依赖仅 <b>4 个</b> NuGet 包：StackExchange.Redis、Microsoft.Data.Sqlite、System.Text.Encoding.CodePages、scrypt 实现；其余（模板引擎、Engine.IO、调度器、协议解析）均为自实现</li>
         </ul>

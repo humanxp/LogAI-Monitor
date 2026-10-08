@@ -515,6 +515,240 @@ logaimonitor-cs:pre-archive logaimonitor-cs:latest` + 按 3.7 重建容器（去
 小写键（critical/healthy/other/total/warning）变成大写——匿名类型必须显式写
 `critical = cached.Critical` 这类小写属性名。
 
+### 3.18 模型名热生效 + `/api/health` 的模型当场解析 —— ✅ 已完成（2026-10-08，已部署）
+**现象**：设置页把 Model 从 `Qwen3.5-9B-MLX-4bit` 改成 `Qwen3.6-35B-A3B-MLX-4bit`
+（提示词模式 `qwen36`）后，`/api/stats`、`/api/ollama/status` 都报 Qwen3.6，
+但推理服务上真正在跑的仍是 **Qwen3.5-9B**，`/api/health` 的 `ai_model` 也停在 Qwen3.5-9B。
+
+**根因（两处，都在"只读一次"上）**
+1. `AiClient.Model` 是 `init`-only，只在 `AppHost.cs` 启动时用 `ResolveModel(store)` 解析一次；
+   `AnalysisRunner.ReadLimits()` 每轮重读 batch / sample / promptMode / thinking，**模型名不在其中**，
+   而 `CompleteAsync` 发的 `payload["model"]` 就是这个固定值。所以"改动从下一轮分析开始生效，
+   无需重启"（设置页在「建议使用模型匹配优化」下拉框下的文案）对**提示词模板**成立、对**模型名**不成立——
+   模板换了、模型没换，等于拿 A 模型的提示词去问 B 模型。
+2. `HealthState.AiModel` 由巡检任务每 `health_watch_minutes`（默认 5 分钟）才发布一次，
+   即使分析已经换了模型，这一栏也要等最多 5 分钟才跟上。
+
+**修法（3 处）**
+1. `AiClient.Model` → `{ get; set; }`（`AiClient.cs:24`），并注明可写是刻意的。
+2. `AnalysisRunner.ReadLimits()` 的返回元组加 `Model`（取 `AiClient.ResolveModel(store, client.Model)`，
+   优先级与启动时完全一致：设置页 → `OLLAMA_MODEL` → 启动值）；`RunOnceAsync` 在**取批之前**
+   写回 `client.Model`——队列为空、一次请求都不发的那一轮同样刷新。
+3. `/api/health` 的 `ai_model` 改为当场解析（与 `/api/stats` 同口径），解析不出来才退回巡检快照。
+
+**证据：不读 `/api/health`（那是代理指标），直接抓应用发给模型的 HTTP body**
+脚本 `.handover-evidence/model-hotreload-capture.sh`（日志同目录 `.log`）。
+用 node 假端点（`logai-preview:latest`）返回合法分析 JSON，抓 `"model"` 字段：
+
+| 用例 | 镜像 | 请求 #1（设置=`MODEL-A-OLD`） | 改设置为 `MODEL-B-NEW` 后请求 #2 |
+|---|---|---|---|
+| CONTROL | `logaimonitor-cs:promptopt`（旧代码） | `MODEL-A-OLD` | **`MODEL-A-OLD`（没跟上）** |
+| TEST | `logaimonitor-cs:devtest`（新代码） | `MODEL-A-OLD` | **`MODEL-B-NEW`** ✓ |
+
+两种镜像每轮都真实分析了 1 条日志（`[Analysis] analyzed 1 log(s)`），排除"根本没发请求"这个解释。
+全程只用 DB 9 + 一次性容器（独立端口、无 syslog 端口、无 docker socket、无 Telegram 凭据）。
+
+**部署**：镜像 `sha256:ff4b4d9941bb`（新 tag `logaimonitor-cs:hotmodel`，旧镜像 `0609cd80` 仍在，
+tag 为 `promptopt`，可回退）。重建后 `/api/health`、`/api/stats`、`/api/ollama/status` 三处一致报
+Qwen3.6，而容器环境变量仍是 `OLLAMA_MODEL=Qwen3.5-9B-MLX-4bit`——正好证明现在由**设置页**而不是环境变量决定模型。
+
+**做这个验证时踩的两个坑（测试脚本自己也要被验证）**
+- 测试日志的 zset 分数必须用**当前时间**：写 `1`（1970）会被保留期清理任务在下一轮分析前删掉，
+  现象是"queued log 2"之后永远是 `[Analysis] nothing to analyze`。
+- busybox `nc` 当假 HTTP 端点太脆（`.NET` 客户端连不上、且错误栈被 `--tail` 截掉看不出原因）。
+  换成 node 的 `http.createServer` 一次就通；并且脚本里要带自检请求，先证明端点能应答再怀疑应用。
+
+**顺带发现（未修，供后续）**：`scripts/deploy-cs.sh` 给**应用容器**加了 `--network-alias redis`。
+生产上的应用容器没有任何 alias，`redis` 这个别名属于 Redis 容器（172.18.0.2）；
+给应用容器也挂上会让 `redis` 同时解析到它自己。本次部署用
+`scripts/deploy-cs-password.sh`（无该参数，与生产一致），两个脚本的 `docker run` 参数应当对齐。
+
+---
+
+### 3.19 模型分析正确性基准（`--analysis-bench`）—— ✅ 已完成（2026-10-08，已部署）
+**为什么做成应用内的开关**：只有走同一条 `PromptBuilder → AiClient → JsonExtractor →
+AiStatusClassifier` 路径，比出来的差异才归因于模型，而不是归因于"另抄了一份提示词"。
+它不连 Redis（只要 `AI_BASE_URL`/`AI_API_KEY`），可以拿生产镜像直接跑：
+
+```bash
+docker run --rm --network logradarai_logaimonitor-net \
+  -e AI_BASE_URL=http://192.168.50.23:8000/v1 -e AI_API_KEY=<key> \
+  logaimonitor-cs:latest --analysis-bench                      # 每个模型用它自己的提示词模式
+  ... --analysis-bench --mode qwen25                            # 两个模型强制同一套提示词（去掉混淆）
+  ... --analysis-bench --cases ssh-bruteforce,cert-expiry --repeat 3   # 只复测争议用例
+```
+
+**语料**：15 条带标准答案的用例（见 `AnalysisBench.cs` 的 `BuildCases()`），期望档位按字面事实定，
+不按主观印象：入侵/数据损坏/阵列掉盘/恶意文件 → critical；磁盘将满/OOM/证书到期/SYN 洪泛/
+SMART 待映射扇区/无效用户探测/进程崩溃 → warning；例行 cron、正常启停 → healthy。
+分数分四类：exact（档位完全一致）、tolerant（相差 ≤1 档）、critical-recall（期望 critical 里真判 critical）、
+healthy-clean（期望 healthy 里没有误报）、issue-hit（必须点到的关键词）、fabricated（无中生有）。
+
+**结论（15 条 × 1 次，thinking=off，temperature 0.1）**
+
+| 配置 | exact | tolerant | critical-recall | 平均/次 |
+|---|---|---|---|---|
+| **Qwen2.5-Coder-7B + qwen25**（生产当时用的就是这套） | **14/15** | 15/15 | **6/6** | 2.2s |
+| Qwen2.5-Coder-7B + qwen35 | 14/15 | 15/15 | 6/6 | 2.8s |
+| Qwen3.5-9B + qwen25 | 13/15 | 15/15 | **6/6** | 10.7s |
+| Qwen3.5-9B + qwen35 | **10/15** | 14/15 | 5/6 | 10.6s |
+| Qwen3.6-35B-A3B + qwen36 | 10/15 | 15/15 | 4/6 | 7.0s |
+
+**主要发现**
+1. **提示词模式的权重不低于模型**：同一个 9B，换 `qwen25` 与 `qwen35` 差 3 条；
+   同一个 7B 差 0–1 条。跨提示词对比才能分清"模型不行"与"这套提示词不行"。
+2. **同一套提示词下（qwen25），9B 不差于 7B**：争议 4 例 ×3 次，9B critical-recall 6/6，
+   7B 只有 4/6 —— 7B 在"一长串噪声里藏一个真问题"上不稳定（3 次里 2 次判成 warning）。
+   这与 `BatchPromptQwen25` 注释里"这个 7B 对长提示词/长输入敏感"的旧结论一致。
+3. **长提示词 `qwen35` 反而伤 9B**：9B+qwen35 三次全都没把"纯失败爆破"判成 critical
+   （healthy/warning/warning），一次把"证书 7 天后过期"判成 healthy 且 issues 为空；
+   同一批用例 7B+qwen35 是 6/6。**生产此前跑的正是 9B+qwen35，是本次测过的组合里最差的一套。**
+4. **Qwen3.6-35B-A3B（`qwen36`）把两例爆破都判成 warning**，包括"先反复失败、随后 Accepted"
+   这一已确认入侵的用例 —— 它把问题列出来了（不会漏报事件），但档位低一档，
+   因此不会触发 critical 告警。
+5. **所有模型都把 OOM 判成 critical（12/12 次）**，而语料期望 warning。三条模型一致反对
+   标注时，更可能是**标注口径**的问题（"进程被杀"是否算"服务不可用"），不要记成模型缺陷。
+6. **没有任何一次无中生有**（fabricated 全 0）：healthy 批次始终没被编造出问题。
+7. 速度：7B ≈ 2s，3.6 ≈ 7s，9B ≈ 5–12s（随输入长度波动，41 行的 needle 用例最慢）。
+
+**当前生产设置**：`ollama_model=Qwen2.5-Coder-7B-Instruct-4bit` + `ai_prompt_mode=qwen25`
+（10-08 12:4x 时如此；这是设置页改的，`--analysis-bench` 只读不写、不连 Redis）。
+按上表，这是本次测过的组合里 exact 最高、critical-recall 满分、且最快的一套；
+唯一要盯的是第 2 条那个"长噪声批次"的不稳定。
+
+**下一步可做（未做）**：把语料从 15 条扩到 30+ 条并每条跑 3 次，得到带置信区间的对比；
+以及针对"纯失败爆破"这一档位口径，明确 qwen25/qwen35/qwen36 三份模板是否都该写死
+"未成功的爆破 = warning 还是 critical"——目前三份模板只说"爆破成功 = critical"。
+
+---
+
+### 3.20 留 9B + 接入 gemma —— ✅ 已完成（2026-10-08，已部署）
+**背景**：3.19 的结论里，"9B 配长模板（qwen35）"是四个组合里最差的一套（10/15、召回 3/6）。
+决策：留 9B，但把 qwen35 模板换成短模板；同时把 `gemma-3-12b-it-4bit` 接进「建议使用模型匹配优化」。
+
+**改动**
+1. `PromptBuilder.BatchPromptQwen35` 改成 `=> BatchPromptQwen25(logSummary)`（长模板删除）。
+   这样 9B 继续映射到 qwen35（模式名、下拉框标签、已存设置全不变），但拿到的就是短模板。
+2. 新增 `gemma` 模式 + `BatchPromptGemma`：短模板 + 一条 gemma 专属爆破强调——
+   "同一来源反复 Failed password（未成功）也是正在进行的攻击 → critical"；并在句尾注明
+   "仅 Invalid user 探测（无密码尝试）仍算 warning"。基线实测 gemma 会把纯失败爆破稳定判成
+   warning（是三个模型里唯一低估爆破的），加这一条后召回 3/6 → 6/6。
+3. `BatchPromptFor`、`syncPromptModeToModel()`（app.js）、下拉框 + 提示文案（settings.html/app.js）、
+   `PromptSelfTest` 同步更新。`AnalysisBench.ModeForModel` 加 `gemma` 映射。
+
+**最终三模型对比（15 条 × 1 次；争议 4 例另有 ×3 复测）**
+
+| 模型 + 模式 | exact | tolerant | critical 召回 | issue-hit | 平均/次 |
+|---|---|---|---|---|---|
+| **gemma-3-12b-it + gemma（优化后）** | **14/15** | 15/15 | **6/6** | **13/13** | 11.8s |
+| Qwen2.5-Coder-7B + qwen25 | 13/15 | 15/15 | 5/6 | 12/13 | 2.7s |
+| Qwen3.5-9B + qwen35（现=短模板） | 13/15 | 15/15 | **6/6** | **13/13** | 9.2s |
+
+争议 4 例 ×3 次：gemma 6/6（稳定）、9B 6/6（稳定）、7B 4/6（"噪声里藏一个真问题"这例
+3 次里 2 次判 warning，不稳定）。三者都一致把 OOM 判 critical（12/12）——倾向于是
+语料标注口径（"进程被杀"算不算"服务不可用"）的问题，不是模型缺陷。没有任何一次无中生有。
+
+**结论**：优化后三模型基本打平；gemma 以 14/15 居首但最慢，7B 最快但有一处不稳定，9B 最均衡。
+生产默认仍由设置页选（当前是 7B+qwen25）。gemma 的"未成功爆破=critical"是本次为它对
+语料口径的显式选择——如果你不认可（想保持 warning），把 `BatchPromptGemma` 里那行 extra 删掉即可。
+
+---
+
+### 3.21 "长噪声批次"防漏检加固 —— ✅ 已完成（2026-10-08，已部署）
+**现象**：`needle-in-haystack`（40 条例行 cron 里藏一条 clamav 报毒）上，7B 不稳定——
+3 次里 2 次把整批判成 warning（问题列出来了，但档位低一档 → 不触发 critical 告警）；9B 和 gemma 稳定 critical。
+
+**根因**：短模板里 `How MANY issues there are must NOT change the rating. A long list of minor,
+repetitive or service-restart messages is "warning"…` 这半句可能被 7B 误读成"批长=warning"，
+即使其中有一条 confirmed malware。它找到问题却按批长降档。
+
+**修法（刻意克制）**：只把这句补半句，不新增段落——因为 `BatchPromptQwen25` 注释里记录过
+"给这个 7B 加长段/加 few-shot 会反过来让它漏检（signal_in_noise 3/3→0/3）"：
+> …never "critical" — but if ANY single line in the batch is a confirmed breach, malware, data
+> loss, or a host that is down, the batch is "critical", no matter how many routine lines surround it.
+
+**验证**：`needle-in-haystack --repeat 5` 三模型全 `critical/critical/critical/critical/critical`（5/5）；
+7B 全语料 15 条无回退（14/15、召回 6/6，唯一 MISS 仍是 OOM 那条标注口径）。0 次无中生有。
+
+**结论**：三模型在"长噪声批次"上现在都稳定判 critical，且没破坏"不新增段落"这条对 7B 的约束。
+
+---
+
+### 3.22 静态资源缓存破坏（`?v=`）—— ✅ 已完成（2026-10-08，已部署）
+**现象**：接入 gemma 后，用户在设置页 Model 下拉框里选 `gemma-3-12b-it-4bit`，
+「建议使用模型匹配优化」下面不联动——代码明明已经写了 `syncPromptModeToModel()` 的 gemma 分支。
+
+**根因**：静态资源走 `/static/{**path}`，响应头写死 `Cache-Control: public, max-age=300`
+（`StaticAssets.cs`）。每次部署后浏览器继续用旧 `app.js`/`settings.html`（旧文件没有 gemma 分支/选项），
+最长要等 5 分钟、且还要再刷新一次才生效。
+
+**修法**：`StaticAssets.Version = 进程启动时间戳`；两处 `url_for`（`Program.cs` 与 `AuthApi.cs`）
+给静态 URL 拼上 `?v=<token>`。容器每次部署都重建=新进程=新 token，浏览器立刻拉新文件；
+进程存活期间 token 不变，仍享受 max-age 缓存、不会每页导航都回源 304。
+`/static/{**path}` 的路由把 `?v=` 当查询串忽略，文件照常命中。
+
+**验证**：`--render-dump` 后各页面 `app.js` 引用形如 `/static/js/app.js?v=1791437414`；
+`/login` 的 `style.css`/`refined.css` 同样带 `?v=`。
+
+---
+
+### 3.23 「模型评测」独立页 `/bench` —— ✅ 已完成（2026-10-08，已部署）
+**把 `--analysis-bench` 的评测能力做成一个独立页面（`/bench`），仅管理员可见**。
+回答"这个模型适不适合本项目"从此不用 ssh/docker。页面与 `/users` 同款管理员门禁：
+`user.Role != "admin"` 一律 `Redirect("/")`；侧栏「AI Analysis」分组下加了「模型评测」入口
+（`{% if current_user.is_admin %}` 包裹）。前端从设置页迁到 `templates/bench.html`（`{% extends "base.html" %}`），
+`app.js` 的 DOMContentLoaded 增加 `/bench` 分支调 `loadBenchPanel()`，`loadSettings()` 不再触发评测面板。
+
+**能力**
+- 任选一个模型 + 评测集（内置 15 例 或 上传的自定义 JSON），每例可跑 1–3 次，异步跑 + 2s 轮询。
+- 结果卡：档位命中 / ±1 容差 / critical 召回 / healthy 无虚警 / 关键词命中 / 无中生有 / 解析失败 / 平均延迟 + 每例明细表。
+- 自定义评测集 CRUD：上传 / 列出 / 删除，存 Redis `bench:corpora`（hash，id → JSON）。内置集 id=`builtin` 不可删。
+- **模型列表过滤嵌入模型**：`/api/ollama/status`（`OllamaApi.FetchModelsAsync`）按名字滤掉 `embedding`——
+  `Qwen3-Embedding-*` 只做 `/v1/embeddings`，跑 chat 会 400 "not an LLM / chat model"，选它评测/分析会 15/15 全失败，
+  不该出现在设置页 Model 下拉和评测页模型列表里。
+
+**约束（与 §3.19 一致的资源护栏）**
+- 仅 role=admin：其余 403，未登录跳 /login。
+- **内存单飞**：同一时刻只允许一个评测在跑，旧任务未完成时新请求 409（避免和每 2 分钟的生产分析抢端点）。
+- 评测只调 AI 端点、不写 Redis/日志（唯一写是语料存 `bench:corpora`）。
+
+**实现**
+- `AnalysisBench` 重构：抽 `RunModelAsync`（返回结构化 `BenchResult`/`BenchCaseResult`，`onProgress(done,total)` 回调），CLI `--analysis-bench` 复用同一核心（输出格式不变）。
+- 新 `Api/AiBenchApi.cs`：`POST/GET /api/ai/bench`、`POST/GET /api/ai/bench/corpus`、`DELETE /api/ai/bench/corpus/{id}`；注册于 `Program.cs`。
+- 前端：`settings.html` 面板 + `app.js` 的 `loadBenchPanel/startBench/pollBench/renderBenchResult/uploadBenchCorpus/deleteBenchCorpus`；`loadSettings()` 里挂 `loadBenchPanel()`（内部 guard，非管理员无此 DOM 直接返回）。
+- 端点/提示词模式读取与 `AiSelfTest` 同口径：设置页 `ollama_host` → `AI_BASE_URL`，`ai_provider`，`AI_API_KEY`；模式默认 `ModeForModel(model)`，可传 `prompt_mode` 覆盖。
+
+**验证（端到端）**：`--mint-session admin admin` 造管理员 cookie →
+`GET /api/ai/bench` 返回 `{"phase":"idle"}`；上传 1 例语料 → 启动（模型 Qwen2.5-7B，自动映射 qwen25）→
+轮询到 `phase=done`，`exact 1/1、crit_recall 1/1`、issues 命中 → 删除语料成功。
+CLI `--analysis-bench` 重构后输出与旧版逐行一致（§3.19 的日志可复现）。
+
+---
+
+### 3.24 评测多选对比 + 语料扩到 27 例 + 离线构建兜底 —— ✅ 已完成（2026-10-08，已部署）
+**1) 多选多模型对比**
+- 后端 `POST /api/ai/bench` 支持 `models` 数组（也兼容单 `model`），逐个模型顺序跑；
+  `GET` 返回 `models`/`prompt_modes`/`results`（数组）+ 跨模型的 `done/total` 进度。
+- 前端评测模型改成 `<select multiple>`（Ctrl/Cmd 多选），`renderBenchResults` 画对比表
+  （一行一模型，档位命中最高者高亮）+ 每模型用例明细折叠块。
+
+**2) 内置评测集 15 → 27 例**（`AnalysisBench.BuiltinCases`）
+新增 healthy 负例 `dhcp-renew`/`ntp-sync`/`backup-success`，critical `kernel-panic`/
+`filesystem-readonly`/`database-down`/`rootkit-detected`，warning `service-restart-loop`/
+`backup-failed`/`memory-pressure`/`fan-failure`/`upstream-connection-refused`。
+分布 healthy 5 / critical 10 / warning 12。内置集例数由 `case_count` 动态显示（修掉
+name 里写死"15 例"导致「15 例（15 例）」重复的 bug）。
+
+**3) 离线构建兜底（重要：网关会对国外域名 DNS 投毒）**
+- 现象：构建主机 `ping 8.8.8.8` 通、局域网通，但 `api.nuget.org`/`mcr.microsoft.com`/`google.com`
+  都被网关解析成 `198.18.13.63`（198.18.0.0/15 基准测试保留段，假地址），HTTPS 建连后 EOF。
+- 修法：
+  - `nuget.config`（`<clear/>` + 仅华为云 `repo.huaweicloud.com/repository/nuget/v3/index.json`），
+    已加入两个 deploy 脚本的 tar 列表 + Dockerfile `COPY nuget.config`。
+  - Dockerfile 运行时基础镜像从 `aspnet:8.0` 改为 `sdk:8.0`（本地已缓存、自带完整运行时），
+    绕开 mcr.microsoft.com 的投毒；代价是最终镜像更大，可接受。
+- 若以后换网络环境能直连 nuget.org，可把 nuget.config 改回官方源 / 恢复 aspnet 基础镜像。
+
 ---
 
 ## 4. 验证约定（本项目行之有效的做法，请沿用）

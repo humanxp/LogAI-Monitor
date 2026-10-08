@@ -54,7 +54,7 @@ fi
 
 echo "== 1/3 sync working copy to $HOST:$TREE =="
 tar czf - --exclude=bin --exclude=obj \
-  src templates wwwroot Dockerfile README.md DEPLOY.md docker-compose.yml .env.example scripts \
+  src templates wwwroot Dockerfile README.md DEPLOY.md docker-compose.yml .env.example scripts nuget.config \
   | "$SSH" "$HOST" "rm -rf $TREE/src $TREE/templates $TREE/wwwroot $TREE/scripts && mkdir -p $TREE && tar xzf - -C $TREE"
 
 echo "== 2/3 build + recreate (remote, credentials read from the live container) =="
