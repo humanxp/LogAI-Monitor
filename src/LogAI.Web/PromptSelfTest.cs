@@ -157,8 +157,11 @@ internal static class PromptSelfTest
             q36 != PromptBuilder.BatchPromptCached(summary));
 
         string q35 = PromptBuilder.BatchPromptFor("qwen35", summary);
-        Check("qwen35 与 qwen25 用同一份短模板（长模板实测对 9B 是负收益，已删）",
-            q35 == PromptBuilder.BatchPromptQwen25(summary));
+        Check("qwen35 在 qwen25 短模板上补三段校准（9B 专属，不动 7B）",
+            q35.Contains("A single process crashing (segfault, OOM-killed)", StringComparison.Ordinal)
+            && q35.Contains("A disk filling up / \"No space left on device\"", StringComparison.Ordinal)
+            && q35.Contains("Repeated \"Invalid user\" login probes", StringComparison.Ordinal)
+            && PromptBuilder.BatchPromptQwen25(summary).Contains("A single process crashing", StringComparison.Ordinal) == false);
         Check("qwen35 短模板仍带两条安全判据",
             q35.Contains("A successful remote login (\"Accepted password\"", StringComparison.Ordinal)
             && q35.Contains("from an antivirus is confirmed malware", StringComparison.Ordinal));
@@ -170,6 +173,15 @@ internal static class PromptSelfTest
         Check("gemma 比 qwen25 多一条爆破强调（其余部分与短模板一致）",
             gemma.Contains("an ACTIVE brute-force attack", StringComparison.Ordinal)
             && !PromptBuilder.BatchPromptQwen25(summary).Contains("an ACTIVE brute-force attack", StringComparison.Ordinal));
+
+        string gemma4 = PromptBuilder.BatchPromptFor("gemma4", summary);
+        string gemma4e = PromptBuilder.BatchPromptFor("gemma4e", summary);
+        Check("gemma4 在 gemma 模板上补数据丢失=critical",
+            gemma4.Contains("are DATA LOSS - reply \"critical\"", StringComparison.Ordinal)
+            && gemma4.Contains("an ACTIVE brute-force attack", StringComparison.Ordinal));
+        Check("gemma4e 在 gemma 模板上补 disk/cert 校准",
+            gemma4e.Contains("A certificate that LITERALLY says \"will expire\"", StringComparison.Ordinal)
+            && gemma4e.Contains("an ACTIVE brute-force attack", StringComparison.Ordinal));
 
         string q25 = PromptBuilder.BatchPromptFor("qwen25", summary);
         Check("qwen25 取到自己的模板（只有最短的安全判据，没有长段/示例）",
@@ -189,16 +201,16 @@ internal static class PromptSelfTest
             PromptBuilder.BatchPromptFor("\"QWEN25\"", summary) == PromptBuilder.BatchPromptQwen25(summary));
 
         Check("每个模式都必须带上 6 个键",
-            new[] { q36, q35, q25, gemma }.All(p =>
+            new[] { q36, q35, q25, gemma, gemma4, gemma4e }.All(p =>
                 new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
                     .All(key => p.Contains('"' + key + '"', StringComparison.Ordinal))));
 
         Check("每个模式都必须嵌入日志正文",
-            new[] { q36, q35, q25, gemma }.All(p => p.Contains(expectedSummary, StringComparison.Ordinal)));
+            new[] { q36, q35, q25, gemma, gemma4, gemma4e }.All(p => p.Contains(expectedSummary, StringComparison.Ordinal)));
 
-        Check("qwen25/qwen35 同源、gemma 多一条、qwen36 与 default 各自独立（共 4 份）",
-            q35 == q25
-            && new HashSet<string> { q36, q25, gemma, PromptBuilder.BatchPromptFor("default", summary) }.Count == 4);
+        Check("qwen35 在 qwen25 上补校准，gemma 系各加一条强化，qwen36 与 default 独立（共 7 份）",
+            !string.Equals(q35, q25, StringComparison.Ordinal)
+            && new HashSet<string> { q36, q25, q35, gemma, gemma4, gemma4e, PromptBuilder.BatchPromptFor("default", summary) }.Count == 7);
 
         // 兼容层：ai_cache_optimized=true（旧键）→ qwen35；缺省 → default
         Check("旧键 ai_cache_optimized=true 映射到 qwen35",

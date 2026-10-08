@@ -46,7 +46,12 @@ internal static class AnalysisBench
     {
         string m = model.ToLowerInvariant();
         if (m.Contains("qwen2.5") || m.Contains("coder")) return "qwen25";
-        if (m.Contains("gemma")) return "gemma";
+        if (m.Contains("gemma"))
+        {
+            if (m.Contains("e4b")) return "gemma4e";
+            if (m.Contains("gemma-4")) return "gemma4";
+            return "gemma";
+        }
         if (m.Contains("qwen3.6") || m.Contains("35b")) return "qwen36";
         if (m.Contains("qwen3.5") || m.Contains("9b")) return "qwen35";
         return "default";

@@ -4,6 +4,17 @@
 {% block header_title %}Model Evaluation{% endblock %}
 
 {% block content %}
+<style>
+    /* 评测页用例勾选项 + 悬停提示（比原生 title 字号更大、更清晰） */
+    .bench-case { position: relative; display: inline-flex; align-items: center; gap: 0.4rem; cursor: pointer; margin: 0; font-weight: normal; }
+    .bench-case .bench-tip {
+        display: none; position: absolute; bottom: 135%; left: 0;
+        background: #26303b; color: #fff; padding: 0.5rem 0.7rem; border-radius: 6px;
+        font-size: 0.9rem; line-height: 1.45; white-space: normal; max-width: 480px; word-break: break-all;
+        z-index: 999; box-shadow: 0 4px 12px rgba(0,0,0,0.35); pointer-events: none;
+    }
+    .bench-case:hover .bench-tip { display: block; }
+</style>
 <div class="card">
     <div class="card-header">
         <h3><i class="fas fa-flask"></i> 用内置/自定义语料给模型打分</h3>
@@ -13,7 +24,7 @@
 
         <div class="form-group">
             <label class="form-label">评测模型（勾选一个或多个，多个会顺序跑并出对比表）</label>
-            <div id="benchModelList" style="max-height:200px;overflow:auto;border:1px solid var(--lm-line);border-radius:6px;padding:0.5rem;display:flex;flex-wrap:wrap;gap:0.35rem 1.25rem;align-items:center;">
+            <div id="benchModelList" style="display:flex;flex-wrap:wrap;gap:0.35rem 1.25rem;align-items:center;">
                 <span style="color:var(--lm-ink-2);">加载模型列表…</span>
             </div>
             <small style="color: var(--lm-ink-2);">
@@ -23,8 +34,8 @@
         </div>
 
         <div class="form-group">
-            <label class="form-label">评测集（勾选一个或多个，默认全选；多份语料会合并成一份跑）</label>
-            <div id="benchCorpusList" style="max-height:160px;overflow:auto;border:1px solid var(--lm-line);border-radius:6px;padding:0.5rem;display:flex;flex-wrap:wrap;gap:0.35rem 1.25rem;align-items:center;">
+            <label class="form-label">评测集（默认全选，多份合并成一份跑）</label>
+            <div id="benchCorpusList">
                 <span style="color:var(--lm-ink-2);">加载评测集…</span>
             </div>
         </div>

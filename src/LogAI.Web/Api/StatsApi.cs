@@ -28,6 +28,10 @@ internal static class StatsApi
     /// </summary>
     internal static LogArchive? Archive { get; set; }
 
+    // 冷日志条数缓存：SQLite COUNT(*) 很快，但 stats 每 2 秒重建一次，仍缓存 30s 避免反复扫表。
+    private static long _logsCold;
+    private static DateTimeOffset _logsColdAt = DateTimeOffset.MinValue;
+
     public static void Map(WebApplication app, RedisStore store, LogArchive archive, SessionCookie cookies)
     {
         Archive = archive;
@@ -157,6 +161,20 @@ internal static class StatsApi
             long totalAlerts = await totalAlertsTask;
             long totalFilters = await totalFiltersTask;
 
+            // 冷热分层：热=Redis 哈希仍在的日志，冷=已归档到 SQLite 的日志哈希。
+            // timeline ZCARD = 热 + 冷（归档只搬哈希、保留时间线索引），冷库计数直接查 SQLite。
+            long logsCold = 0;
+            if (Archive is not null)
+            {
+                if ((DateTimeOffset.UtcNow - _logsColdAt) > TimeSpan.FromSeconds(30))
+                {
+                    _logsCold = await Archive.CountAsync();
+                    _logsColdAt = DateTimeOffset.UtcNow;
+                }
+                logsCold = _logsCold;
+            }
+            long logsHot = Math.Max(0, totalLogs - logsCold);
+
             var severities = (await severitiesTask)
                 .Select(v => v.ToString()).OrderBy(v => v, StringComparer.Ordinal).ToList();
             var sources = (await sourcesTask)
@@ -207,6 +225,8 @@ internal static class StatsApi
                 ["ai_tokens_week"] = tokens.Week,
                 ["logs_last_day"] = lastDay,
                 ["logs_last_hour"] = lastHour,
+                ["logs_cold"] = logsCold,
+                ["logs_hot"] = logsHot,
                 ["ollama_available"] = available,
                 ["ollama_last_check_age"] = age,
                 ["redis_connected"] = true,

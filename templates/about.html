@@ -147,7 +147,7 @@
 
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
-            <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填</li>
+            <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填；仪表盘 Total Logs 按此显示<b>热/冷拆分</b>（`logs_hot`/`logs_cold`）</li>
             <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳；<b>手动清理/按来源删除会同时作用于 Redis 与 SQLite 两个库</b>，不会在冷库里留下看不见却占磁盘的残留</li>
             <li><b>组合检索</b>：时间范围 × 来源 × 主机 × 级别 × 关键字，分页由存储层原生完成，日志量大时翻页依然迅速</li>
             <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
@@ -173,7 +173,7 @@
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
-            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀（「发现的问题」每条强制带，同一问题跨主机拆条、禁止合并成 Multiple hosts），返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化、Gemma-4-12B 短提示词 + 爆破强化 + 数据丢失判据、Gemma-4-e4b 短提示词 + 爆破强化 + 边界校准；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
             <li><b>单条分析</b>：对任意一条日志即时解读</li>
             <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
             <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>

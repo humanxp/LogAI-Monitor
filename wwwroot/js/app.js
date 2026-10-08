@@ -209,6 +209,14 @@ function updateStatsDisplay() {
         if (el) el.textContent = value;
     }
     
+    // 冷热分层拆分：热=Redis，冷=SQLite 归档
+    const hotCold = document.getElementById('logsHotCold');
+    if (hotCold) {
+        const hot = state.stats.logs_hot ?? 0;
+        const cold = state.stats.logs_cold ?? 0;
+        hotCold.textContent = `热 ${hot} · 冷 ${cold}`;
+    }
+    
     // Update alert badge in sidebar
     const alertBadge = document.getElementById('alertBadge');
     if (alertBadge) {
@@ -2535,7 +2543,11 @@ function syncPromptModeToModel() {
     let mode;
     // 顺序有讲究：先认 qwen2.5/coder，避免被后面的宽泛匹配（9b/35b）抢走。
     if (m.includes('qwen2.5') || m.includes('coder')) mode = 'qwen25';
-    else if (m.includes('gemma')) mode = 'gemma';
+    else if (m.includes('gemma')) {
+        if (m.includes('e4b')) mode = 'gemma4e';
+        else if (m.includes('gemma-4')) mode = 'gemma4';
+        else mode = 'gemma';
+    }
     else if (m.includes('qwen3.6') || m.includes('35b')) mode = 'qwen36';
     else if (m.includes('qwen3.5') || m.includes('9b')) mode = 'qwen35';
     else if (m.includes('llama')) mode = 'default';
@@ -2557,6 +2569,8 @@ function updatePromptModeHint() {
         'qwen35': 'Qwen3.5-9B：与 Qwen2.5-Coder-7B 相同的短提示词（实测比长模板更准：13/15、召回 6/6）。改动从下一轮分析开始生效，无需重启。',
         'qwen36': 'Qwen3.6-35B-A3B：few-shot + 输出精简段（降 token 降延迟，完整性护栏防漏报）。改动从下一轮分析开始生效，无需重启。',
         'gemma': 'Gemma-3-12B-it：短提示词 + 爆破强化（未成功爆破也=critical）。改动从下一轮分析开始生效，无需重启。',
+        'gemma4': 'Gemma-4-12B：短提示词 + 爆破强化（基线，待实测调优）。改动从下一轮分析开始生效，无需重启。',
+        'gemma4e': 'Gemma-4-e4b：短提示词 + 爆破强化（基线，待实测调优）。改动从下一轮分析开始生效，无需重启。',
     };
     hint.textContent = hints[el.value] || '';
 }
@@ -2587,7 +2601,7 @@ function renderBenchModelCheckboxes(models, current) {
         return;
     }
     box.innerHTML = models.map(m => `
-        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;margin:0;font-weight:normal;">
+        <label style="display:inline-flex;align-items:center;gap:0.5rem;cursor:pointer;margin:0;font-weight:normal;">
             <input type="checkbox" value="${escapeHtml(m)}" ${m === current ? 'checked' : ''}>
             <span>${escapeHtml(m)}</span>
         </label>`).join('');
@@ -2638,36 +2652,74 @@ async function refreshBenchModels() {
 async function loadBenchCorpora(selectNew = false) {
     const box = document.getElementById('benchCorpusList');
     if (!box) return;
-    const prev = new Set(Array.from(box.querySelectorAll('input:checked')).map(c => c.value));
+    const prev = new Set(Array.from(box.querySelectorAll('input[type=checkbox]:checked')).map(c => c.value));
     const firstLoad = !box.dataset.loaded;   // 首次加载：默认全选
+    const onCase = (id) => firstLoad || prev.has(id);
+    const onCustom = (id) => firstLoad || prev.has(id) || selectNew;
+
+    let custom = [], builtinCases = [];
     try {
-        const res = await fetch('/api/ai/bench/corpora');
-        const list = await res.json();
-        box.innerHTML = list.map(c => {
-            // 首次全选；重渲染时保留用户勾选；新上传的（selectNew 且非 builtin）也勾上。
-            const on = firstLoad || prev.has(c.id) || (selectNew && c.id !== 'builtin' && !prev.has(c.id));
-            const del = c.id === 'builtin' ? '' :
-                `<button type="button" class="btn btn-outline btn-sm" onclick="deleteBenchCorpus('${c.id}')" title="删除该评测集" style="padding:0 0.45rem;line-height:1.4;"><i class="fas fa-trash"></i></button>`;
-            return `<label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer;margin:0;font-weight:normal;">
-                <input type="checkbox" value="${c.id}" ${on ? 'checked' : ''}>
-                <span>${escapeHtml(c.name)}（${c.case_count} 例）</span>${del}
-            </label>`;
-        }).join('');
-        box.dataset.loaded = '1';
+        const [cres, bres] = await Promise.all([
+            fetch('/api/ai/bench/corpora').then(r => r.json()),
+            fetch('/api/ai/bench/corpus/builtin').then(r => r.json()),
+        ]);
+        custom = Array.isArray(cres) ? cres.filter(c => c.id !== 'builtin') : [];
+        builtinCases = (bres && bres.cases) || [];
     } catch (e) { /* ignore */ }
+
+    const builtinRows = builtinCases.map(c => `
+        <label class="bench-case">
+            <input type="checkbox" value="${escapeHtml(c.id)}" ${onCase(c.id) ? 'checked' : ''}>
+            <span>${escapeHtml(c.id)} <b style="color:var(--lm-ink-2);">${escapeHtml(c.expected)}</b></span>
+            <span class="bench-tip">${escapeHtml(c.preview || '')}</span>
+        </label>`).join('');
+
+    const customRows = custom.map(c => {
+        const del = `<button type="button" class="btn btn-outline btn-sm" onclick="deleteBenchCorpus('${c.id}')" title="删除该评测集" style="padding:0 0.45rem;line-height:1.4;"><i class="fas fa-trash"></i></button>`;
+        return `<label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer;margin:0;font-weight:normal;">
+            <input type="checkbox" value="${escapeHtml(c.id)}" ${onCustom(c.id) ? 'checked' : ''}>
+            <span>${escapeHtml(c.name)}（${c.case_count} 例）</span>${del}
+        </label>`;
+    }).join('');
+
+    box.innerHTML = `
+        <div id="customCorpusList" style="display:flex;flex-wrap:wrap;gap:0.35rem 1.25rem;align-items:center;">
+            ${customRows || '<span style="color:var(--lm-ink-2);">（无自定义评测集）</span>'}
+        </div>
+        <div style="width:100%;margin-top:0.5rem;">
+            <div style="font-weight:600;margin-bottom:0.4rem;">内置评测集（${builtinCases.length} 例，默认全选）
+                <button type="button" class="btn btn-outline btn-sm" onclick="toggleAllBuiltinCases()" style="margin-left:0.75rem;">全选 / 清空</button>
+            </div>
+            <div id="builtinCaseList" style="display:flex;flex-wrap:wrap;gap:0.25rem 1.5rem;">
+                ${builtinRows || '<span style="color:var(--lm-ink-2);">（无）</span>'}
+            </div>
+        </div>`;
+    box.dataset.loaded = '1';
 }
 
 function selectedBenchCorpora() {
-    return Array.from(document.querySelectorAll('#benchCorpusList input[type=checkbox]:checked'))
-        .map(c => c.value).filter(Boolean);
+    const custom = Array.from(document.querySelectorAll('#customCorpusList input[type=checkbox]:checked')).map(c => c.value);
+    const builtinOn = document.querySelectorAll('#builtinCaseList input[type=checkbox]:checked').length > 0;
+    return builtinOn ? ['builtin', ...custom] : custom;
+}
+
+function selectedBuiltinCaseIds() {
+    return Array.from(document.querySelectorAll('#builtinCaseList input[type=checkbox]:checked')).map(c => c.value);
+}
+
+function toggleAllBuiltinCases() {
+    const boxes = Array.from(document.querySelectorAll('#builtinCaseList input[type=checkbox]'));
+    const allOn = boxes.length > 0 && boxes.every(b => b.checked);
+    boxes.forEach(b => { b.checked = !allOn; });
 }
 
 async function startBench() {
     const models = selectedBenchModels();
     const corpora = selectedBenchCorpora();
+    const caseIds = selectedBuiltinCaseIds();
     const repeat = parseInt(document.getElementById('benchRepeat').value || '1', 10);
     if (!models.length) { showToast('模型评测', '请先勾选至少一个模型', 'error'); return; }
-    if (!corpora.length) { showToast('模型评测', '请先勾选至少一个评测集', 'error'); return; }
+    if (!corpora.length) { showToast('模型评测', '请先勾选至少一个评测集/用例', 'error'); return; }
     const status = document.getElementById('benchStatus');
     const btn = document.getElementById('benchStartBtn');
     status.style.display = 'block';
@@ -2677,7 +2729,7 @@ async function startBench() {
     try {
         const res = await fetch('/api/ai/bench', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ models, corpora, repeat })
+            body: JSON.stringify({ models, corpora, case_ids: caseIds, repeat })
         });
         const data = await res.json();
         if (!res.ok) {

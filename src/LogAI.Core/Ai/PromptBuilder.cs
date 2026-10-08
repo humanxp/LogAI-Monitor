@@ -93,7 +93,7 @@ LOGS:
 
 Reply with ONLY a JSON object having exactly these keys:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short PROBLEM descriptions, one per DISTINCT problem (at most 8). Each starts with "[HOST] " (the exact hostname or IP). Summarize the problem, do NOT copy the raw log line. Example: "[192.168.50.3] /dev/ipmi0 open failed repeatedly". Empty array if none.
+- "issues_found": array of short PROBLEM descriptions, one per DISTINCT (host, problem) pair (at most 8). Each starts with "[HOST] " (the exact hostname or IP). Summarize the problem, do NOT copy the raw log line. Example: "[192.168.50.3] /dev/ipmi0 open failed repeatedly". Empty array if none.
 - "critical_count": integer, count of DISTINCT critical problems, 0 if none
 - "recommendations": array of short FIX ACTIONS (at most 5), ONE concrete fix for EACH distinct problem in issues_found. Each starts with "[HOST] " (the exact hostname or IP to act on) and says what an admin should DO, using a verb such as check/remove/restart/fix/increase/review. Example: "[192.168.50.3] Check /dev/ipmi0 permissions". If issues_found is non-empty, recommendations MUST also be non-empty (at least one fix per issue). Do NOT copy raw log lines or repeat the problem here. Empty array ONLY when issues_found is empty.
 - "affected_hosts": array of bare hostname/IP strings involved (no brackets), empty array if none
@@ -124,7 +124,7 @@ NEVER invent or extrapolate a failure. Judge ONLY by the literal words: "start N
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT (host, problem) pair (at most 8). EVERY entry MUST start with "[HOST] " where HOST is the exact hostname or IP from the log line - NEVER omit the prefix and NEVER write "Multiple hosts" / "Some hosts" / "Several hosts". Merge repeated occurrences of one problem ON THE SAME HOST into one entry; the same problem on DIFFERENT hosts gets its own entry per host. Summarize the problem, never raw log lines. Empty array if none
 - "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
 - "recommendations": array of short FIX ACTIONS (at most 5), ONE concrete fix for EACH distinct problem in issues_found. Each starts with "[HOST] " (the exact hostname or IP to act on) and says what an admin should DO, using a verb such as check/remove/restart/fix/increase/review. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
@@ -249,7 +249,7 @@ PROBLEM vs NOISE - WHAT COUNTS AS AN ISSUE
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT (host, problem) pair (at most 8). EVERY entry MUST start with "[HOST] " where HOST is the exact hostname or IP from the log line - NEVER omit the prefix and NEVER write "Multiple hosts" / "Some hosts" / "Several hosts". Merge repeated occurrences of one problem ON THE SAME HOST into one entry; the same problem on DIFFERENT hosts gets its own entry per host. Summarize the problem, never raw log lines. Empty array if none
 - "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
 - "recommendations": array of short FIX ACTIONS (at most 5), ONE concrete fix for EACH distinct problem in issues_found. Each starts with "[HOST] " (the exact hostname or IP to act on) and says what an admin should DO, using a verb such as check/remove/restart/fix/increase/review. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
@@ -342,15 +342,19 @@ LOGS:
 """;
 
     /// <summary>
-    /// qwen35 = Qwen3.5-9B。模板内容与 qwen25 **完全一致**：2026-10-08 用
-    /// --analysis-bench（15 条带标准答案的用例）实测，9B 配这份短模板是
-    /// exact 13/15、critical 召回 6/6；配原来的长模板（安全段 + 问题/噪声段 +
-    /// Example 5）只有 10/15、召回 3/6——三次复测里它没一次把"纯失败爆破"判成
-    /// critical，还出现过"证书 7 天后过期 → healthy 且 issues 为空"。
-    /// 长模板对 9B 是负收益，所以保留模式名（已存设置里的 "qwen35" 继续有效、
-    /// 下拉框标签不变），内容换成短的那份。不要"顺手"把长模板加回来。
+    /// qwen35 = Qwen3.5-9B。模板内容 = qwen25 短模板 + 一段 9B 专属校准。
+    /// 2026-10-08 用 15 条语料实测 9B 配短模板 exact 13/15、critical 召回 6/6；
+    /// 2026-10-09 用 27 条语料复测发现它把 disk-full / 单进程崩溃(segfault、OOM)升成
+    /// critical、把 invalid-user 探测漏成 healthy。故在 RATING RULES 里补三条校准。
+    /// 只在 qwen35 上补，不动 qwen25（7B 对加长敏感，见 BatchPromptQwen25 的注释）。
+    /// 不要"顺手"把长模板加回来。
     /// </summary>
-    public static string BatchPromptQwen35(string logSummary) => BatchPromptQwen25(logSummary);
+    public static string BatchPromptQwen35(string logSummary)
+    {
+        string extra = "\n- A single process crashing (segfault, OOM-killed) is \"warning\", NOT \"critical\" - the host is still up. Only a host DOWN / breach / data loss is \"critical\".\n- A disk filling up / \"No space left on device\" is \"warning\", NOT \"critical\".\n- Repeated \"Invalid user\" login probes are \"warning\" (reconnaissance), never \"healthy\".";
+        string anchor = "- \"warning\" = real problems that are NOT an outage or breach (a service failed to restart, disk filling up, repeated DNS/cURL errors, permission failures, master-browser election failures).";
+        return BatchPromptQwen25(logSummary).Replace(anchor, anchor + extra, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// gemma = gemma-3-12b-it-4bit。基线复用短模板，另在安全判据里补一条：
@@ -365,6 +369,30 @@ LOGS:
         string extra = "\n- Repeated \"Failed password\" / \"Failed publickey\" attempts from a single source are an ACTIVE brute-force attack - reply \"critical\" with a non-empty alert_message, even if NO login has succeeded yet. Never soften this to \"warning\". (\"Invalid user\" probes WITHOUT password attempts stay \"warning\" - they are reconnaissance, not a password attack.)";
         string anchor = "- A \"FOUND\" / \"Trojan\" / \"Virus\" / \"Malware\" / \"Infected\" line from an antivirus is confirmed malware - reply \"critical\".";
         return BatchPromptQwen25(logSummary).Replace(anchor, anchor + extra, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// gemma4 = gemma-4-12B-it-MLX-4bit。基线复用 gemma（短模板 + 爆破强化），再补一条：
+    /// 12B 实测把 BTRFS/RAID/只读重挂这类数据丢失判成 warning、把 invalid user 探测漏成
+    /// healthy（critical 召回只有 7/10），补上数据丢失=critical + 无效用户=warning。
+    /// </summary>
+    public static string BatchPromptGemma4(string logSummary)
+    {
+        string extra = "\n- BTRFS errors, a RAID disk failure, or a filesystem remounted read-only are DATA LOSS - reply \"critical\". Repeated \"Invalid user\" login probes are a real problem - reply \"warning\", never \"healthy\".";
+        string anchor = "- A \"FOUND\" / \"Trojan\" / \"Virus\" / \"Malware\" / \"Infected\" line from an antivirus is confirmed malware - reply \"critical\".";
+        return BatchPromptGemma(logSummary).Replace(anchor, anchor + extra, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// gemma4e = gemma-4-e4b-it-4bit（MoE，约 4B 激活）。基线复用 gemma，再补一条校准：
+    /// e4b 实测把 disk-full 升成 critical、把 cert-expiry 误判成 healthy（critical 召回满分、
+    /// 但 warning 边界略漂）。
+    /// </summary>
+    public static string BatchPromptGemma4e(string logSummary)
+    {
+        string extra = "\n- A certificate that LITERALLY says \"will expire\" is \"warning\", never \"healthy\". A disk filling up / \"No space left on device\" is \"warning\", NOT \"critical\".";
+        string anchor = "- A \"FOUND\" / \"Trojan\" / \"Virus\" / \"Malware\" / \"Infected\" line from an antivirus is confirmed malware - reply \"critical\".";
+        return BatchPromptGemma(logSummary).Replace(anchor, anchor + extra, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -394,7 +422,7 @@ NEVER invent or extrapolate a failure. Judge ONLY by the literal words: "start N
 
 REPLY FORMAT - reply with ONE JSON object having exactly these keys and nothing else:
 - "overall_status": one of "healthy", "warning", "critical"
-- "issues_found": array of short "[HOST] description" strings, one per DISTINCT problem (at most 8). NEVER repeat the same problem twice - merge all occurrences of one problem into a single entry. NEVER objects, never raw log lines. Empty array if none
+- "issues_found": array of short "[HOST] description" strings, one per DISTINCT (host, problem) pair (at most 8). EVERY entry MUST start with "[HOST] " where HOST is the exact hostname or IP from the log line - NEVER omit the prefix and NEVER write "Multiple hosts" / "Some hosts" / "Several hosts". Merge repeated occurrences of one problem ON THE SAME HOST into one entry; the same problem on DIFFERENT hosts gets its own entry per host. Summarize the problem, never raw log lines. Empty array if none
 - "critical_count": integer, how many DISTINCT issues are critical by the rule above (normally 0)
 - "recommendations": array of short FIX ACTIONS (at most 5), ONE concrete fix for EACH distinct problem in issues_found. Each starts with "[HOST] " (the exact hostname or IP to act on) and says what an admin should DO, using a verb such as check/remove/restart/fix/increase/review. If issues_found is non-empty, recommendations MUST be non-empty too; use [] ONLY when issues_found is []
 - "affected_hosts": array of bare hostname/IP strings, no brackets. Empty array if none
@@ -503,6 +531,8 @@ LOGS:
             "qwen35" => BatchPromptQwen35(logSummary),
             "qwen36" => BatchPromptQwen36(logSummary),
             "gemma" => BatchPromptGemma(logSummary),
+            "gemma4" => BatchPromptGemma4(logSummary),
+            "gemma4e" => BatchPromptGemma4e(logSummary),
             _ => BatchPromptCached(logSummary),
         };
     }

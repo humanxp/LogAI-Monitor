@@ -70,13 +70,21 @@ internal static class AiBenchApi
             int repeat = Int(o, "repeat");
             if (repeat <= 0) repeat = 1;
 
+            // 可选：按用例 id 过滤内置语料（前端展开内置 27 例逐项勾选时用）。空=全量。
+            var caseIds = new HashSet<string>(StringComparer.Ordinal);
+            if (o["case_ids"] is JsonArray idsArr)
+                foreach (var x in idsArr)
+                    if (x?.ToString() is { } s && s.Length > 0) caseIds.Add(s);
+
             // 逐份语料解析并拼接：每个模型都在「选中语料的并集」上跑一轮。
             var allCases = new List<AnalysisBench.BenchCase>();
             foreach (string corpusId in corpora)
             {
                 if (corpusId == "builtin")
                 {
-                    allCases.AddRange(AnalysisBench.BuiltinCases());
+                    var builtin = AnalysisBench.BuiltinCases();
+                    if (caseIds.Count > 0) builtin = builtin.Where(c => caseIds.Contains(c.Id)).ToArray();
+                    allCases.AddRange(builtin);
                     continue;
                 }
                 string? raw = await store.Db.HashGetAsync(CorpusKey, corpusId);
@@ -85,6 +93,7 @@ internal static class AiBenchApi
                 if (parsed.Length == 0) return ReadApi.JsonBody(new { error = $"corpus is empty: {corpusId}" }, 400);
                 allCases.AddRange(parsed);
             }
+            if (allCases.Count == 0) return ReadApi.JsonBody(new { error = "no cases selected" }, 400);
             var cases = allCases.ToArray();
 
             // 端点配置与 AiSelfTest 一致：设置页优先，其次环境变量。
@@ -174,6 +183,40 @@ internal static class AiBenchApi
                 });
             }
             return ReadApi.JsonBody(list.ToArray());
+        });
+
+        // 单个评测集的用例明细（前端展开内置 27 例逐项勾选时用）。
+        app.MapGet("/api/ai/bench/corpus/{id}", async (string id, HttpContext http) =>
+        {
+            if (AuthApi.CurrentUser(http, cookies) is not { } session) return Redirect(http);
+            if (!string.Equals(session.Role, "admin", StringComparison.Ordinal))
+                return ReadApi.JsonBody(new { error = "Access denied" }, 403);
+
+            AnalysisBench.BenchCase[] cases;
+            string name;
+            if (id == "builtin")
+            {
+                cases = AnalysisBench.BuiltinCases();
+                name = "内置评测集";
+            }
+            else
+            {
+                string? raw = await store.Db.HashGetAsync(CorpusKey, id);
+                if (raw is null) return ReadApi.JsonBody(new { error = "corpus not found" }, 404);
+                var parsed = ParseCorpus(raw);
+                if (parsed is null) return ReadApi.JsonBody(new { error = "corpus invalid" }, 400);
+                cases = parsed.Cases;
+                name = parsed.Name;
+            }
+
+            var items = cases.Select(c => (object)new Dictionary<string, object?>(StringComparer.Ordinal)
+            {
+                ["id"] = c.Id,
+                ["expected"] = c.Expected,
+                ["log_count"] = c.Logs.Length,
+                ["preview"] = Preview(c),
+            }).ToArray();
+            return ReadApi.JsonBody(new { id, name, cases = items });
         });
 
         app.MapDelete("/api/ai/bench/corpus/{id}", async (string id, HttpContext http) =>
@@ -325,6 +368,17 @@ internal static class AiBenchApi
 
     private static int Int(JsonObject o, string key) =>
         o[key] is JsonValue v && v.TryGetValue<int>(out int n) ? n : 0;
+
+    /// <summary>用例一句话预览：首条日志的「程序: 消息」截断，供勾选列表显示。</summary>
+    private static string Preview(AnalysisBench.BenchCase c)
+    {
+        var first = c.Logs.FirstOrDefault();
+        if (first is null) return "";
+        string prog = first.Program ?? "";
+        string msg = first.Message ?? "";
+        string text = prog.Length > 0 ? prog + ": " + msg : msg;
+        return text.Length <= 60 ? text : text[..60] + "…";
+    }
 
     private static async Task<JsonNode?> ReadJson(HttpContext http)
     {
