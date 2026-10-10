@@ -49,6 +49,7 @@ internal static class AnalysisBench
         if (m.Contains("gemma"))
         {
             if (m.Contains("e4b")) return "gemma4e";
+            if (m.Contains("26b") || m.Contains("a4b")) return "gemma426";
             if (m.Contains("gemma-4")) return "gemma4";
             return "gemma";
         }

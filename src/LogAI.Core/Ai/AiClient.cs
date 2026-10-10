@@ -52,10 +52,24 @@ public sealed class AiClient(HttpClient? http = null)
     /// </summary>
     public bool EnableThinking { get; init; } = true;
 
+    /// <summary>一次调用的结果：内容 + 本次 token 用量 + 墙钟耗时。</summary>
+    public sealed record Completion(string Content, long PromptTokens, long CompletionTokens,
+                                    long TotalTokens, double ElapsedSeconds);
+
     public async Task<string> CompleteAsync(string prompt, string? system = null,
                                             CancellationToken cancellationToken = default,
                                             bool? enableThinking = null)
+        => (await CompleteWithUsageAsync(prompt, system, cancellationToken, enableThinking)).Content;
+
+    /// <summary>
+    /// 同 CompleteAsync，但把「内容 + 本次 token 用量 + 耗时」一并返回——分析历史要逐条
+    /// 记下"这批用了多少 token、花了多久"。全局累计仍由 AiUsage.RecordAsync 负责。
+    /// </summary>
+    public async Task<Completion> CompleteWithUsageAsync(string prompt, string? system = null,
+                                                         CancellationToken cancellationToken = default,
+                                                         bool? enableThinking = null)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var messages = new JsonArray();
         if (!string.IsNullOrEmpty(system))
             messages.Add(new JsonObject { ["role"] = "system", ["content"] = system });
@@ -97,15 +111,20 @@ public sealed class AiClient(HttpClient? http = null)
         using var document = JsonDocument.Parse(body);
         var root = document.RootElement;
 
-        // Token 用量累计（后端没给 usage 时 RecordAsync 自己会跳过）。
+        // Token 用量：先解析出本次的数值（供分析历史逐条记录），再累加进全局计数。
         // 放在返回内容之前，成功响应才有 usage；异常路径不计数。
-        if (Store is not null && root.TryGetProperty("usage", out var usage))
+        long promptTokens = 0, completionTokens = 0, totalTokens = 0;
+        if (root.TryGetProperty("usage", out var usage))
         {
-            try { await AiUsage.RecordAsync(Store, usage, cancellationToken); }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            (promptTokens, completionTokens, totalTokens) = AiUsage.Parse(usage);
+            if (Store is not null)
             {
-                // 计数失败绝不能影响分析本身
-                Console.Error.WriteLine("[AiUsage] record failed: " + ex.Message);
+                try { await AiUsage.RecordAsync(Store, usage, cancellationToken); }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // 计数失败绝不能影响分析本身
+                    Console.Error.WriteLine("[AiUsage] record failed: " + ex.Message);
+                }
             }
         }
 
@@ -113,11 +132,19 @@ public sealed class AiClient(HttpClient? http = null)
         if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0 &&
             choices[0].TryGetProperty("message", out var message) &&
             message.TryGetProperty("content", out var content))
-            return content.GetString() ?? "";
+        {
+            clock.Stop();
+            return new Completion(content.GetString() ?? "", promptTokens, completionTokens,
+                                  totalTokens, clock.Elapsed.TotalSeconds);
+        }
 
         if (root.TryGetProperty("message", out var ollamaMessage) &&
             ollamaMessage.TryGetProperty("content", out var ollamaContent))
-            return ollamaContent.GetString() ?? "";
+        {
+            clock.Stop();
+            return new Completion(ollamaContent.GetString() ?? "", promptTokens, completionTokens,
+                                  totalTokens, clock.Elapsed.TotalSeconds);
+        }
 
         throw new HttpRequestException("AI endpoint reply had no message content");
     }

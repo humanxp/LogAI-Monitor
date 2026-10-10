@@ -94,6 +94,11 @@ internal static class AlertsApi
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (string bucket in SeverityBuckets) payload[bucket] = counts[bucket];
             payload["total"] = ids.Length;
+            // 冷热拆分：冷 = SQLite 里已归档的告警条数；热 = 时间线总数 - 冷。
+            // 时间线归档后仍保留 id（只搬哈希），所以 total 就是冷+热。
+            long cold = await archive.CountHashesByPrefixAsync("alert:");
+            payload["alerts_cold"] = cold;
+            payload["alerts_hot"] = Math.Max(0, ids.Length - cold);
 
             lock (StatsCacheLock)
             {
@@ -119,12 +124,15 @@ internal static class AlertsApi
                 else if (string.Equals(flag, "true", StringComparison.OrdinalIgnoreCase)) wanted = true;
             }
 
+            // ?severity=critical|error|warning|notice|info|debug|other —— 点上面的分级卡片时筛选。
+            string severityFilter = (request.Query["severity"].ToString() ?? "").Trim().ToLowerInvariant();
+
             long total = await store.Db.SortedSetLengthAsync(Keys.AlertsTimeline);
 
             // 无过滤时只需要"这一页"的 id。过去一律先取整条时间线再在内存里切片，
             // 于是 limit=10 也要为全部告警逐条 HGETALL：实测 1000 条 0.37s、
             // 5000 条 0.92s、20000 条 2.41s，线性增长而响应始终 2.5KB。
-            if (!wanted.HasValue)
+            if (!wanted.HasValue && severityFilter.Length == 0)
             {
                 var pageIds = await store.Db.SortedSetRangeByRankAsync(
                     Keys.AlertsTimeline, offset, offset + limit - 1, Order.Descending);
@@ -140,7 +148,7 @@ internal static class AlertsApi
                 return ReadApi.JsonBody(page);
             }
 
-            // 带 acknowledged 过滤时必须读哈希才能判断（该字段不是索引），所以扫描
+            // 带 acknowledged / severity 过滤时必须读哈希才能判断（都不是索引），所以扫描
             // 范围要设上限。代价：被请求的那一类在时间线上极稀疏时页可能不满；
             // 换掉的是"为一条查询把整条时间线读进内存"这种随规模无界的开销。
             const int Lookahead = 500;
@@ -158,7 +166,10 @@ internal static class AlertsApi
             {
                 var entry = BuildEntry(scanHashes[i]);
                 if (entry is null) continue;
-                if (entry["acknowledged"] is bool ack && ack != wanted.Value) continue;
+                if (wanted.HasValue && entry["acknowledged"] is bool ack && ack != wanted.Value) continue;
+                if (severityFilter.Length > 0
+                    && !string.Equals(SeverityBucket(entry["severity"]?.ToString() ?? ""), severityFilter, StringComparison.Ordinal))
+                    continue;
                 matched.Add(entry);
             }
 

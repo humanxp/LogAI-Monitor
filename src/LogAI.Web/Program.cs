@@ -310,8 +310,9 @@ foreach (var page in pages)
         // /users is admin-only: a non-admin is sent
         // back to the dashboard instead of seeing the page.
         if (current.Path == "/users" && user.Role != "admin") return Results.Redirect("/");
-        // /bench 同样仅管理员（评测会触发真实模型调用）。
-        if (current.Path == "/bench" && user.Role != "admin") return Results.Redirect("/");
+        // /bench 已并入设置页的「Model Evaluation」类目：旧链接/书签重定向过去（仍仅管理员）。
+        if (current.Path == "/bench")
+            return Results.Redirect(user?.Role == "admin" ? "/settings#bench" : "/");
 
         var scope = BuildScope(current.Title, current.Path, CookiesOf(http), true);
         scope.Set("current_user", new Dictionary<string, object?>(StringComparer.Ordinal)
@@ -787,6 +788,22 @@ if (args.Length >= 1 && args[0] == "--archive-counts")
         Environment.GetEnvironmentVariable("LOG_ARCHIVE_PATH") ?? "/data/logai-archive.db");
     Console.WriteLine("[archive] logs=" + await acArchive.CountAsync()
         + " hashes=" + await acArchive.CountHashesAsync());
+    Environment.Exit(0);
+}
+
+// 清理孤儿日志哈希（Redis 里存在、但不在 logs:timeline 里的 log:* 键）。
+// 旧版「清空所有数据」只删 ZSET 没删哈希，会攒下大量孤儿；本工具只回收这些，不动索引。
+if (args.Length >= 1 && args[0] == "--purge-orphan-logs")
+{
+    var poStore = new LogAI.Core.Store.RedisStore(new LogAI.Core.Store.RedisOptions
+    {
+        Host = Environment.GetEnvironmentVariable("REDIS_HOST") ?? "127.0.0.1",
+        Port = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6379"),
+        Database = int.Parse(Environment.GetEnvironmentVariable("REDIS_DB") ?? "0"),
+    });
+    Console.WriteLine("[purge] scanning for orphan log hashes (log:* not in logs:timeline) ...");
+    long purged = await LogAI.Core.Store.LogMaintenance.PurgeOrphanLogHashesAsync(poStore);
+    Console.WriteLine("[purge] deleted " + purged + " orphan log hash(es)");
     Environment.Exit(0);
 }
 

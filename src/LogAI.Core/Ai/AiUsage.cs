@@ -101,6 +101,20 @@ public static class AiUsage
             UpdatedAtUnix: Num(total, 5));
     }
 
+    /// <summary>
+    /// 解析一次调用的 usage（不累加，供调用方把 token 数记进分析历史）。
+    /// total 缺失时用 prompt+completion 兜底，与 RecordAsync 口径一致。
+    /// </summary>
+    public static (long Prompt, long Completion, long Total) Parse(JsonElement usage)
+    {
+        if (usage.ValueKind != JsonValueKind.Object) return (0, 0, 0);
+        long prompt = Long(usage, "prompt_tokens");
+        long completion = Long(usage, "completion_tokens");
+        long total = Long(usage, "total_tokens");
+        if (total == 0) total = prompt + completion;
+        return (prompt, completion, total);
+    }
+
     /// <summary>清零累计与所有日键（仪表盘上的"复位清零"）。返回删掉的键数。</summary>
     public static async Task<long> ResetAsync(RedisStore store, CancellationToken ct = default)
     {

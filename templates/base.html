@@ -91,12 +91,6 @@
                     <i class="fas fa-history"></i>
                     <span>AI History</span>
                 </a>
-                {% if current_user.is_admin %}
-                <a href="/bench" class="nav-item {% if request.path == '/bench' %}active{% endif %}">
-                    <i class="fas fa-flask"></i>
-                    <span>Model Evaluation</span>
-                </a>
-                {% endif %}
                 
                 <!-- Administration Section -->
                 <div class="nav-section">

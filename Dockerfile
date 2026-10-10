@@ -21,8 +21,15 @@ WORKDIR /src
 # 构建网络的网关会对 api.nuget.org 做 DNS 投毒（解析成 198.18.x.x 假地址），
 # 这里用 nuget.config 把还原源切到国内可达的华为云镜像，否则 dotnet publish 还原失败。
 COPY nuget.config ./nuget.config
+# restore / publish 分离：先只拷 .csproj 做 restore，再拷源码做 publish。
+# 只要依赖（.csproj）没变，restore 那一层就一直是缓存命中；改源码只会重做后面
+# 的编译层。原先 restore 和 publish 挤在同一条 RUN 里，改一次源码就要把
+# ~150MB 的 NuGet 包层整个重存一份 —— BuildKit 缓存就是这么堆到 33GB 的。
+COPY src/LogAI.Core/LogAI.Core.csproj src/LogAI.Core/
+COPY src/LogAI.Web/LogAI.Web.csproj src/LogAI.Web/
+RUN dotnet restore src/LogAI.Web/LogAI.Web.csproj --nologo
 COPY src/ ./src/
-RUN dotnet publish src/LogAI.Web/LogAI.Web.csproj -c Release -o /app --nologo
+RUN dotnet publish src/LogAI.Web/LogAI.Web.csproj -c Release -o /app --no-restore --nologo
 
 # 运行时也用 sdk:8.0 而不是 aspnet:8.0：构建网络的网关对 mcr.microsoft.com 同样做
 # DNS 投毒，且 aspnet:8.0 未被本地缓存，pull 会 EOF。sdk 镜像自带完整 ASP.NET Core

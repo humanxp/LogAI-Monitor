@@ -183,6 +183,10 @@ internal static class PromptSelfTest
             gemma4e.Contains("A certificate that LITERALLY says \"will expire\"", StringComparison.Ordinal)
             && gemma4e.Contains("an ACTIVE brute-force attack", StringComparison.Ordinal));
 
+        string gemma426 = PromptBuilder.BatchPromptFor("gemma426", summary);
+        Check("gemma426 复用 gemma 模板（短模板 + 爆破强化，实测 27/27 无需再调优）",
+            gemma426 == PromptBuilder.BatchPromptGemma(summary));
+
         string q25 = PromptBuilder.BatchPromptFor("qwen25", summary);
         Check("qwen25 取到自己的模板（只有最短的安全判据，没有长段/示例）",
             q25.Contains("A successful remote login (\"Accepted password\"", StringComparison.Ordinal)
@@ -201,12 +205,12 @@ internal static class PromptSelfTest
             PromptBuilder.BatchPromptFor("\"QWEN25\"", summary) == PromptBuilder.BatchPromptQwen25(summary));
 
         Check("每个模式都必须带上 6 个键",
-            new[] { q36, q35, q25, gemma, gemma4, gemma4e }.All(p =>
+            new[] { q36, q35, q25, gemma, gemma4, gemma4e, gemma426 }.All(p =>
                 new[] { "overall_status", "issues_found", "critical_count", "recommendations", "affected_hosts", "alert_message" }
                     .All(key => p.Contains('"' + key + '"', StringComparison.Ordinal))));
 
         Check("每个模式都必须嵌入日志正文",
-            new[] { q36, q35, q25, gemma, gemma4, gemma4e }.All(p => p.Contains(expectedSummary, StringComparison.Ordinal)));
+            new[] { q36, q35, q25, gemma, gemma4, gemma4e, gemma426 }.All(p => p.Contains(expectedSummary, StringComparison.Ordinal)));
 
         Check("qwen35 在 qwen25 上补校准，gemma 系各加一条强化，qwen36 与 default 独立（共 7 份）",
             !string.Equals(q35, q25, StringComparison.Ordinal)

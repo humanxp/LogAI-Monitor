@@ -18,6 +18,24 @@ public static class AiStatusClassifier
     public static readonly string[] Statuses = ["critical", "warning", "healthy", "other"];
 
     /// <summary>
+    /// 把落库的状态值归到 4 档（口径与 /api/ai-history/stats 的计数完全一致）：
+    /// 7 档时期的旧值 error/err/notice/warn→warning、info/informational→healthy，
+    /// 已是 4 档的原样返回，其余→other。按状态筛选历史时用它，保证筛选结果与
+    /// 卡片上的数字对得上。
+    /// </summary>
+    public static string NormalizeBucket(string? status)
+    {
+        string s = (status ?? "").Trim().ToLowerInvariant();
+        return s switch
+        {
+            "error" or "err" or "notice" or "warn" => "warning",
+            "info" or "informational" => "healthy",
+            "critical" or "warning" or "healthy" or "other" => s,
+            _ => "other",
+        };
+    }
+
+    /// <summary>
     /// 归类：只做同义词归一（critical/error/... → 4 档），不做任何修正。
     /// 与 python-legacy 版一致：模型判什么就是什么。allowCritical 参数已废弃、不再起闸门作用。
     /// </summary>

@@ -83,7 +83,7 @@ internal static class AnalyzeApi
                 var fields = hash.ToDictionary(h => h.Name.ToString(), h => h.Value.ToString(), StringComparer.Ordinal);
 
                 string prompt = PromptBuilderSingle.Build(fields);
-                var analysis = await CompleteAndExtractAsync(client, prompt, 4096, AiClient.AiThinkingEnabledIn(settings));
+                var (analysis, tkP, tkC, tkT, secs, calls) = await CompleteAndExtractAsync(client, prompt, 4096, AiClient.AiThinkingEnabledIn(settings));
                 if (analysis is null)
                     return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                     {
@@ -91,12 +91,14 @@ internal static class AnalyzeApi
                         ["error"] = "model reply was not a valid JSON object",
                     });
 
-                await history.WriteAsync([logId], analysis, "single", 0,
-                    new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["log_source"] = fields.GetValueOrDefault("source") ?? "unknown",
-                        ["log_severity"] = fields.GetValueOrDefault("severity") ?? "info",
-                    });
+                var singleExtra = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["log_source"] = fields.GetValueOrDefault("source") ?? "unknown",
+                    ["log_severity"] = fields.GetValueOrDefault("severity") ?? "info",
+                };
+                foreach (var kv in UsageExtra(AiClient.ResolveModel(store, client.Model), secs, calls, tkP, tkC, tkT))
+                    singleExtra[kv.Key] = kv.Value;
+                await history.WriteAsync([logId], analysis, "single", 0, singleExtra);
 
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -120,7 +122,7 @@ internal static class AnalyzeApi
                              out int sample) && sample > 0 ? sample : 200);
             string batchPrompt = PromptBuilder.BatchPromptFor(
                 AiClient.AiPromptModeIn(settings), batchSummary);
-            var batchAnalysis = await CompleteAndExtractAsync(client, batchPrompt, 8192, AiClient.AiThinkingEnabledIn(settings));
+            var (batchAnalysis, bP, bC, bT, bSecs, bCalls) = await CompleteAndExtractAsync(client, batchPrompt, 8192, AiClient.AiThinkingEnabledIn(settings));
             if (batchAnalysis is null)
                 return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
                 {
@@ -137,7 +139,8 @@ internal static class AnalyzeApi
             if (batchAnalysis is JsonObject bObj && batchHosts.Count > 0)
                 JsonExtractor.EnsureHostPrefix(bObj, batchHosts);
 
-            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0);
+            await history.WriteAsync(batchIds, batchAnalysis, "batch", 0,
+                UsageExtra(AiClient.ResolveModel(store, client.Model), bSecs, bCalls, bP, bC, bT));
 
             return ReadApi.JsonBody(new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -220,7 +223,7 @@ internal static class AnalyzeApi
                 string reSummary = PromptBuilder.LogSummary(available, sampleLimit);
                 prompt = PromptBuilder.BatchPromptFor(AiClient.AiPromptModeIn(settings), reSummary);
             }
-            var analysis = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192, AiClient.AiThinkingEnabledIn(settings));
+            var (analysis, rP, rC, rT, rSecs, rCalls) = await CompleteAndExtractAsync(client, prompt, single ? 4096 : 8192, AiClient.AiThinkingEnabledIn(settings));
             if (analysis is null)
                 return ReadApi.JsonBody(new { reanalyzed = true, updated = false, available = available.Count,
                     msg = "模型这次仍未返回合法 JSON，原记录保持不变" });
@@ -239,21 +242,27 @@ internal static class AnalyzeApi
             string status = AiStatusClassifier.Classify(type, analysis);
 
             string analysisJson = analysis.ToJsonString();
+            // 重跑也刷新「耗时/token/模型」，让详情页反映最近一次的真实开销。
+            var reUsage = UsageExtra(AiClient.ResolveModel(store, client.Model), rSecs, rCalls, rP, rC, rT);
             bool inRedis = await store.Db.KeyExistsAsync(historyId);
             if (inRedis)
             {
-                await store.Db.HashSetAsync(historyId,
-                [
+                var entries = new List<HashEntry>
+                {
                     new HashEntry("analysis", analysisJson),
                     new HashEntry("status", status),
                     new HashEntry("fail_count", "0"),
-                ]);
+                };
+                foreach (var kv in reUsage) entries.Add(new HashEntry(kv.Key, kv.Value));
+                await store.Db.HashSetAsync(historyId, entries.ToArray());
             }
             else
             {
                 await archive.UpdateHashFieldAsync(historyId, "analysis", analysisJson);
                 await archive.UpdateHashFieldAsync(historyId, "status", status);
                 await archive.UpdateHashFieldAsync(historyId, "fail_count", "0");
+                foreach (var kv in reUsage)
+                    await archive.UpdateHashFieldAsync(historyId, kv.Key, kv.Value);
             }
             await store.Db.HashSetAsync(Keys.AiHistoryStatus, historyId, status);
 
@@ -332,21 +341,51 @@ internal static class AnalyzeApi
         return logs;
     }
 
-    /// <summary>One attempt, then one corrective retry; null when both fail.</summary>
-    private static async Task<JsonNode?> CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool enableThinking)
+    /// <summary>
+    /// One attempt, then one corrective retry; Analysis is null when both fail.
+    /// 同时把本次（含重试）的 token 用量与耗时带回，供分析历史逐条记录。
+    /// </summary>
+    private static async Task<(JsonNode? Analysis, long Prompt, long Completion, long Total, double Seconds, int Calls)>
+        CompleteAndExtractAsync(AiClient client, string prompt, int maxTokens, bool enableThinking)
     {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long p = 0, c = 0, t = 0;
+        int calls = 0;
         try
         {
-            var analysis = JsonExtractor.Extract(await client.CompleteAsync(prompt, enableThinking: enableThinking));
-            if (analysis is not null && JsonExtractor.HasRequiredFields(analysis)) return analysis;
-            return JsonExtractor.Extract(await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), enableThinking: enableThinking));
+            var first = await client.CompleteWithUsageAsync(prompt, enableThinking: enableThinking);
+            calls++; p += first.PromptTokens; c += first.CompletionTokens; t += first.TotalTokens;
+            var analysis = JsonExtractor.Extract(first.Content);
+            if (analysis is not null && JsonExtractor.HasRequiredFields(analysis))
+            {
+                clock.Stop();
+                return (analysis, p, c, t, clock.Elapsed.TotalSeconds, calls);
+            }
+            var retry = await client.CompleteWithUsageAsync(PromptBuilder.CorrectivePrompt(prompt), enableThinking: enableThinking);
+            calls++; p += retry.PromptTokens; c += retry.CompletionTokens; t += retry.TotalTokens;
+            clock.Stop();
+            return (JsonExtractor.Extract(retry.Content), p, c, t, clock.Elapsed.TotalSeconds, calls);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or System.Text.Json.JsonException or InvalidOperationException)
         {
-            return null;
+            clock.Stop();
+            return (null, p, c, t, clock.Elapsed.TotalSeconds, calls);
         }
     }
+
+    /// <summary>把「耗时 + token + 模型」打包成写历史用的 extra 字段。</summary>
+    private static Dictionary<string, string> UsageExtra(string model, double seconds, int calls,
+                                                        long prompt, long completion, long total)
+        => new(StringComparer.Ordinal)
+        {
+            ["model"] = model,
+            ["duration_seconds"] = seconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
+            ["ai_calls"] = calls.ToString(),
+            ["tokens_prompt"] = prompt.ToString(),
+            ["tokens_completion"] = completion.ToString(),
+            ["tokens_total"] = total.ToString(),
+        };
 
     private static string Text(JsonObject? data, string name) =>
         data is not null && data.TryGetPropertyValue(name, out JsonNode? node) && node is JsonValue value

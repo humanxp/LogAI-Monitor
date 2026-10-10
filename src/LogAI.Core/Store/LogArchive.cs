@@ -307,6 +307,21 @@ public sealed class LogArchive
     }
 
     /// <summary>
+    /// 按 key 前缀统计已归档哈希条数（"ai_history:" / "alert:" 等），用于页面的
+    /// 冷热拆分（冷=这里的条数，热=时间线总数-冷）。
+    /// </summary>
+    public async Task<long> CountHashesByPrefixAsync(string prefix, CancellationToken ct = default)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        // 前缀里的 LIKE 元字符要转义（"ai_history:" 的 "_" 否则是通配符）。
+        string escaped = prefix.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+        cmd.CommandText = "SELECT COUNT(*) FROM hashes WHERE key LIKE $prefix ESCAPE '\\';";
+        cmd.Parameters.AddWithValue("$prefix", escaped + "%");
+        return (long)(await cmd.ExecuteScalarAsync(ct))!;
+    }
+
+    /// <summary>
     /// 某条哈希是否在冷归档里。删除单条记录时守卫必须同时看冷库：归档后的条目在
     /// Redis 里已经没有 key，只查 Redis 会返回 404 且什么都不删（那条就永远留在
     /// SQLite 与时间线里）。

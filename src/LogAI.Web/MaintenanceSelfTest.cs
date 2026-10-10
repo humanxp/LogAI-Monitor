@@ -89,6 +89,9 @@ internal static class MaintenanceSelfTest
         long cleared = await LogMaintenance.ClearAllAsync(store);
         Check("clear reports the log count", cleared == 2, cleared.ToString());
         Check("timeline empty", (await store.Db.SortedSetLengthAsync(Keys.Timeline)) == 0);
+        // 这一条正是漏掉过的 bug：旧版只删 ZSET、不删 log:<id> 哈希，线上攒了 13 万孤儿。
+        Check("log hashes deleted",
+            !await store.Db.KeyExistsAsync("log:1") && !await store.Db.KeyExistsAsync("log:2"));
         Check("unanalyzed empty", (await store.Db.SortedSetLengthAsync(Keys.Unanalyzed)) == 0);
         Check("index sets empty",
             (await store.Db.SetLengthAsync(Keys.SourcesIndex)) == 0
@@ -97,6 +100,17 @@ internal static class MaintenanceSelfTest
             $"{await store.Db.SetLengthAsync(Keys.SourcesIndex)}/{await store.Db.SetLengthAsync(Keys.HostsIndex)}/{await store.Db.SetLengthAsync(Keys.SeveritiesIndex)}");
         Check("client records cleared", (await store.Db.SortedSetLengthAsync(Keys.ClientsIndex)) == 0);
         Check("per-source zsets removed", !await store.Db.KeyExistsAsync("logs:source:" + "10.0.0.1"));
+
+        // ---- purge orphan log hashes ----
+        // 孤儿 = 只有 log:<id> 哈希、不在 logs:timeline 里（旧版清空留下的残渣）。
+        await store.Db.ExecuteAsync("FLUSHDB");
+        await Seed("log:1", "10.0.0.1", "box-a", "error", 1);                 // 活日志：进时间线
+        await store.Db.HashSetAsync("log:2", [new HashEntry("source", "10.0.0.2")]);   // 孤儿
+        long purged = await LogMaintenance.PurgeOrphanLogHashesAsync(store);
+        Check("purged exactly the orphan", purged == 1, purged.ToString());
+        Check("live log hash kept", await store.Db.KeyExistsAsync("log:1"));
+        Check("orphan hash gone", !await store.Db.KeyExistsAsync("log:2"));
+        Check("timeline untouched", (await store.Db.SortedSetLengthAsync(Keys.Timeline)) == 1);
 
         Console.WriteLine($"\n{(_failures == 0 ? "ALL PASSED" : "FAILED")} ({_failures} failures)");
         return _failures == 0 ? 0 : 1;

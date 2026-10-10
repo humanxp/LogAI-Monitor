@@ -113,7 +113,11 @@ function previewTheme(theme) {
 
 // Initialize Socket.IO
 function initSocket() {
-    state.socket = io();
+    // reconnection:false 是关键：Socket.IO 默认断开后 1 秒自动重连，切页/bfcache 时
+    // 会形成"连上→马上断→1 秒后重连"的风暴（服务端会话数实测飙到 40+，页面卡顿）。
+    // 关掉自动重连后，若连接意外断开，页面走 15 秒 HTTP 兜底轮询（_startLiveFallback），
+    // 不卡、不炸会话；bfcache 恢复时由 pageshow 里的 io.open() 显式重连。
+    state.socket = io({ reconnection: false });
 
     // Chrome 的 bfcache 会把旧页面"冻结"而非卸载：若不主动断开，旧页面的
     // 长轮询连接会挂起占住（服务端最多 20s 才超时），切几下就连接耗尽导致卡顿。
@@ -121,13 +125,15 @@ function initSocket() {
     // 主动断开；pageshow 从 bfcache 恢复时再重连，保证实时通道不哑。
     window.addEventListener('pagehide', () => {
         try {
-            state.socket?.disconnect();
-            state.socket?.io?.close();   // 连同 manager/底层 transport 一起关，避免 keep-alive 连接残留
+            // 只关 manager：disconnect() 会触发 reconnection 的重连计时器，跟页面卸载
+            // 赛跑时容易在卸载后又多建出一个新会话（服务端日志里会话数飙到 25+ 的根源）。
+            // io.close() 直接断开底层 transport 且不再重连，最干净。
+            state.socket?.io?.close();
         } catch (e) { /* 页面已冻结时忽略 */ }
     });
     window.addEventListener('pageshow', (e) => {
         if (e.persisted) {
-            try { state.socket?.io?.open(); } catch (e) { /* ignore */ }
+            try { state.socket?.connect(); } catch (e) { /* ignore */ }
         }
     });
 
@@ -1097,6 +1103,15 @@ async function fetchAlertStats() {
             if (el) el.textContent = value ?? 0;
         };
         set('alertStatTotal', s.total);
+        // 冷热拆分：热 = Redis 哈希，冷 = SQLite 归档（时间线保留 id，总数 = 冷 + 热）
+        const alertHc = document.getElementById('alertHotCold');
+        if (alertHc) alertHc.textContent = `Hot ${s.alerts_hot ?? 0} · Cold ${s.alerts_cold ?? 0}`;
+        // 记下各档计数：翻页条在有级别筛选时要用"该档的条数"当总数。
+        state.alertSeverityCounts = {
+            critical: s.critical || 0, error: s.error || 0, warning: s.warning || 0,
+            notice: s.notice || 0, info: s.info || 0, debug: s.debug || 0, other: s.other || 0,
+        };
+        renderAlertsPager();
         set('alertStatCritical', s.critical);
         set('alertStatError', s.error);
         set('alertStatWarning', s.warning);
@@ -1112,12 +1127,26 @@ async function fetchAlertStats() {
     }
 }
 
+// 告警列表的级别筛选（由上面一排分级卡片设置；'' = 全部）。
+let alertSeverityFilter = '';
+
+// 点分级卡片：筛下面的告警列表 + 高亮选中项；再点一次（或点 Total）取消。
+function setAlertSeverityFilter(severity) {
+    alertSeverityFilter = (alertSeverityFilter === severity) ? '' : (severity || '');
+    document.querySelectorAll('.stat-card.stat-clickable[data-severity]').forEach(card => {
+        card.classList.toggle('active', (card.dataset.severity || '') === alertSeverityFilter);
+    });
+    state.alertsOffset = 0;
+    fetchAlerts(0);
+}
+
 // Fetch alerts
 async function fetchAlerts(offset) {
     if (typeof offset === 'number') state.alertsOffset = Math.max(0, offset);
     try {
-        const response = await fetch(
-            `/api/alerts?limit=${ALERTS_PAGE_SIZE}&offset=${state.alertsOffset}`);
+        let url = `/api/alerts?limit=${ALERTS_PAGE_SIZE}&offset=${state.alertsOffset}`;
+        if (alertSeverityFilter) url += `&severity=${encodeURIComponent(alertSeverityFilter)}`;
+        const response = await fetch(url);
         let alerts = await response.json();
         // Keep the in-memory list bounded so repeated socket alerts can never
         // grow it (and the table rebuild) without limit.
@@ -1136,7 +1165,9 @@ async function fetchAlerts(offset) {
 function renderAlertsPager() {
     const el = document.getElementById('alertsPager');
     if (!el) return;
-    const total = state.alertsTotal || 0;
+    const total = alertSeverityFilter
+        ? (state.alertSeverityCounts?.[alertSeverityFilter] ?? 0)
+        : (state.alertsTotal || 0);
     const offset = state.alertsOffset || 0;
     const from = total === 0 ? 0 : offset + 1;
     const to = Math.min(offset + ALERTS_PAGE_SIZE, total);
@@ -2093,7 +2124,7 @@ async function loadSettings() {
         const promptModeEl = document.getElementById('aiPromptMode');
         if (promptModeEl) {
             const mode = settings.ai_prompt_mode || (settings.ai_cache_optimized === true ? 'qwen35' : 'default');
-            promptModeEl.value = ['default', 'qwen25', 'qwen35', 'qwen36'].includes(mode) ? mode : 'default';
+            promptModeEl.value = ['default', 'qwen25', 'qwen35', 'qwen36', 'gemma', 'gemma4', 'gemma4e', 'gemma426'].includes(mode) ? mode : 'default';
             updatePromptModeHint();
         }
         
@@ -2545,6 +2576,7 @@ function syncPromptModeToModel() {
     if (m.includes('qwen2.5') || m.includes('coder')) mode = 'qwen25';
     else if (m.includes('gemma')) {
         if (m.includes('e4b')) mode = 'gemma4e';
+        else if (m.includes('26b') || m.includes('a4b')) mode = 'gemma426';
         else if (m.includes('gemma-4')) mode = 'gemma4';
         else mode = 'gemma';
     }
@@ -2569,8 +2601,9 @@ function updatePromptModeHint() {
         'qwen35': 'Qwen3.5-9B：与 Qwen2.5-Coder-7B 相同的短提示词（实测比长模板更准：13/15、召回 6/6）。改动从下一轮分析开始生效，无需重启。',
         'qwen36': 'Qwen3.6-35B-A3B：few-shot + 输出精简段（降 token 降延迟，完整性护栏防漏报）。改动从下一轮分析开始生效，无需重启。',
         'gemma': 'Gemma-3-12B-it：短提示词 + 爆破强化（未成功爆破也=critical）。改动从下一轮分析开始生效，无需重启。',
-        'gemma4': 'Gemma-4-12B：短提示词 + 爆破强化（基线，待实测调优）。改动从下一轮分析开始生效，无需重启。',
-        'gemma4e': 'Gemma-4-e4b：短提示词 + 爆破强化（基线，待实测调优）。改动从下一轮分析开始生效，无需重启。',
+        'gemma4': 'Gemma-4-12B：短提示词 + 爆破强化 + 数据丢失判据（BTRFS/RAID/只读重挂=critical）。改动从下一轮分析开始生效，无需重启。',
+        'gemma4e': 'Gemma-4-e4b：短提示词 + 爆破强化 + 边界校准（disk-full=warning、cert-expiry=warning）。改动从下一轮分析开始生效，无需重启。',
+        'gemma426': 'Gemma-4-26B-A4B：短提示词 + 爆破强化（实测 27/27 满分，无需额外调优）。改动从下一轮分析开始生效，无需重启。',
     };
     hint.textContent = hints[el.value] || '';
 }
@@ -2589,7 +2622,29 @@ async function loadBenchPanel() {
         }
     } catch (e) { /* ignore: 模型列表会自己重试 */ }
     await loadBenchCorpora();
-    restoreBenchState();
+    await loadBenchHistory();          // 先显示历史成绩（评测过的模型都留着）
+    restoreBenchState();               // 若正有一轮在跑，覆盖成进度视图
+}
+
+// 历史成绩：所有评测过的模型各一条（存 Redis，重评同一模型即覆盖旧记录）。
+async function loadBenchHistory() {
+    try {
+        const res = await fetch('/api/ai/bench/results');
+        if (!res.ok) return;
+        const list = await res.json();
+        if (Array.isArray(list) && list.length) renderBenchResults(list, true);
+    } catch (e) { /* ignore */ }
+}
+
+async function clearBenchHistory() {
+    if (!confirm('清空所有历史评测成绩？（评测集不受影响，下次重新评测再生成）')) return;
+    try {
+        const res = await fetch('/api/ai/bench/results', { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) { showToast('模型评测', data.error || ('HTTP ' + res.status), 'error'); return; }
+        document.getElementById('benchResult').innerHTML = '';
+        showToast('模型评测', '已清空历史成绩', 'success');
+    } catch (e) { showToast('模型评测', '清空失败: ' + (e.message || e), 'error'); }
 }
 
 // 评测模型选择器 = 复选框列表（比 <select multiple> 直观）
@@ -2612,8 +2667,10 @@ function selectedBenchModels() {
         .map(c => c.value).filter(Boolean);
 }
 
-// 回到本页时恢复上一次评测的进度/结果：评测跑在服务端，切页不中断，
-// 这里从 GET /api/ai/bench 读当前状态，running 就续上轮询，done 就回填结果。
+// 回到本页时恢复上一次评测的进度：评测跑在服务端，切页不中断，
+// 这里从 GET /api/ai/bench 读当前状态，running 就续上轮询。
+// （已完成的结果不走这里——改由 loadBenchHistory() 从持久化的历史成绩里读，
+//   这样能一次看到所有评测过的模型，而不是只看最后一轮。）
 async function restoreBenchState() {
     try {
         const res = await fetch('/api/ai/bench');
@@ -2626,8 +2683,6 @@ async function restoreBenchState() {
             status.innerHTML = `<span class="status-dot warning"></span> 评测中… ${d.done}/${d.total} 例（${escapeHtml(d.model || '')}）`;
             if (btn) btn.disabled = true;
             pollBench();
-        } else if (d.phase === 'done' && d.results && d.results.length) {
-            renderBenchResults(d.results);
         } else if (d.phase === 'failed') {
             const status = document.getElementById('benchStatus');
             status.style.display = 'block';
@@ -2764,7 +2819,8 @@ async function pollBench() {
             status.innerHTML = `<span class="status-dot offline"></span> 评测失败：${escapeHtml(d.error || '')}`;
         } else {
             status.style.display = 'none';
-            renderBenchResults(d.results);
+            // 跑完从持久化历史里读（含本次刚存的 + 之前评测过的所有模型）
+            loadBenchHistory();
         }
     } catch (e) {
         status.style.display = 'block';
@@ -2773,14 +2829,18 @@ async function pollBench() {
     btn.disabled = false;
 }
 
-function renderBenchResults(list) {
+function renderBenchResults(list, isHistory = false) {
     if (!list || !list.length) return;
     const el = document.getElementById('benchResult');
     const pct = (n, d) => (d ? `${n}/${d}` : '-');
+    const fmtTime = (iso) => { try { return new Date(iso).toLocaleString('zh-CN', { hour12: false }); } catch (e) { return ''; } };
 
     // 汇总对比表：一行一个模型
     const rows = list.map(r => {
         const best = (r.exact / (r.attempts || 1)) >= (list.reduce((m, x) => Math.max(m, x.exact / (x.attempts || 1)), 0) || 0) - 1e-9;
+        const savedCell = isHistory
+            ? `<td style="padding:0.3rem 0.5rem;color:var(--lm-ink-2);white-space:nowrap;">${escapeHtml(fmtTime(r.saved_at))}</td>`
+            : '';
         return `<tr style="border-bottom:1px solid var(--lm-line);${best ? 'background:var(--lm-subtle);' : ''}">
             <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.model || '')}</td>
             <td style="padding:0.3rem 0.5rem;">${escapeHtml(r.prompt_mode || '')}</td>
@@ -2792,6 +2852,7 @@ function renderBenchResults(list) {
             <td style="padding:0.3rem 0.5rem;">${r.fabricated ?? 0}</td>
             <td style="padding:0.3rem 0.5rem;">${r.parse_fail ?? 0}</td>
             <td style="padding:0.3rem 0.5rem;">${r.avg_seconds ?? '-'}s</td>
+            ${savedCell}
         </tr>`;
     }).join('');
 
@@ -2819,12 +2880,19 @@ function renderBenchResults(list) {
         </details>`;
     }).join('');
 
+    const title = isHistory
+        ? `历史成绩（${list.length} 个模型，重评同一模型即覆盖旧记录）`
+        : `对比（${list.length} 个模型，高亮为档位命中最高者）`;
+    const clearBtn = isHistory
+        ? `<button type="button" class="btn btn-outline btn-sm" onclick="clearBenchHistory()" style="margin-left:0.75rem;"><i class="fas fa-trash"></i> 清空历史</button>`
+        : '';
+    const timeTh = isHistory ? '<th>评测时间</th>' : '';
     el.innerHTML = `
       <div style="border:1px solid var(--lm-line);border-radius:8px;padding:0.75rem;">
-        <div style="font-weight:600;margin-bottom:0.5rem;">对比（${list.length} 个模型，高亮为档位命中最高者）</div>
+        <div style="font-weight:600;margin-bottom:0.5rem;">${title}${clearBtn}</div>
         <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
           <thead><tr style="text-align:left;border-bottom:1px solid var(--lm-line);">
-            <th style="padding:0.3rem 0.5rem;">模型</th><th>提示词</th><th>档位命中</th><th>±1容差</th><th>critical召回</th><th>healthy无虚警</th><th>关键词命中</th><th>无中生有</th><th>解析失败</th><th>平均</th>
+            <th style="padding:0.3rem 0.5rem;">模型</th><th>提示词</th><th>档位命中</th><th>±1容差</th><th>critical召回</th><th>healthy无虚警</th><th>关键词命中</th><th>无中生有</th><th>解析失败</th><th>平均</th>${timeTh}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -3239,9 +3307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (path === '/settings') {
         state.currentPage = 'settings';
         loadSettings();
-    } else if (path === '/bench') {
-        state.currentPage = 'bench';
-        loadBenchPanel();
+        // 评测面板已搬进设置页的「Model Evaluation」类目，切到该类目时才懒加载（见 showSettingsTab）。
     }
     
     // Refresh stats periodically

@@ -5,36 +5,42 @@
 
 {% block content %}
 <!-- Stats Cards：按级别统计（含已归档到冷库的告警）。compact = 一行排下 8 张 -->
+<style>
+    /* 分级卡片可点：点一下筛下面的告警列表（再点一次或点 Total 取消） */
+    .stat-card.stat-clickable { cursor: pointer; transition: box-shadow .15s; }
+    .stat-card.stat-clickable:hover { box-shadow: 0 0 0 2px var(--lm-accent-soft); }
+    .stat-card.stat-clickable.active { box-shadow: 0 0 0 2px var(--lm-accent); }
+</style>
 <div class="stats-grid compact">
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="" onclick="setAlertSeverityFilter('')" title="显示全部">
         <div class="stat-icon primary"><i class="fas fa-bell"></i></div>
-        <div class="stat-info"><h3 id="alertStatTotal">0</h3><p>Total</p></div>
+        <div class="stat-info"><h3 id="alertStatTotal">0</h3><p>Total</p><p id="alertHotCold" style="font-size:.72rem;color:var(--lm-ink-2);margin:.15rem 0 0;"></p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="critical" onclick="setAlertSeverityFilter('critical')" title="只看 critical">
         <div class="stat-icon danger"><i class="fas fa-times-circle"></i></div>
         <div class="stat-info"><h3 id="alertStatCritical">0</h3><p>Critical</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="error" onclick="setAlertSeverityFilter('error')" title="只看 error">
         <div class="stat-icon danger"><i class="fas fa-exclamation-circle"></i></div>
         <div class="stat-info"><h3 id="alertStatError">0</h3><p>Error</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="warning" onclick="setAlertSeverityFilter('warning')" title="只看 warning">
         <div class="stat-icon warning"><i class="fas fa-exclamation-triangle"></i></div>
         <div class="stat-info"><h3 id="alertStatWarning">0</h3><p>Warning</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="notice" onclick="setAlertSeverityFilter('notice')" title="只看 notice">
         <div class="stat-icon primary"><i class="fas fa-bell"></i></div>
         <div class="stat-info"><h3 id="alertStatNotice">0</h3><p>Notice</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="info" onclick="setAlertSeverityFilter('info')" title="只看 info">
         <div class="stat-icon primary"><i class="fas fa-info-circle"></i></div>
         <div class="stat-info"><h3 id="alertStatInfo">0</h3><p>Info</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="debug" onclick="setAlertSeverityFilter('debug')" title="只看 debug">
         <div class="stat-icon"><i class="fas fa-bug"></i></div>
         <div class="stat-info"><h3 id="alertStatDebug">0</h3><p>Debug</p></div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-severity="other" onclick="setAlertSeverityFilter('other')" title="只看 other">
         <div class="stat-icon"><i class="fas fa-question-circle"></i></div>
         <div class="stat-info"><h3 id="alertStatOther">0</h3><p>Other</p></div>
     </div>

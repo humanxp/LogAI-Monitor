@@ -108,7 +108,7 @@ internal static class AiBenchApi
             string promptMode = Text(o, "prompt_mode");
             var promptModes = models.Select(m => promptMode.Length > 0 ? promptMode : AnalysisBench.ModeForModel(m)).ToArray();
 
-            bool started = TryStart(models.ToArray(), promptModes, corpora.ToArray(), provider, baseUrl, apiKey, cases, repeat);
+            bool started = TryStart(models.ToArray(), promptModes, corpora.ToArray(), provider, baseUrl, apiKey, cases, repeat, store);
             if (!started) return ReadApi.JsonBody(new { error = "a benchmark is already running" }, 409);
             return ReadApi.JsonBody(new { started = true, models, corpora, cases = cases.Length });
         });
@@ -228,14 +228,49 @@ internal static class AiBenchApi
             bool removed = await store.Db.HashDeleteAsync(CorpusKey, id);
             return ReadApi.JsonBody(new { deleted = removed });
         });
+
+        // 历史成绩：所有评测过的模型各一条（重评覆盖）。前端进「模型评测」类目时读它。
+        app.MapGet("/api/ai/bench/results", async (HttpContext http) =>
+        {
+            if (AuthApi.CurrentUser(http, cookies) is not { } session) return Redirect(http);
+            if (!string.Equals(session.Role, "admin", StringComparison.Ordinal))
+                return ReadApi.JsonBody(new { error = "Access denied" }, 403);
+
+            var list = new List<System.Text.Json.Nodes.JsonNode>();
+            foreach (var entry in await store.Db.HashGetAllAsync(ResultsKey))
+            {
+                try
+                {
+                    if (System.Text.Json.Nodes.JsonNode.Parse(entry.Value.ToString()) is { } node) list.Add(node);
+                }
+                catch { /* 跳过坏记录 */ }
+            }
+            // 按 exact 命中数降序，方便一眼看谁最好
+            static int ExactOf(System.Text.Json.Nodes.JsonNode? n) =>
+                int.TryParse(n?["exact"]?.ToString(), out int v) ? v : 0;
+            list.Sort((a, b) => ExactOf(b).CompareTo(ExactOf(a)));
+            return ReadApi.JsonBody(list.ToArray());
+        });
+
+        // 清空历史成绩（管理员）。只清成绩，不动评测集。
+        app.MapDelete("/api/ai/bench/results", async (HttpContext http) =>
+        {
+            if (AuthApi.CurrentUser(http, cookies) is not { } session) return Redirect(http);
+            if (!string.Equals(session.Role, "admin", StringComparison.Ordinal))
+                return ReadApi.JsonBody(new { error = "Access denied" }, 403);
+            await store.Db.KeyDeleteAsync(ResultsKey);
+            return ReadApi.JsonBody(new { cleared = true });
+        });
     }
 
     private const string CorpusKey = "bench:corpora";
+    // 评测成绩持久化：hash，field=模型名，value=该模型最近一次的成绩 JSON（重评即覆盖）。
+    private const string ResultsKey = "bench:results";
 
     // ------------------------------------------------------------------ job
     private static bool TryStart(string[] models, string[] promptModes, string[] corpora,
                                  string provider, string baseUrl, string apiKey,
-                                 AnalysisBench.BenchCase[] cases, int repeat)
+                                 AnalysisBench.BenchCase[] cases, int repeat, RedisStore store)
     {
         lock (Gate)
         {
@@ -267,7 +302,18 @@ internal static class AiBenchApi
                                 lock (Gate) Current = Current! with { Done = prior + d, CurrentModel = models[i] };
                                 return Task.CompletedTask;
                             });
-                        results.Add(ResultPayload(r));
+                        var payload = ResultPayload(r);
+                        payload["saved_at"] = DateTimeOffset.UtcNow.ToString("o");
+                        payload["corpora"] = corpora;
+                        payload["case_count"] = cases.Length;
+                        results.Add(payload);
+                        // 持久化：每个模型一条记录（field=模型名），重评同一模型即覆盖旧成绩。
+                        try
+                        {
+                            await store.Db.HashSetAsync(ResultsKey, models[i],
+                                System.Text.Json.JsonSerializer.Serialize(payload));
+                        }
+                        catch { /* 存不进不影响本次评测本身 */ }
                         done += cases.Length;
                         lock (Gate) Current = Current! with { Done = done, Results = results.ToList() };
                     }

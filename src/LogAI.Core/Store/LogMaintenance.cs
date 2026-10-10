@@ -43,6 +43,11 @@ public static class LogMaintenance
         }
 
         Console.WriteLine("[Logs] cleared all " + count + " log(s)");
+        // log:<id> 的哈希也必须删。原来只删上面的 ZSET 索引，哈希留了下来：
+        // 线上实测一次清空后攒了 13 万个"没有任何索引引用"的孤儿哈希，要等 90 天
+        // TTL 才自己消失，占了 Redis 约四成内存。它们不在任何索引里，只有 SCAN 扫得到。
+        long hashes = await store.DeleteKeysByPatternAsync("log:*");
+        Console.WriteLine("[Logs] also deleted " + hashes + " log hash(es) from Redis");
         // 冷归档也要清：否则 SQLite 里还留着老日志（界面看不见，但占磁盘，
         // 而且按 id 回读时还能命中）。
         if (archive is not null)
@@ -51,6 +56,42 @@ public static class LogMaintenance
             Console.WriteLine("[Logs] also cleared " + archived + " archived row(s) from SQLite");
         }
         return count;
+    }
+
+    /// <summary>
+    /// 清理"孤儿日志哈希"：Redis 里存在、但不在 <c>logs:timeline</c> 里的 <c>log:*</c> 键。
+    ///
+    /// 正常流程不会产生它们——归档是"删哈希、留索引"，清理是"哈希与索引一起删"。
+    /// 只有旧版「清空所有数据」会留下（它只 KeyDelete 了 ZSET，没删哈希），线上实测
+    /// 一次清空后攒了约 13 万个，占 Redis 四成内存、要等 90 天 TTL 才自己消失。
+    /// 删它们不动任何索引，纯粹回收内存。
+    ///
+    /// 安全网：只删 id 时间戳至少 1 小时前的键。扫描期间新写入的日志可能还没进
+    /// 上面的时间线快照，用 age 兜底，绝不误删活日志。
+    /// </summary>
+    public static async Task<long> PurgeOrphanLogHashesAsync(RedisStore store,
+                                                             CancellationToken cancellationToken = default)
+    {
+        var db = store.Db;
+        // 时间线的成员本身就是 "log:<id>"，直接当白名单用。
+        var keep = new HashSet<string>(StringComparer.Ordinal);
+        const int pageSize = 5000;
+        long rank = 0;
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            var page = await db.SortedSetRangeByRankAsync(Keys.Timeline, rank, rank + pageSize - 1);
+            if (page.Length == 0) break;
+            foreach (var member in page) keep.Add(member.ToString());
+            rank += page.Length;
+        }
+
+        long cutoffUs = DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeMilliseconds() * 1000L;
+        return await store.DeleteKeysByPatternAsync("log:*", key =>
+        {
+            if (keep.Contains(key)) return false;
+            // key 形如 "log:<微秒时间戳>"；解析不出时间戳的保守留下。
+            return long.TryParse(key.AsSpan(4), out long us) && us < cutoffUs;
+        }, pageSize: 2000);
     }
 
     /// <summary>Removes every log whose source equals the given value.</summary>

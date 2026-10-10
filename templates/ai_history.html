@@ -5,17 +5,24 @@
 
 {% block content %}
 <!-- Stats Cards -->
+<style>
+    /* 分级卡片可点：点一下筛下面的列表（再点一次或点 Total 取消） */
+    .stat-card.stat-clickable { cursor: pointer; transition: box-shadow .15s; }
+    .stat-card.stat-clickable:hover { box-shadow: 0 0 0 2px var(--lm-accent-soft); }
+    .stat-card.stat-clickable.active { box-shadow: 0 0 0 2px var(--lm-accent); }
+</style>
 <div class="stats-grid" style="margin-bottom: 1.5rem;">
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-status="" onclick="setHistoryStatusFilter('')" title="显示全部">
         <div class="stat-icon primary">
             <i class="fas fa-history"></i>
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
             <p>Total Analyses</p>
+            <p id="analysesHotCold" style="font-size:.72rem;color:var(--lm-ink-2);margin-top:.15rem;display:none;"></p>
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-status="critical" onclick="setHistoryStatusFilter('critical')" title="只看 critical">
         <div class="stat-icon danger">
             <i class="fas fa-times-circle"></i>
         </div>
@@ -24,7 +31,7 @@
             <p>Critical</p>
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-status="warning" onclick="setHistoryStatusFilter('warning')" title="只看 warning">
         <div class="stat-icon warning">
             <i class="fas fa-exclamation-triangle"></i>
         </div>
@@ -33,7 +40,7 @@
             <p>Warning</p>
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-status="healthy" onclick="setHistoryStatusFilter('healthy')" title="只看 healthy">
         <div class="stat-icon success">
             <i class="fas fa-check-circle"></i>
         </div>
@@ -42,7 +49,7 @@
             <p>Healthy</p>
         </div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card stat-clickable" data-status="other" onclick="setHistoryStatusFilter('other')" title="只看 other">
         <div class="stat-icon">
             <i class="fas fa-question-circle"></i>
         </div>
@@ -149,6 +156,18 @@ let historyPage = 1;
 // Active analysis-time window (epoch seconds as strings; '' = no bound).
 let historyStartTime = '';
 let historyEndTime = '';
+// Active status filter from the stat cards ('' = all).
+let historyStatusFilter = '';
+
+// 点分级卡片：筛下面的列表，并在卡片上高亮当前选中的那一档。
+// 点已选中的那张（或 Total）＝ 取消筛选。
+function setHistoryStatusFilter(status) {
+    historyStatusFilter = (historyStatusFilter === status) ? '' : (status || '');
+    document.querySelectorAll('.stat-card.stat-clickable').forEach(card => {
+        card.classList.toggle('active', (card.dataset.status || '') === historyStatusFilter);
+    });
+    fetchAIHistory(1);
+}
 
 function isFailedAnalysis(a) {
     if (!a) return true;
@@ -236,6 +255,7 @@ async function fetchAIHistory(page) {
         let url = `/api/ai-history?limit=${HISTORY_PAGE_SIZE}&offset=${offset}`;
         if (historyStartTime) url += `&start=${encodeURIComponent(historyStartTime)}`;
         if (historyEndTime) url += `&end=${encodeURIComponent(historyEndTime)}`;
+        if (historyStatusFilter) url += `&status=${encodeURIComponent(historyStatusFilter)}`;
         const response = await fetch(url);
         const data = await response.json();
         if (seq !== _historyFetchSeq) return;   // superseded by a newer request
@@ -328,6 +348,16 @@ async function fetchHistoryStats(seq) {
         // summary cards always match the rows currently on screen.
         if (seq !== undefined && seq !== _historyFetchSeq) return;
         document.getElementById('totalAnalyses').textContent = s.total ?? historyTotal;
+        // 冷热拆分：只在"全量"统计下显示（按时间窗筛时后端不下发这两个键）。
+        const hc = document.getElementById('analysesHotCold');
+        if (hc) {
+            if (s.analyses_hot === undefined) {
+                hc.style.display = 'none';
+            } else {
+                hc.textContent = `Hot ${s.analyses_hot ?? 0} · Cold ${s.analyses_cold ?? 0}`;
+                hc.style.display = '';
+            }
+        }
         document.getElementById('criticalCount').textContent = s.critical || 0;
         document.getElementById('warningCount').textContent = s.warning || 0;
         document.getElementById('healthyCount').textContent = s.healthy || 0;
@@ -375,6 +405,7 @@ function renderHistory() {
                     <th>Timestamp</th>
                     <th>Type</th>
                     <th>Logs Analyzed</th>
+                    <th>Duration</th>
                     <th>Status</th>
                     <th>Summary</th>
                     <th>Actions</th>
@@ -418,6 +449,7 @@ function renderHistoryRow(entry) {
             <td>${timestamp}</td>
             <td>${type}</td>
             <td>${logsCount}</td>
+            <td>${entry.duration_seconds ? Number(entry.duration_seconds).toFixed(1) + 's' : '—'}</td>
             <td><span class="severity-badge ${statusClass}">${statusIcon} ${escapeHtml(status)}</span></td>
             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                 ${escapeHtml(summary.substring(0, 100))}
@@ -522,6 +554,22 @@ function showHistoryDetail(historyId) {
     // 闸门把模型的假 critical 降级时，详情页要如实说明，而不是悄悄改数字。
     const downgraded = (status === 'warning' || status === 'healthy')
         && String(analysis.overall_status || '').toLowerCase() === 'critical';
+
+    // 本轮用量：耗时 + token（老记录没这些字段 → 不显示，不显示 0 误导）
+    const usageHtml = `
+        ${entry.duration_seconds ? `
+        <div class="form-group">
+            <label class="form-label">Duration</label>
+            <p>${Number(entry.duration_seconds).toFixed(1)} 秒${entry.model ? ` <span style="color:var(--lm-ink-3);font-size:.85rem;">（模型：${escapeHtml(entry.model)}${entry.ai_calls > 1 ? `，${entry.ai_calls} 次调用` : ''}）</span>` : ''}</p>
+        </div>
+        ` : ''}
+        ${entry.tokens_total ? `
+        <div class="form-group">
+            <label class="form-label">Token 用量</label>
+            <p>${Number(entry.tokens_total).toLocaleString()} <span style="color:var(--lm-ink-3);font-size:.85rem;">（输入 ${Number(entry.tokens_prompt || 0).toLocaleString()} + 输出 ${Number(entry.tokens_completion || 0).toLocaleString()}）</span></p>
+        </div>
+        ` : ''}
+    `;
     
     document.getElementById('historyDetailContent').innerHTML = `
         <div class="form-group">
@@ -536,6 +584,7 @@ function showHistoryDetail(historyId) {
             <label class="form-label">Logs Analyzed</label>
             <p>${entry.logs_analyzed || 1}</p>
         </div>
+        ${usageHtml}
         <div class="form-group">
             <label class="form-label">Overall Status</label>
             <p><span class="severity-badge ${getStatusClass(status)}">${getStatusIcon(status)} ${escapeHtml(status)}</span></p>

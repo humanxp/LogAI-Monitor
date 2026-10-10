@@ -84,18 +84,34 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         // 样本上限决定"其中多少条真正进入提示词"（按级别优先）。
         string summary = PromptBuilder.LogSummary(logs, sampleLimit);
         string prompt = PromptBuilder.BatchPromptFor(promptMode, summary);
-        string reply = await client.CompleteAsync(prompt, cancellationToken: cancellationToken,
-                                                 enableThinking: thinkingEnabled);
-        var analysis = JsonExtractor.Extract(reply);
+
+        // 逐条记录本轮的 token 用量与耗时（纠正性重试也要算进去）。
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long promptTokens = 0, completionTokens = 0, totalTokens = 0, calls = 0;
+        void Accumulate(AiClient.Completion c)
+        {
+            calls++;
+            promptTokens += c.PromptTokens;
+            completionTokens += c.CompletionTokens;
+            totalTokens += c.TotalTokens;
+        }
+
+        var first = await client.CompleteWithUsageAsync(prompt, cancellationToken: cancellationToken,
+                                                        enableThinking: thinkingEnabled);
+        Accumulate(first);
+        var analysis = JsonExtractor.Extract(first.Content);
 
         // 解析失败，或模型漏了必需字段（overall_status/issues/recommendations/
         // critical_count）时，纠正性重试一次。
         if (analysis is null || !JsonExtractor.HasRequiredFields(analysis))
         {
-            reply = await client.CompleteAsync(PromptBuilder.CorrectivePrompt(prompt), cancellationToken: cancellationToken,
-                                               enableThinking: thinkingEnabled);
-            analysis = JsonExtractor.Extract(reply);
+            var retry = await client.CompleteWithUsageAsync(PromptBuilder.CorrectivePrompt(prompt),
+                                                            cancellationToken: cancellationToken,
+                                                            enableThinking: thinkingEnabled);
+            Accumulate(retry);
+            analysis = JsonExtractor.Extract(retry.Content);
         }
+        clock.Stop();
 
         if (analysis is null)
             return new Outcome("failed", batch.Count, null, "reply was not a valid JSON object after a corrective retry");
@@ -109,7 +125,16 @@ public sealed class AnalysisRunner(RedisStore store, AiClient client, AiHistoryW
         if (analysis is System.Text.Json.Nodes.JsonObject obj && hosts.Count > 0)
             JsonExtractor.EnsureHostPrefix(obj, hosts);
 
-        string historyId = await history.WriteAsync(ids, analysis);
+        string historyId = await history.WriteAsync(ids, analysis, extra: new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            // 这批用了多少 token、花了多久、哪个模型——「分析详情」里直接展示。
+            ["model"] = model,
+            ["duration_seconds"] = clock.Elapsed.TotalSeconds.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture),
+            ["ai_calls"] = calls.ToString(),
+            ["tokens_prompt"] = promptTokens.ToString(),
+            ["tokens_completion"] = completionTokens.ToString(),
+            ["tokens_total"] = totalTokens.ToString(),
+        });
         await AnalysisCommit.ApplyAsync(store, ids, analysis, cancellationToken);
         return new Outcome("analyzed", batch.Count, historyId, null);
     }

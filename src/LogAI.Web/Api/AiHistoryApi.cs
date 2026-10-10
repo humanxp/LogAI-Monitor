@@ -25,7 +25,7 @@ internal static class AiHistoryApi
     // 无需实时（分析每 ~2 分钟才提交一条），短 TTL 缓存即可把后续加载降到毫秒级。
     // 带时间窗的筛选很快（几 ms）且窗口每次不同，不缓存。
     private static readonly object StatsCacheLock = new();
-    private static (Dictionary<string, int> Counts, int Total)? _statsCache;
+    private static (Dictionary<string, int> Counts, int Total, long Cold)? _statsCache;
     private static DateTimeOffset _statsCacheAt = DateTimeOffset.MinValue;
     private static readonly TimeSpan StatsCacheTtl = TimeSpan.FromSeconds(30);
 
@@ -45,7 +45,7 @@ internal static class AiHistoryApi
                 lock (StatsCacheLock)
                 {
                     if (_statsCache is { } cached && DateTimeOffset.UtcNow - _statsCacheAt < StatsCacheTtl)
-                        return ReadApi.JsonBody(StatsPayload(cached.Counts, cached.Total));
+                        return ReadApi.JsonBody(StatsPayload(cached.Counts, cached.Total, cached.Cold));
                 }
             }
 
@@ -112,16 +112,20 @@ internal static class AiHistoryApi
                 }
             }
 
+            // 冷热拆分：冷 = SQLite 里已归档的分析条数。只对全量有意义——按时间窗筛
+            // 出来的记录冷热混在一起，拆开反而误导。SQLite COUNT 很快，且跟着 30s 缓存走。
+            long? cold = hasWindow ? null : await archive.CountHashesByPrefixAsync("ai_history:");
+
             if (!hasWindow)
             {
                 lock (StatsCacheLock)
                 {
-                    _statsCache = (counts, ids.Length);
+                    _statsCache = (counts, ids.Length, cold!.Value);
                     _statsCacheAt = DateTimeOffset.UtcNow;
                 }
             }
 
-            return ReadApi.JsonBody(StatsPayload(counts, ids.Length));
+            return ReadApi.JsonBody(StatsPayload(counts, ids.Length, cold));
         });
     }
 
@@ -134,13 +138,44 @@ internal static class AiHistoryApi
     private static string Classify(string type, string analysisRaw) =>
         AiStatusClassifier.Classify(type, analysisRaw);
 
-    /// <summary>统计响应：7 档各自计数 + total（键排序由序列化统一处理）。</summary>
-    private static Dictionary<string, object?> StatsPayload(IReadOnlyDictionary<string, int> counts, int total)
+    /// <summary>
+    /// 按归一化后的状态筛 id（"critical"/"warning"/"healthy"/"other"）。
+    /// 状态存在 ai_history:status 小哈希里、归档时不搬走，所以冷热记录都能筛到。
+    /// </summary>
+    private static async Task<List<RedisValue>> FilterIdsByStatusAsync(RedisStore store, RedisValue[] ids, string bucket)
     {
+        var matched = new List<RedisValue>(ids.Length);
+        const int Chunk = 5000;
+        for (int offset = 0; offset < ids.Length; offset += Chunk)
+        {
+            int size = Math.Min(Chunk, ids.Length - offset);
+            var batch = store.Db.CreateBatch();
+            var reads = new Task<RedisValue>[size];
+            for (int i = 0; i < size; i++)
+                reads[i] = batch.HashGetAsync(Keys.AiHistoryStatus, ids[offset + i].ToString());
+            batch.Execute();
+            var loaded = await Task.WhenAll(reads);
+            for (int i = 0; i < size; i++)
+                if (AiStatusClassifier.NormalizeBucket(loaded[i].ToString()) == bucket)
+                    matched.Add(ids[offset + i]);
+        }
+        return matched;
+    }
+
+    /// <summary>统计响应：7 档各自计数 + total + 冷热拆分（键排序由序列化统一处理）。</summary>
+    private static Dictionary<string, object?> StatsPayload(IReadOnlyDictionary<string, int> counts, int total, long? cold)    {
         var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (string s in AiStatusClassifier.Statuses)
             payload[s] = counts.TryGetValue(s, out int v) ? v : 0;
         payload["total"] = total;
+        // 冷 = SQLite 里已归档的分析条数；热 = 时间线总数 - 冷。
+        // 时间线在归档后仍保留 id（只搬哈希），所以 total 就是冷+热。
+        // 按时间窗筛时冷热混在一起，拆开误导 —— 此时 cold 传 null，不下发这两个键。
+        if (cold is { } c)
+        {
+            payload["analyses_cold"] = c;
+            payload["analyses_hot"] = Math.Max(0, total - c);
+        }
         return payload;
     }
 
@@ -158,15 +193,35 @@ internal static class AiHistoryApi
             int offset = int.TryParse(request.Query["offset"], out int o) && o > 0 ? o : 0;
             var (startTime, endTime) = ParseWindow(request, out bool hasWindow);
 
-            long total = hasWindow
-                ? await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline, startTime, endTime, Exclude.None)
-                : await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline);
+            // ?status=critical|warning|healthy|other —— 点上面的分级卡片时按档筛选。
+            string rawStatus = request.Query["status"].ToString();
+            string statusFilter = rawStatus.Length > 0 ? AiStatusClassifier.NormalizeBucket(rawStatus) : "";
 
-            RedisValue[] ids = hasWindow
-                ? await store.Db.SortedSetRangeByScoreAsync(
-                      Keys.AiHistoryTimeline, startTime, endTime, Exclude.None, Order.Descending, offset, limit)
-                : await store.Db.SortedSetRangeByRankAsync(
-                      Keys.AiHistoryTimeline, offset, offset + limit - 1, Order.Descending);
+            long total;
+            RedisValue[] ids;
+            if (statusFilter.Length > 0)
+            {
+                // 状态不在索引里（存在 ai_history:status 小哈希），得读出来才能筛，所以
+                // 先取时间窗内全量 id → 批量读状态 → 过滤 → 再切片。口径与 stats 卡片一致。
+                var allIds = hasWindow
+                    ? await store.Db.SortedSetRangeByScoreAsync(
+                          Keys.AiHistoryTimeline, startTime, endTime, Exclude.None, Order.Descending)
+                    : await store.Db.SortedSetRangeByRankAsync(Keys.AiHistoryTimeline, 0, -1, Order.Descending);
+                var matched = await FilterIdsByStatusAsync(store, allIds, statusFilter);
+                total = matched.Count;
+                ids = matched.Skip(offset).Take(limit).ToArray();
+            }
+            else
+            {
+                total = hasWindow
+                    ? await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline, startTime, endTime, Exclude.None)
+                    : await store.Db.SortedSetLengthAsync(Keys.AiHistoryTimeline);
+                ids = hasWindow
+                    ? await store.Db.SortedSetRangeByScoreAsync(
+                          Keys.AiHistoryTimeline, startTime, endTime, Exclude.None, Order.Descending, offset, limit)
+                    : await store.Db.SortedSetRangeByRankAsync(
+                          Keys.AiHistoryTimeline, offset, offset + limit - 1, Order.Descending);
+            }
 
             var history = new List<Dictionary<string, object?>>(ids.Length);
             // 整页哈希一批取回(与上面 stats 端点同一做法):原来逐条 HGETALL,
@@ -188,6 +243,17 @@ internal static class AiHistoryApi
                     ["status"] = stored.GetValueOrDefault("status") ?? "",
                     ["timestamp"] = stored.GetValueOrDefault("timestamp") ?? "",
                     ["type"] = stored.GetValueOrDefault("type") ?? "",
+                    // 单条分析会带 log_source（老记录没有 → 前端按空处理）
+                    ["log_source"] = stored.GetValueOrDefault("log_source") ?? "",
+                    // 逐条用量：这批用了多少 token、花了多久、哪个模型（老记录没有 → 0/空）
+                    ["model"] = stored.GetValueOrDefault("model") ?? "",
+                    ["duration_seconds"] = double.TryParse(stored.GetValueOrDefault("duration_seconds"),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double dur) ? dur : 0,
+                    ["ai_calls"] = int.TryParse(stored.GetValueOrDefault("ai_calls"), out int calls) ? calls : 0,
+                    ["tokens_prompt"] = long.TryParse(stored.GetValueOrDefault("tokens_prompt"), out long tp) ? tp : 0,
+                    ["tokens_completion"] = long.TryParse(stored.GetValueOrDefault("tokens_completion"), out long tc) ? tc : 0,
+                    ["tokens_total"] = long.TryParse(stored.GetValueOrDefault("tokens_total"), out long tt) ? tt : 0,
                 });
             }
 

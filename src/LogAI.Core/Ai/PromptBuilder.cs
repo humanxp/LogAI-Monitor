@@ -396,6 +396,13 @@ LOGS:
     }
 
     /// <summary>
+    /// gemma426 = gemma-4-26B-A4B-it-MLX-4bit（MoE，26B 总参、4B 激活）。复用 gemma
+    /// （短模板 + 爆破强化）即可：2026-10-09 用 27 条语料实测 exact 27/27、critical 召回
+    /// 10/10，比 gemma-4-12B / e4b 都稳，无需再补额外判据。
+    /// </summary>
+    public static string BatchPromptGemma426(string logSummary) => BatchPromptGemma(logSummary);
+
+    /// <summary>
     /// qwen25 = Qwen2.5-Coder-7B-Instruct 专用：**只**在评级规则里追加两条最短的安全判据。
     /// 实测这个 7B 对长提示词敏感——给它加长"问题/噪声"段或更多 few-shot 示例，会反过来
     /// 让它把噪声里唯一的真故障判成 healthy（signal_in_noise 3/3 → 0/3）、并过度合并两个
@@ -533,6 +540,7 @@ LOGS:
             "gemma" => BatchPromptGemma(logSummary),
             "gemma4" => BatchPromptGemma4(logSummary),
             "gemma4e" => BatchPromptGemma4e(logSummary),
+            "gemma426" => BatchPromptGemma426(logSummary),
             _ => BatchPromptCached(logSummary),
         };
     }

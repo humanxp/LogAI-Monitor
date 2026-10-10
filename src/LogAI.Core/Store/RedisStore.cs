@@ -109,16 +109,32 @@ public sealed class RedisStore : IDisposable
     /// 用 SCAN 而不是只按索引取：历史遗留的孤儿键（只在旧版本里删了 index 没删
     /// 哈希）不在任何索引里，只有 SCAN 能扫到。
     /// </summary>
-    public async Task<long> DeleteKeysByPatternAsync(string pattern, int pageSize = 500)
+    public async Task<long> DeleteKeysByPatternAsync(string pattern, Func<string, bool>? predicate = null,
+                                                     int pageSize = 500)
     {
         var endpoints = _connection.GetEndPoints();
         if (endpoints.Length == 0) return 0;
         var server = _connection.GetServer(endpoints[0]);
         long count = 0;
+        // 攒够一批就整批 DEL：键可能几十万（如清空日志时的 log:*），逐条删会是
+        // 几十万次往返；批量后只有几百次。UNLINK 语义等价但释放是异步的，这里用 DEL
+        // 让调用方返回时内存已经真正回收。
+        var buffer = new List<RedisKey>(pageSize);
         await foreach (var key in server.KeysAsync(pattern: pattern, pageSize: pageSize))
         {
-            await Db.KeyDeleteAsync(key);
-            count++;
+            if (predicate is not null && !predicate(key.ToString())) continue;
+            buffer.Add(key);
+            if (buffer.Count >= pageSize)
+            {
+                await Db.KeyDeleteAsync(buffer.ToArray());
+                count += buffer.Count;
+                buffer.Clear();
+            }
+        }
+        if (buffer.Count > 0)
+        {
+            await Db.KeyDeleteAsync(buffer.ToArray());
+            count += buffer.Count;
         }
         return count;
     }

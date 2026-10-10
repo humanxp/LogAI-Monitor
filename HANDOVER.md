@@ -751,6 +751,62 @@ name 里写死"15 例"导致「15 例（15 例）」重复的 bug）。
 
 ---
 
+### 3.25 Dockerfile 拆 restore/publish + 构建缓存治理 —— ✅ 已完成（2026-10-09，已部署）
+**背景**：2026-10-02 起 BuildKit 构建缓存堆到 **33.64GB**（951 条记录），主机 `/` 用到 43%。
+根因是原 Dockerfile 把 restore 和 publish 挤在同一条 `RUN dotnet publish` 里：
+源码改一个字符 → `COPY src/` 失效 → 这条 RUN 重做一份新 layer（NuGet 包 + 编译产物
+≈ **207MB/次**），旧的仍留着当缓存。开发期每次改代码就部署一次，7 天攒了 ~160 次。
+
+**改法**（`Dockerfile` build 阶段，restore/publish 分离）：
+```dockerfile
+COPY nuget.config ./nuget.config
+COPY src/LogAI.Core/LogAI.Core.csproj src/LogAI.Core/
+COPY src/LogAI.Web/LogAI.Web.csproj src/LogAI.Web/
+RUN dotnet restore src/LogAI.Web/LogAI.Web.csproj --nologo   # 只有 .csproj 变才重做
+COPY src/ ./src/
+RUN dotnet publish src/LogAI.Web/LogAI.Web.csproj -c Release -o /app --no-restore --nologo
+```
+**实测**：改源码后 `RUN dotnet restore` 显示 **CACHED**，单次构建缓存增量
+**~207MB → ~104MB**（约 −50%），且 restore 命中时构建也更快。
+
+**运维兜底**：`docker builder prune --keep-storage 2GB -f`（建议加进 crontab 每周跑）。
+另注意保留 `logaimonitor-cs:bench`（跑 `--analysis-bench` 用）与 SDK 基础镜像，
+别被 `docker image prune -a` 一起带走。
+
+---
+
+### 3.26 冷热分层检查 + 孤儿日志哈希修复 —— ✅ 已完成（2026-10-09，已部署）
+**检查结论**：logs / ai_history / alerts 三类**都有冷热两份**，但发现 **logs 有孤儿哈希**：
+
+| 类型 | 热哈希(Redis) | 时间线索引 | 冷(SQLite) | 孤儿 |
+|---|---|---|---|---|
+| logs | 272,977 | 187,542 | 40,975 | **≈131,000（48%）** ❌ |
+| ai_history | 708 | 966 | 258 | 0 ✅ |
+| alerts | 650 | 672 | 22 | 0 ✅ |
+
+判据：归档是「**删哈希、留索引**」，健康时必然 **时间线 ≥ 热哈希**。ai_history/alerts
+方向正确；logs 反了，多出的哈希没被任何索引引用。
+
+**根因**：`LogMaintenance.ClearAllAsync`（设置页「清空所有数据」）只 `KeyDelete` 了
+Timeline/索引 ZSET，**没删 `log:<id>` 哈希**。清空后新日志照常写，老哈希成了孤儿，
+要等 90 天 TTL 才消失。对比：清 ai_history/告警的那两个函数用的是
+`DeleteKeysByPatternAsync`（会删哈希），所以它们没孤儿——只有日志清空漏了。
+证据：时间线最早只到 33 小时前，而孤儿哈希时间戳是 49 小时前，正好是"索引清过、哈希没清"。
+
+**修复**：
+- `ClearAllAsync` 补 `DeleteKeysByPatternAsync("log:*")`；
+- 新增 `LogMaintenance.PurgeOrphanLogHashesAsync`（时间线当白名单，SCAN 删不在其中的
+  `log:*`；**只删 id 时间戳 ≥1 小时前的**，避免误删扫描期间新写入的活日志）；
+- 新增 CLI `--purge-orphan-logs`（一次性清存量）；
+- `MaintenanceSelfTest` 补上「ClearAll 必须删掉 log 哈希」断言（原来只断言索引，
+  正是这个缺口让 bug 溜过去的），并加了孤儿清理的正反用例。
+
+**线上效果**：`--purge-orphan-logs` 删掉 **126,470 个孤儿哈希**，
+Redis 内存 **647MB → 375MB（回收 272MB）**，时间线/活日志完好；
+修复后三类均满足「时间线 ≥ 热哈希」。
+
+---
+
 ## 4. 验证约定（本项目行之有效的做法，请沿用）
 
 1. **用正面判据**：`grep -q "Build succeeded"`，而不是"没有出现某类错误"。
