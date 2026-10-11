@@ -1387,7 +1387,7 @@ function renderAiAnalysisBox(box, analysis, opts) {
     const status = a.overall_status || a.category || (a.is_critical ? 'critical' : 'unknown');
     const issues = a.issues_found || [];
     const recs = a.recommendations || [];
-    const li = (arr) => arr.map((x) => `<li>${escapeHtml(typeof x === 'string' ? x : JSON.stringify(x))}</li>`).join('');
+    const li = (arr) => arr.map((x) => `<li>${fmtMarked(typeof x === 'string' ? x : JSON.stringify(x))}</li>`).join('');
     box.innerHTML = `
         <div style="margin-top:.75rem; border-top:1px solid var(--lm-line); padding-top:.6rem;">
             <div style="font-weight:600; margin-bottom:.4rem;">
@@ -2035,7 +2035,7 @@ function updateAnalysisDisplay(analysis) {
             <h4><i class="fas fa-exclamation-triangle"></i> 发现的问题（${analysis.critical_count || 0} 个严重）</h4>
             ${analysis.issues_found?.length > 0 ? `
                 <ul>
-                    ${analysis.issues_found.map(issue => `<li>${escapeHtml(issue)}</li>`).join('')}
+                    ${analysis.issues_found.map(issue => `<li>${fmtMarked(issue)}</li>`).join('')}
                 </ul>
             ` : '<p>未发现问题</p>'}
         </div>
@@ -2044,7 +2044,7 @@ function updateAnalysisDisplay(analysis) {
             <h4><i class="fas fa-lightbulb"></i> 处理建议</h4>
             ${analysis.recommendations?.length > 0 ? `
                 <ul>
-                    ${analysis.recommendations.map(rec => `<li>${escapeHtml(rec)}</li>`).join('')}
+                    ${analysis.recommendations.map(rec => `<li>${fmtMarked(rec)}</li>`).join('')}
                 </ul>
             ` : '<p>暂无建议</p>'}
         </div>
@@ -2967,6 +2967,15 @@ function escapeHtml(text) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+// 模型给 critical 的「发现的问题 / 处理建议」条目带了 "* " 前缀（见提示词）：把星号标红
+// 加粗，其余照常转义。这样用户一眼能看出"严重问题数"里的那条究竟指哪一条。
+function fmtMarked(text) {
+    const t = String(text ?? '');
+    if (t.startsWith('* ')) return `<b style="color:var(--lm-danger-ink);">*</b> ${escapeHtml(t.slice(2))}`;
+    if (t.startsWith('*')) return `<b style="color:var(--lm-danger-ink);">*</b> ${escapeHtml(t.slice(1))}`;
+    return escapeHtml(t);
 }
 
 // Severity values may come from syslog PRI fields, Docker log heuristics or AI

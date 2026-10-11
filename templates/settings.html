@@ -386,11 +386,21 @@
             <code>Connection refused</code>（线上踩过这个坑）。
         </p>
 
+        <h4><i class="fas fa-flask"></i> 模型评测（仅管理员）</h4>
+        <ul>
+            <li><b>它是设置页的一个类目</b>（顶部「🧪 模型评测」）；侧栏没有单独入口，旧链接 <code>/bench</code> 会自动重定向到这里。</li>
+            <li><b>怎么用</b>：勾选一个或多个模型 × 一份或多份评测集（内置 27 例可展开逐例勾选，也可上传自定义 JSON），设好每例重复次数，点「开始评测」。多模型会顺序跑并出对比表：档位命中 / ±1 容差 / critical 召回 / healthy 无虚警 / 关键词命中 / 无中生有 / 解析失败 / 平均耗时。</li>
+            <li><b>成绩是持久的</b>：评测过的模型各留一条（存 Redis，冷热分层不影响），进这个类目就能看到全部；<b>重评同一模型即覆盖旧记录</b>。「清空历史」只清成绩、不动评测集。</li>
+            <li><b>用途</b>：换模型或改提示词前先在这里跑一轮，用实测数据决定用哪个；判定口径那几条"模型专属判据"就是这么定出来的。</li>
+        </ul>
+
         <h4><i class="fas fa-balance-scale"></i> AI 判定口径（critical / warning / healthy）</h4>
         <ul>
             <li><b>纯模型判定</b>（与 python-legacy 一致）：模型的 <code>overall_status</code> 判什么就是什么，程序只做同义词归一（critical/error → critical，warning/notice → warning，info/healthy → healthy，其余 → other），不做任何修正。</li>
-            <li>提示词按模型分别优化（见「建议使用模型匹配优化」下拉框，选模型时自动匹配，也可手动改）：<b>Llama3.2-3B</b> 用默认简单版（不变）；<b>Qwen2.5-Coder-7B</b> 用短提示词（few-shot + 两条安全判据 + 防过度合并）；<b>Qwen3.5-9B</b> 用短提示词 + 边界校准（disk-full / 单进程崩溃 = warning、invalid-user = warning）；<b>Qwen3.6-35B-A3B</b> 用输出精简版；<b>Gemma-3-12B-it</b> 用短提示词 + 爆破强化（未成功爆破也 = critical）；<b>Gemma-4-12B</b> 用短提示词 + 爆破强化 + 数据丢失判据；<b>Gemma-4-e4b</b> 用短提示词 + 爆破强化 + disk/cert 校准。日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
-            <li>过小的模型（如 3B）容易走 healthy/critical 两极、判不准 warning——这是模型能力边界，不属于程序修正范围；默认的 Qwen3.5-9B 已明显改善。</li>
+            <li>提示词按模型分别优化（见「建议使用模型匹配优化」下拉框，选模型时自动匹配，也可手动改）：<b>Llama3.2-3B</b> 用默认简单版（不变）；<b>Qwen2.5-Coder-7B</b> 用短提示词（few-shot + 两条安全判据 + 防过度合并）；<b>Qwen3.5-9B</b> 用短提示词 + 边界校准（disk-full / 单进程崩溃 = warning、invalid-user = warning）；<b>Qwen3.6-35B-A3B</b> 用输出精简版；<b>Gemma-3-12B-it</b> 用短提示词 + 爆破强化（未成功爆破也 = critical）；<b>Gemma-4-12B</b> 用短提示词 + 爆破强化 + 数据丢失判据（BTRFS/RAID/只读重挂 = critical）；<b>Gemma-4-e4b</b> 用短提示词 + 爆破强化 + disk/cert 校准；<b>Gemma-4-26B-A4B</b> 用短提示词 + 爆破强化（基线即满分，无需再加判据）。日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型。模型返回的 issues/建议<b>原样保留</b>（不去重、不封顶 critical_count）。</li>
+            <li><b>「严重问题数是哪条」会标出来</b>：提示词要求模型给它判为 critical 的那条加 <code>* </code> 前缀（处理建议里对应那条也加）；整批判成 critical 时<b>至少有一条</b>必须带 <code>*</code>。所以详情页里带 <b style="color:var(--lm-danger-ink);">*</b> 的那条就是计入 critical_count 的那条。</li>
+            <li><b>这些判据都是实测定出来的</b>：在设置页「模型评测」类目里用同一套 27 例语料跑一轮，看档位命中 / critical 召回 / 关键词命中 / 延迟，按结果补判据（比如某个模型把 disk-full 判成 critical，就给它补一条校准）。换新模型后建议先跑一轮再切到生产。</li>
+            <li><b>经验规律</b>：过小的模型（如 3B）容易走 healthy / critical 两极、判不准 warning，还会漏掉"噪声里藏的那条故障"——这是模型能力边界，不属于程序修正范围；同族里 <b>MoE 往往比稠密模型又稳又快</b>（实测 Gemma-4-e4b / 26B-A4B 优于 Gemma-4-12B：12B 需要额外补数据丢失判据才追平，但慢约 3 倍）。</li>
         </ul>
 
         <h4><i class="fas fa-database"></i> 存储与保留（冷热分层）</h4>
@@ -410,7 +420,7 @@
             <li><b>下一轮分析</b>：每轮取多少条日志、送模型多少条、AI 汇总推送状态、<b>模型名 / 提示词模式</b></li>
             <li><b>下一次归档任务（≤5 分钟）</b>：Redis 热数据窗口</li>
             <li><b>对之后新写入的数据生效</b>：日志保留期、告警保留期</li>
-            <li><b>需要重启容器</b>：AI Endpoint / AI Protocol（启动时读取）；Telegram 凭据内部有 5 分钟缓存</li>
+            <li><b>需要重启容器</b>：AI Endpoint / AI Protocol —— <b>定时分析</b>用的是启动时创建的客户端（端点在启动时读取）；<b>手动/单条分析是每次请求现读设置，改完立刻生效</b>。Telegram 凭据内部有 5 分钟缓存</li>
         </ul>
 
         <h4><i class="fas fa-network-wired"></i> Rsyslog 接入</h4>

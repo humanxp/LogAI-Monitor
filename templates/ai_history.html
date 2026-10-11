@@ -532,7 +532,7 @@ function showHistoryDetail(historyId) {
             <div class="form-group">
                 <label class="form-label">发现的问题</label>
                 <ul style="margin: 0; padding-left: 1.5rem;">
-                    ${analysis.issues_found.map(i => `<li>${escapeHtml(i)}</li>`).join('')}
+                    ${analysis.issues_found.map(i => `<li>${fmtMarked(i)}</li>`).join('')}
                 </ul>
             </div>
         `;
@@ -544,7 +544,7 @@ function showHistoryDetail(historyId) {
             <div class="form-group">
                 <label class="form-label">处理建议</label>
                 <ul style="margin: 0; padding-left: 1.5rem;">
-                    ${analysis.recommendations.map(r => `<li>${escapeHtml(r)}</li>`).join('')}
+                    ${analysis.recommendations.map(r => `<li>${fmtMarked(r)}</li>`).join('')}
                 </ul>
             </div>
         `;

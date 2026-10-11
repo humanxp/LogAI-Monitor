@@ -260,7 +260,13 @@ public static class JsonExtractor
         {
             string text = arr[i]?.ToString()?.Trim() ?? "";
             if (text.Length == 0) continue;
-            if (ExtractHostPrefix(text).Length > 0) continue;
+            // 模型给 critical 条目标了 "* " 前缀 —— 先摘下来，挂完主机前缀再放回去。
+            // 不摘的话它会被当成"没有 [host] 前缀"，于是重复挂一个主机变成 "[h] * [h] ..."。
+            string marker = "";
+            if (text.StartsWith("* ", StringComparison.Ordinal)) { marker = "* "; text = text.Substring(2).TrimStart(); }
+            else if (text.StartsWith("*", StringComparison.Ordinal)) { marker = "* "; text = text.Substring(1).TrimStart(); }
+            if (text.Length == 0) { arr[i] = marker.TrimEnd(); continue; }
+            if (ExtractHostPrefix(text).Length > 0) { arr[i] = marker + text; continue; }
             // 有非主机前缀（如 "[x] foo: bar"）时剥掉重加。
             if (text.StartsWith("[", StringComparison.Ordinal))
             {
@@ -268,12 +274,12 @@ public static class JsonExtractor
                 if (close != -1)
                 {
                     text = text.Substring(close + 1).Trim();
-                    if (text.Length == 0) continue;
+                    if (text.Length == 0) { arr[i] = marker.TrimEnd(); continue; }
                 }
             }
             // 只认文本里显式出现的主机；没有就不加（交给模型自己匹配）。
             string matched = hosts.FirstOrDefault(h => !string.IsNullOrEmpty(h) && text.Contains(h, StringComparison.Ordinal)) ?? "";
-            if (matched.Length > 0) arr[i] = "[" + matched + "] " + text;
+            arr[i] = marker + (matched.Length > 0 ? "[" + matched + "] " + text : text);
         }
     }
 
