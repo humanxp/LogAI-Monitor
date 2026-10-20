@@ -55,8 +55,14 @@ internal static class HealthApi
             if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("analysis_interval")), out int iv) && iv > 0)
                 interval = iv;
 
+            // 上轮分析距现在多久：当场从 ai_history 时间线读，不用巡检快照。
+            // 快照只在 health_watch_minutes 那一拍更新，重启后到下一拍之间一直是 -1，
+            // 页面上就会一直显示"尚无记录"，而分析其实刚跑过。
+            double? liveAge = await store.LastAnalysisAgeSecondsAsync();
+            int age = liveAge.HasValue ? (int)liveAge.Value : HealthState.LastAnalysisAgeSeconds;
+
             var inputs = new HealthInputs(backlog, total, HealthState.AiAvailable,
-                HealthState.LastAnalysisAgeSeconds, HealthState.WarnThreshold, HealthState.AnalysisMinutes);
+                age, HealthState.WarnThreshold, HealthState.AnalysisMinutes);
 
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
@@ -72,7 +78,7 @@ internal static class HealthApi
                 ["queue_since"] = queueSince,
                 ["analysis_batch"] = batch,
                 ["analysis_interval_min"] = interval,
-                ["last_analysis_age_s"] = HealthState.LastAnalysisAgeSeconds,
+                ["last_analysis_age_s"] = age,
                 ["ok"] = HealthCheck.IsOk(inputs),
                 ["total_logs"] = total,
                 ["ts"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffzzz",
