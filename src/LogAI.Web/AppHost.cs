@@ -303,7 +303,21 @@ internal static class AppHost
         TimeSpan AnalysisInterval()
         {
             var live = store.GetSettingsAsync().GetAwaiter().GetResult();
-            return TimeSpan.FromMinutes(Math.Max(1, IntSetting(live, "analysis_interval", 2)));
+            int minutes = Math.Max(1, IntSetting(live, "analysis_interval", 2));
+            // 追积压：队列里已经攒够一整批（>= 每轮条数）时返回 1 秒——
+            // 上一轮跑完（通常 10~20 秒）就立刻接下一批，不等定时器；
+            // 不足一批时退回设定间隔（默认 2 分钟一拍），空闲时不空转模型。
+            try
+            {
+                int batch = IntSetting(live, "max_logs_per_analysis", 500);
+                long backlog = store.Db.SortedSetLengthAsync(Keys.Unanalyzed).GetAwaiter().GetResult();
+                if (batch > 0 && backlog >= batch) return TimeSpan.FromSeconds(1);
+            }
+            catch
+            {
+                // 读不到队列长度就按正常间隔走，不能因为探测失败停了分析。
+            }
+            return TimeSpan.FromMinutes(minutes);
         }
         TimeSpan HealthInterval()
         {
@@ -432,6 +446,18 @@ internal static class AppHost
                                 Console.Error.WriteLine("[Telegram] analysis summary failed: " + ex.Message);
                             }
                         }
+                    }
+
+                    // 追积压提示：队列里还够一整批，说明下一轮会立刻开始（见 AnalysisInterval），
+                    // 日志里能直接看出"是连续在追，还是已经回到 2 分钟一拍"。
+                    if (outcome.Status == "analyzed")
+                    {
+                        var catchUp = await store.GetSettingsAsync();
+                        int catchBatch = IntSetting(catchUp, "max_logs_per_analysis", 500);
+                        long catchBacklog = await store.Db.SortedSetLengthAsync(Keys.Unanalyzed);
+                        if (catchBatch > 0 && catchBacklog >= catchBatch)
+                            Console.WriteLine("[Analysis] 追积压：队列仍有 " + catchBacklog
+                                + " 条（≥ " + catchBatch + "），立刻继续下一批");
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
