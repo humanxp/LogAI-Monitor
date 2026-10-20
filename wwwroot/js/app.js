@@ -130,11 +130,22 @@ function initSocket() {
             // io.close() 直接断开底层 transport 且不再重连，最干净。
             state.socket?.io?.close();
         } catch (e) { /* 页面已冻结时忽略 */ }
+        // 标记为已断开：万一页面从 bfcache 恢复且没触发 pageshow，15 秒兜底轮询还能兜住，
+        // 不至于停在"看起来连着、实际收不到"的状态。
+        state.connected = false;
     });
     window.addEventListener('pageshow', (e) => {
         if (e.persisted) {
             try { state.socket?.connect(); } catch (e) { /* ignore */ }
         }
+    });
+
+    // 切标签页/切窗口回来时，如果实时通道已经断了（后台被浏览器节流、或会话被服务端
+    // 回收），立刻重连一次；否则页面只剩 15 秒兜底轮询，用户看到的就是"卡"。
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible') return;
+        if (!state.socket || state.socket.connected) return;
+        try { state.socket.connect(); } catch (e) { /* ignore */ }
     });
 
     state.socket.on('connect', () => {

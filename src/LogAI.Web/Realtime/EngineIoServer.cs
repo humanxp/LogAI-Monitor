@@ -104,10 +104,14 @@ public sealed class EngineIoServer
         {
             var session = kv.Value;
             if (!session.NamespaceConnected) continue;
-            if (session.Outbox.Count >= MaxOutboxPackets)
+            // 队列满时只丢最旧的一条，绝不杀会话。原来的做法是"队列到 256 就退役"，
+            // 但浏览器切到别的标签页时会被节流、轮询变慢，队列随之涨到上限——
+            // 于是正在使用的页面被当成僵尸踢掉，客户端那次轮询拿到 "1"（未知会话），
+            // reconnection 又是关闭的，实时通道就此哑掉，页面表现为"切几下就卡"。
+            // 真正的僵尸交给 SweepStaleSessions（30 秒没动静才回收）。
+            while (session.Outbox.Count >= MaxOutboxPackets)
             {
-                RetireSession(kv.Key, session);
-                continue;
+                if (!session.Outbox.TryDequeue(out _)) break;
             }
             session.Outbox.Enqueue(packet);
         }
