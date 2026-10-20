@@ -164,10 +164,10 @@
         var stalled = typeof age === 'number' && age >= 0 && age > interval * 60 * 2;
 
         // 正常=绿色；积压偏高/分析停滞/后端不可达=红色（有问题就是红字）
-        var color = 'var(--lm-success)', text = '正常';
-        if (!last.ai_available) { color = 'var(--lm-danger)'; text = '后端不可达'; }
-        else if (stalled) { color = 'var(--lm-danger)'; text = '分析停滞'; }
-        else if (backlog > threshold) { color = 'var(--lm-danger)'; text = '积压偏高'; }
+        var color = 'var(--lm-success-ink)', text = '正常';
+        if (!last.ai_available) { color = 'var(--lm-danger-ink)'; text = '后端不可达'; }
+        else if (stalled) { color = 'var(--lm-danger-ink)'; text = '分析停滞'; }
+        else if (backlog > threshold) { color = 'var(--lm-danger-ink)'; text = '积压偏高'; }
         elDot.style.background = color;
         var elStatus = document.getElementById('aiStatusText');
         elStatus.textContent = text;
