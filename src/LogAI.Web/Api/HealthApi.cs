@@ -39,6 +39,22 @@ internal static class HealthApi
             long backlog = await store.Db.SortedSetLengthAsync(Keys.Unanalyzed);
             long total = await store.Db.SortedSetLengthAsync(Keys.Timeline);
 
+            // 待分析队列「最老一条」的入队时间：用来判断积压是刚堆起来的还是压了很久，
+            // 也是 ETA 预测里"这批日志已经等了多久"的依据。
+            var head = await store.Db.SortedSetRangeByRankWithScoresAsync(Keys.Unanalyzed, 0, 0);
+            double queueSince = head.Length > 0 ? head[0].Score : 0;
+
+            // 每轮消化条数与运行间隔：前端用它算"处理能力"，不用再拉设置页接口。
+            var settings = await store.GetSettingsAsync();
+            int batch = 500;
+            if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("max_logs_per_analysis")), out int b) && b > 0)
+                batch = b;
+            else if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("batch_size")), out int b2) && b2 > 0)
+                batch = b2;
+            int interval = HealthState.AnalysisMinutes > 0 ? HealthState.AnalysisMinutes : 2;
+            if (int.TryParse(RedisStore.ToText(settings.GetValueOrDefault("analysis_interval")), out int iv) && iv > 0)
+                interval = iv;
+
             var inputs = new HealthInputs(backlog, total, HealthState.AiAvailable,
                 HealthState.LastAnalysisAgeSeconds, HealthState.WarnThreshold, HealthState.AnalysisMinutes);
 
@@ -52,6 +68,10 @@ internal static class HealthApi
                 // 解析不出来时退回巡检快照。backlog/total 本来就是当场读的，与它们一致。
                 ["ai_model"] = AiClient.ResolveModel(store, HealthState.AiModel),
                 ["backlog"] = backlog,
+                ["backlog_threshold"] = HealthState.WarnThreshold,
+                ["queue_since"] = queueSince,
+                ["analysis_batch"] = batch,
+                ["analysis_interval_min"] = interval,
                 ["last_analysis_age_s"] = HealthState.LastAnalysisAgeSeconds,
                 ["ok"] = HealthCheck.IsOk(inputs),
                 ["total_logs"] = total,

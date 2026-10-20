@@ -4,6 +4,20 @@
 {% block header_title %}AI Analysis{% endblock %}
 
 {% block content %}
+<!-- AI 分析队列状态：后端健康 / 待分析条数 / 处理能力 / 预计清完时间 -->
+<div class="card" id="aiQueueCard" style="margin-bottom: 1rem;">
+    <div class="card-body" style="display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1.6rem; padding:.8rem 1.1rem; font-size:.9rem;">
+        <div style="display:flex; align-items:center; gap:.5rem; min-width:190px;">
+            <span id="aiHealthDot" style="width:10px; height:10px; border-radius:50%; background:var(--lm-ink-3); flex:none;"></span>
+            <b id="aiHealthText">检查中…</b>
+        </div>
+        <div><span style="color:var(--lm-ink-2);">待分析</span> <b id="aiBacklog">—</b> <span style="color:var(--lm-ink-2);">条</span></div>
+        <div><span style="color:var(--lm-ink-2);">处理能力</span> <b id="aiCapacity">—</b></div>
+        <div><span style="color:var(--lm-ink-2);">预计清完</span> <b id="aiEta">—</b></div>
+        <div><span style="color:var(--lm-ink-2);">上轮分析</span> <b id="aiLastRun">—</b></div>
+        <div id="aiQueueHint" style="flex-basis:100%; font-size:.8rem; color:var(--lm-ink-2);"></div>
+    </div>
+</div>
 <div class="analysis-page-container">
     <!-- Left Column: Analysis & Logs -->
     <div class="analysis-left-column">
@@ -119,6 +133,104 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// --- AI 分析队列状态 -------------------------------------------------------
+// 显示：AI 后端是否正常 / 待分析条数 / 每轮处理能力 / 预计清完时间。
+// ETA 不是拍脑袋给的常数，而是用「最近 5 分钟积压的实际下降速度」推算，
+// 所以刚打开页面时要攒几个采样点（约半分钟）才会出现数字。
+(function () {
+    var elDot = document.getElementById('aiHealthDot');
+    var elText = document.getElementById('aiHealthText');
+    if (!elDot || !elText) return;
+
+    var samples = [];      // [{t: 毫秒, backlog: 条数}]
+    var last = null;       // 最近一次 /api/health 的结果
+
+    function fmtNum(n) { return Number(n || 0).toLocaleString('en-US'); }
+
+    function fmtEta(minutes) {
+        if (!isFinite(minutes) || minutes <= 0) return '已清完';
+        if (minutes < 1) return '不到 1 分钟';
+        if (minutes < 60) return '约 ' + Math.round(minutes) + ' 分钟';
+        var h = Math.floor(minutes / 60), m = Math.round(minutes % 60);
+        return '约 ' + h + ' 小时' + (m > 0 ? ' ' + m + ' 分钟' : '');
+    }
+
+    function render() {
+        if (!last) return;
+        var backlog = Number(last.backlog || 0);
+        var threshold = Number(last.backlog_threshold || 2000);
+        var batch = Number(last.analysis_batch || 500);
+        var interval = Number(last.analysis_interval_min || 2);
+        var age = last.last_analysis_age_s;
+        var perMin = batch / interval;
+
+        // 健康判定：后端不可达 > 分析停了 > 积压超阈值 > 正常
+        var color = 'var(--lm-success)', text = 'AI 分析正常';
+        if (!last.ai_available) {
+            color = 'var(--lm-danger)'; text = 'AI 后端不可达';
+        } else if (typeof age === 'number' && age >= 0 && age > interval * 60 * 2) {
+            color = 'var(--lm-warning)';
+            text = '分析已 ' + Math.round(age / 60) + ' 分钟没运行';
+        } else if (backlog > threshold) {
+            color = 'var(--lm-warning)';
+            text = '分析在跑，但积压超过阈值';
+        }
+        elDot.style.background = color;
+        elText.textContent = text;
+        elText.style.color = color;
+
+        var elBacklog = document.getElementById('aiBacklog');
+        elBacklog.textContent = fmtNum(backlog);
+        elBacklog.style.color = backlog > threshold ? 'var(--lm-danger-ink)' : 'var(--lm-ink)';
+        document.getElementById('aiCapacity').textContent = batch + ' 条 / ' + interval + ' 分钟';
+        document.getElementById('aiLastRun').textContent =
+            (typeof age === 'number' && age >= 0)
+                ? (age < 60 ? age + ' 秒前' : Math.round(age / 60) + ' 分钟前')
+                : '尚无记录';
+
+        // 采样：只保留最近 5 分钟
+        var now = Date.now();
+        samples.push({ t: now, backlog: backlog });
+        while (samples.length > 1 && now - samples[0].t > 5 * 60 * 1000) samples.shift();
+
+        var etaText, hint;
+        if (backlog === 0) {
+            etaText = '无需处理';
+            hint = '队列已清空，新日志会随到随分析。';
+        } else if (samples.length >= 2) {
+            var first = samples[0], newest = samples[samples.length - 1];
+            var dtMin = (newest.t - first.t) / 60000;
+            var drop = first.backlog - newest.backlog;
+            if (dtMin > 0.05 && drop > 0) {
+                var rate = drop / dtMin;
+                etaText = fmtEta(backlog / rate);
+                hint = '实测正在以约 ' + Math.round(rate) + ' 条/分钟下降（每轮 ' + batch +
+                       ' 条、间隔 ' + interval + ' 分钟，理论处理能力 ' + Math.round(perMin) + ' 条/分钟）';
+            } else {
+                etaText = '暂时算不出';
+                hint = '积压没有下降：理论处理能力 ' + Math.round(perMin) +
+                       ' 条/分钟，可能不及新增日志速度，或分析没有在运行。';
+            }
+        } else {
+            etaText = '采样中…';
+            hint = '正在采样积压变化，约半分钟后给出预计清完时间。';
+        }
+        document.getElementById('aiEta').textContent = etaText;
+        document.getElementById('aiQueueHint').textContent = hint;
+    }
+
+    function poll() {
+        fetch('/api/health?t=' + Date.now(), { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (h) { if (h) { last = h; render(); } })
+            .catch(function () { /* 网络抖动忽略，下次再试 */ });
+    }
+
+    poll();
+    setInterval(poll, 10000);
+})();
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // 数据加载（logs limit=50 + alerts）由全局 app.js 的 /analysis 分支负责，
