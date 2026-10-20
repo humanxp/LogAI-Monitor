@@ -163,10 +163,11 @@
         var age = last.last_analysis_age_s;
         var stalled = typeof age === 'number' && age >= 0 && age > interval * 60 * 2;
 
+        // 正常=绿色；积压偏高/分析停滞/后端不可达=红色（有问题就是红字）
         var color = 'var(--lm-success)', text = '正常';
         if (!last.ai_available) { color = 'var(--lm-danger)'; text = '后端不可达'; }
         else if (stalled) { color = 'var(--lm-danger)'; text = '分析停滞'; }
-        else if (backlog > threshold) { color = 'var(--lm-warning)'; text = '积压偏高'; }
+        else if (backlog > threshold) { color = 'var(--lm-danger)'; text = '积压偏高'; }
         elDot.style.background = color;
         var elStatus = document.getElementById('aiStatusText');
         elStatus.textContent = text;
@@ -176,12 +177,13 @@
         set('aiBacklog', fmtNum(backlog));
         var elBacklog = document.getElementById('aiBacklog');
         if (elBacklog) elBacklog.style.color = backlog > threshold ? 'var(--lm-danger-ink)' : 'inherit';
-        set('aiCapacity', Math.round(batch / interval) + ' 条/分');
+        // 处理能力先按设置里的理论值兜底（每轮条数 ÷ 间隔），有采样后换成实测值
+        var capacity = Math.round(batch / interval) + ' 条/分';
         set('aiLastRun', (typeof age === 'number' && age >= 0)
             ? (age < 60 ? age + ' 秒前' : Math.round(age / 60) + ' 分钟前') : '—');
 
         var now = Date.now();
-        samples.push({ t: now, backlog: backlog });
+        samples.push({ t: now, backlog: backlog, total: Number(last.total_logs || 0) });
         while (samples.length > 1 && now - samples[0].t > 5 * 60 * 1000) samples.shift();
 
         var eta = '—';
@@ -189,10 +191,24 @@
             eta = '已清空';
         } else if (samples.length >= 2) {
             var a = samples[0], b = samples[samples.length - 1];
-            var dt = (b.t - a.t) / 60000, drop = a.backlog - b.backlog;
-            eta = (dt > 0.05 && drop > 0) ? fmtEta(backlog / (drop / dt)) : '未下降';
+            var dt = (b.t - a.t) / 60000;
+            if (dt > 0.05) {
+                var netDrop = (a.backlog - b.backlog) / dt;      // 条/分：队列净下降速度
+                var inflow = (b.total - a.total) / dt;           // 条/分：新日志进入速度
+                // 实际消化速度 = 净下降 + 新增。追积压时它会明显高于 batch/间隔。
+                var processing = netDrop + inflow;
+                if (processing > 0) {
+                    capacity = Math.round(processing) + ' 条/分'
+                        + (inflow > 0.5 ? '（新增 ' + Math.round(inflow) + '）' : '');
+                }
+                // ETA 用「净下降速度」算：新增日志已经被扣在里面，不是拿总积压除以理论能力。
+                eta = netDrop > 0 ? fmtEta(backlog / netDrop) : '未下降';
+            }
         }
+        set('aiCapacity', capacity);
         set('aiEta', eta);
+        var elCap = document.getElementById('aiCapacity');
+        if (elCap) elCap.title = '实测消化速度 = 队列净下降 + 新进日志；预计清完按净下降速度算';
     }
 
     function poll() {
