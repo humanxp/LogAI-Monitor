@@ -4,6 +4,19 @@
 {% block header_title %}About{% endblock %}
 
 {% block content %}
+
+<style>
+    /* About 顶部按键分页：一次只显示一页，避免一屏拉不到底 */
+    .about-tab-panel[hidden] { display: none !important; }
+</style>
+<div class="settings-tabs" id="aboutTabs" style="margin-bottom: 1rem;">
+    <button type="button" class="settings-tab active" data-about-target="overview"><i class="fas fa-circle-info"></i> 概览</button>
+    <button type="button" class="settings-tab" data-about-target="features"><i class="fas fa-list-check"></i> 功能说明</button>
+    <button type="button" class="settings-tab" data-about-target="tech"><i class="fas fa-cogs"></i> 开发技术</button>
+    <button type="button" class="settings-tab" data-about-target="design"><i class="fas fa-drafting-compass"></i> 实现设计</button>
+</div>
+
+<div class="about-tab-panel" data-about-panel="overview">
 <div class="card">
     <div class="card-header">
         <h3><i class="fas fa-shield-alt"></i> LogAI Monitor</h3>
@@ -123,125 +136,30 @@
         </div>
     </div>
 </div>
+</div>
 
+<div class="about-tab-panel" data-about-panel="features" hidden>
 <div class="card">
     <div class="card-header">
         <h3><i class="fas fa-list-check"></i> 功能说明</h3>
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
 
-
-        <style>
-            /* 每个功能点一张卡片：宽屏两列、窄屏单列 */
-            .about-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.1rem; align-items: stretch; }
-            @media (max-width: 1000px) { .about-grid { grid-template-columns: 1fr; } }
-            .about-block { background: var(--lm-subtle); border: 1px solid var(--lm-line); border-radius: 10px; padding: .9rem 1.1rem; }
-            .about-block > h4 { margin: 0 0 .55rem; color: var(--lm-ink); }
-            .about-block > ul { margin: 0; padding-left: 1.15rem; }
-            .about-block > ul > li { margin: .28rem 0; }
-        </style>
-        <div class="about-grid">
-            <div class="about-block">
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-satellite-dish" style="color:var(--lm-accent);"></i> 1. 日志采集</h4>
-        <ul style="margin: 0;">
+        <ul style="margin: 0 0 1.4rem 0;">
             <li><b>syslog 双协议</b>：UDP 与 TCP 同时监听，接收网络设备、服务器、嵌入式终端通过标准 syslog 发出的日志；对端断线重连、半包与粘包均按行边界正确处理</li>
             <li><b>容器日志</b>：通过 Docker 接口读取运行中容器的 stdout / stderr，无需在容器内安装任何采集代理；支持排除列表，避免把监控系统自身的日志反复采集进来</li>
             <li><b>外部投递</b>：提供带令牌鉴权的日志投递接口，脚本与自动化任务可安全地把日志送进来</li>
         </ul>
-            </div>
-            <div class="about-block">
+
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-code" style="color:var(--lm-accent);"></i> 2. 协议解析与规范化</h4>
-        <ul style="margin: 0;">
+        <ul style="margin: 0 0 1.4rem 0;">
             <li><b>RFC 3164 与 RFC 5424</b> 两种格式，自动识别 PRI 优先级并换算为 facility 与 severity</li>
             <li>抽出<b>主机名、程序名、消息体</b>等字段；对"发送方省略主机名"的常见畸形格式做了保护，不会把程序名误当成主机名</li>
             <li><b>编码三级回退</b>：UTF-8 → GB18030 → Latin-1，中文日志不再乱码，非法字节以替换方式保留而不是丢弃整条</li>
             <li>规范化后的记录带统一字段（来源 / 主机 / 级别 / 程序 / 时间戳 / 消息），使后续检索、过滤与 AI 分析口径一致</li>
         </ul>
-                <p style="margin:.5rem 0 0; font-size:.82rem; color:var(--lm-ink-2);">客户端日志发送格式（含四种常见错误）见下方全宽章节。</p>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
-        <ul style="margin: 0;">
-            <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填；仪表盘 Total Logs 按此显示<b>热/冷拆分</b>（`logs_hot`/`logs_cold`）</li>
-            <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳；<b>手动清理/按来源删除会同时作用于 Redis 与 SQLite 两个库</b>，不会在冷库里留下看不见却占磁盘的残留</li>
-            <li><b>组合检索</b>：时间范围 × 来源 × 主机 × 级别 × 关键字，分页由存储层原生完成，日志量大时翻页依然迅速</li>
-            <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-bolt" style="color:var(--lm-accent);"></i> 4. 实时观察</h4>
-        <ul style="margin: 0;">
-            <li><b>实时推送</b>：新日志、新告警、分析完成、统计变化会即时推送到已打开的页面，<b>无需手动刷新</b></li>
-            <li><b>仪表盘</b>：日志总量与速率、级别分布、来源与主机排行、未分析积压、AI 后端与模型状态、最近告警</li>
-            <li><b>连接客户端视图</b>：谁在发日志、各发多少、最后活跃时间、最近一分钟速率、是否中断；按活跃度自动区分"活跃 / 空闲 / 停滞"</li>
-            <li><b>异常可见</b>：客户端若出现错误级别日志或长时间静默，会在列表中标出原因</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-filter" style="color:var(--lm-accent);"></i> 5. 过滤与告警</h4>
-        <ul style="margin: 0;">
-            <li><b>四条件组合</b>（全部满足才命中）：级别、来源、消息关键字、<b>正则表达式</b>；过滤器可在页面上增删改，即时生效</li>
-            <li>命中即写入<b>告警记录</b>（来源、主机、级别、消息、命中的规则、时间、确认状态等），可在告警页筛选、<b>单条确认 / 全部确认 / 清除已确认</b></li>
-            <li><b>级别门限</b>：可按规则设定"只推送达到某级别以上"的告警；也支持单条规则设为"任意级别"，用于必须全部知悉的场景</li>
-            <li><b>冷却机制</b>：同一主机 + 同一规则在冷却期内只提醒一次，避免设备刷屏时把人淹没</li>
-            <li>每条规则可独立决定是否推送 Telegram</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
-        <ul style="margin: 0;">
-            <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
-            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀（「发现的问题」每条强制带，同一问题跨主机拆条、禁止合并成 Multiple hosts；判为 critical 的那条再加 <code>* </code> 前缀，详情页带 <b style="color:var(--lm-danger-ink);">*</b> 的就是计入"严重问题数"的那条），返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化、Gemma-4-12B 短提示词 + 爆破强化 + 数据丢失判据、Gemma-4-e4b 短提示词 + 爆破强化 + 边界校准、Gemma-4-26B-A4B 短提示词 + 爆破强化（实测 27/27）；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
-            <li><b>单条分析</b>：对任意一条日志即时解读</li>
-            <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
-            <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>
-            <li><b>结果稳健性</b>：对模型返回做 JSON 提取、截断修复与纠正性重试；确认失败的批次不会污染历史，也不会被无限重试</li>
-            <li><b>分析历史</b>：可按时间与关键字检索、查看完整结果、对历史批次<b>重新分析</b>；每条都记下本轮的 <b>耗时 / token 用量 / 模型</b>（列表有 Duration 列，详情弹窗有完整用量）；<b>分级卡片可点</b>，点上面一排即按该档筛选列表</li>
-            <li><b>模型评测</b>：设置页的一个类目（仅管理员）。任选多个模型 × 多份评测集（内置 27 例可逐条勾选，或上传自定义 JSON）跑一轮，横向对比档位命中 / critical 召回 / 关键词命中 / 延迟等；<b>成绩按模型持久化</b>（重评同一模型即覆盖旧记录）</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
-        <ul style="margin: 0;">
-            <li><b>总开关</b>：设置页「Enable Telegram notifications」不勾则完全不发（发通知前会检查该开关）</li>
-            <li><b>告警推送</b>：命中规则并同时通过<b>级别门限</b>与<b>冷却</b>检查后推送；冷却按「主机 × 规则」独立计时，避免同一问题反复刷屏</li>
-            <li><b>最低推送级别可配</b>：设置页可选 critical / error / warning / notice / info / debug，低于该级别的告警<b>仍会入库但不推送</b>；单条规则可勾「任意级别」绕过门限</li>
-            <li><b>AI 汇总推送可配</b>：上面对应的 4 档状态各自勾选是否推送，并可设冷却间隔（默认只推 critical），让通知少而精</li>
-            <li><b>凭据来源</b>：可在设置页填写，也可由环境变量提供；设置页优先</li>
-            <li><b>不拖累主链路</b>：推送失败只记录日志，不影响采集与告警落库；通道未配置时告警仍会正常入库</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-users-cog" style="color:var(--lm-accent);"></i> 8. 用户、权限与接口</h4>
-        <ul style="margin: 0;">
-            <li><b>三级权限</b>：管理员（含用户管理）、操作员（可改过滤器与设置）、只读（仅查看）</li>
-            <li><b>认证</b>：口令以强哈希存储，支持在线改密；会话经签名保护，登录后按角色显示可用功能</li>
-            <li><b>REST 接口</b>：查询与写入成对提供，便于接入外部系统；写入接口需登录，日志投递接口用独立令牌</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-heartbeat" style="color:var(--lm-accent);"></i> 9. 运维与可靠性</h4>
-        <ul style="margin: 0;">
-            <li><b>定时任务</b>：AI 分析、过期清理、健康巡检、容器日志轮询，各自独立，单个任务异常不影响其它任务，失败原因可在日志中看到</li>
-            <li><b>健康巡检与告警</b>：定时体检三类问题——<b>未分析积压</b>超过阈值、<b>AI 后端不可达</b>、<b>自动分析疑似停止</b>；命中即推送，<b>每个条件各自冷却</b>（不会因为刚发过积压告警就吞掉 AI 宕机告警），问题恢复后再补一条恢复通知，并可每日汇总一次体检结果</li>
-            <li><b>资源上限与自保</b>：分页条数、单批分析量、容器日志行数、请求体大小都有硬上限，避免单个请求把内存吃满；越界的取值被收敛到上限而不是让进程崩溃</li>
-            <li><b>可观测</b>：每个后台任务都留正向判据——分析成功写 <code>[Analysis] analyzed N log(s)</code>、清理写 <code>[Cleanup] removed …</code>、告警推送写 <code>[Telegram] alert sent</code>；分析失败除日志外还在存储里留一条带原因的记录，便于事后追溯</li>
-            <li><b>单一容器部署</b>：应用与界面一体，仅依赖一个 Redis；配置经环境变量注入</li>
-            <li><b>写入护栏</b>：连接到生产库时默认禁止后台写入组件启动，避免误操作污染数据；确认接管时显式放行</li>
-            <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；AI 端点/协议在启动时读取，模型名与提示词模式每轮分析重读（改完下一轮生效、无需重启）。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
-        </ul>
-            </div>
-            <div class="about-block">
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
-        <ul style="margin: 0;">
-            <li><b>11 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置（内含管理员专用的「模型评测」类目）、用户、关于；另有登录页与 404 页</li>
-            <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / 🧪 模型评测 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
-            <li><b>热/冷拆分</b>：仪表盘 Total Logs、分析历史 Total Analyses、告警 Total 都显示「热(Redis) / 冷(SQLite 归档)」条数，一眼看出哪些数据还在内存、哪些已落盘</li>
-            <li><b>分级卡片可点</b>：告警页与分析历史页点上面一排分级卡片，即按该档<b>筛选</b>下面的列表（服务端筛选，翻页条总数同步跟着变成该档条数；再点一次或点 Total 取消）</li>
-            <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
-        </ul>
-            </div>
-        </div>
+
         <!-- 客户端日志发送格式：主机名必须放在报文头部，否则会被回退成来源 IP -->
         <div style="margin: 0 0 1.4rem 0; padding: .85rem 1.05rem; border-left: 3px solid var(--lm-accent); background: var(--lm-accent-soft); border-radius: 6px;">
             <div style="font-weight: 600; color: var(--lm-ink); margin-bottom: .5rem;">
@@ -283,9 +201,85 @@
                 若 Host 显示成 IP，就是上面四种错误之一。
             </p>
         </div>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填；仪表盘 Total Logs 按此显示<b>热/冷拆分</b>（`logs_hot`/`logs_cold`）</li>
+            <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳；<b>手动清理/按来源删除会同时作用于 Redis 与 SQLite 两个库</b>，不会在冷库里留下看不见却占磁盘的残留</li>
+            <li><b>组合检索</b>：时间范围 × 来源 × 主机 × 级别 × 关键字，分页由存储层原生完成，日志量大时翻页依然迅速</li>
+            <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-bolt" style="color:var(--lm-accent);"></i> 4. 实时观察</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>实时推送</b>：新日志、新告警、分析完成、统计变化会即时推送到已打开的页面，<b>无需手动刷新</b></li>
+            <li><b>仪表盘</b>：日志总量与速率、级别分布、来源与主机排行、未分析积压、AI 后端与模型状态、最近告警</li>
+            <li><b>连接客户端视图</b>：谁在发日志、各发多少、最后活跃时间、最近一分钟速率、是否中断；按活跃度自动区分"活跃 / 空闲 / 停滞"</li>
+            <li><b>异常可见</b>：客户端若出现错误级别日志或长时间静默，会在列表中标出原因</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-filter" style="color:var(--lm-accent);"></i> 5. 过滤与告警</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>四条件组合</b>（全部满足才命中）：级别、来源、消息关键字、<b>正则表达式</b>；过滤器可在页面上增删改，即时生效</li>
+            <li>命中即写入<b>告警记录</b>（来源、主机、级别、消息、命中的规则、时间、确认状态等），可在告警页筛选、<b>单条确认 / 全部确认 / 清除已确认</b></li>
+            <li><b>级别门限</b>：可按规则设定"只推送达到某级别以上"的告警；也支持单条规则设为"任意级别"，用于必须全部知悉的场景</li>
+            <li><b>冷却机制</b>：同一主机 + 同一规则在冷却期内只提醒一次，避免设备刷屏时把人淹没</li>
+            <li>每条规则可独立决定是否推送 Telegram</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
+            <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀（「发现的问题」每条强制带，同一问题跨主机拆条、禁止合并成 Multiple hosts；判为 critical 的那条再加 <code>* </code> 前缀，详情页带 <b style="color:var(--lm-danger-ink);">*</b> 的就是计入"严重问题数"的那条），返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化、Gemma-4-12B 短提示词 + 爆破强化 + 数据丢失判据、Gemma-4-e4b 短提示词 + 爆破强化 + 边界校准、Gemma-4-26B-A4B 短提示词 + 爆破强化（实测 27/27）；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
+            <li><b>单条分析</b>：对任意一条日志即时解读</li>
+            <li><b>对话问答</b>：就日志内容直接提问，模型结合上下文回答</li>
+            <li><b>兼容多种后端</b>：OpenAI 兼容接口（vLLM / SGLang / Ollama 的 /v1）与 Ollama 原生协议，可在设置页切换，模型列表随所选协议加载</li>
+            <li><b>结果稳健性</b>：对模型返回做 JSON 提取、截断修复与纠正性重试；确认失败的批次不会污染历史，也不会被无限重试</li>
+            <li><b>分析历史</b>：可按时间与关键字检索、查看完整结果、对历史批次<b>重新分析</b>；每条都记下本轮的 <b>耗时 / token 用量 / 模型</b>（列表有 Duration 列，详情弹窗有完整用量）；<b>分级卡片可点</b>，点上面一排即按该档筛选列表</li>
+            <li><b>模型评测</b>：设置页的一个类目（仅管理员）。任选多个模型 × 多份评测集（内置 27 例可逐条勾选，或上传自定义 JSON）跑一轮，横向对比档位命中 / critical 召回 / 关键词命中 / 延迟等；<b>成绩按模型持久化</b>（重评同一模型即覆盖旧记录）</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>总开关</b>：设置页「Enable Telegram notifications」不勾则完全不发（发通知前会检查该开关）</li>
+            <li><b>告警推送</b>：命中规则并同时通过<b>级别门限</b>与<b>冷却</b>检查后推送；冷却按「主机 × 规则」独立计时，避免同一问题反复刷屏</li>
+            <li><b>最低推送级别可配</b>：设置页可选 critical / error / warning / notice / info / debug，低于该级别的告警<b>仍会入库但不推送</b>；单条规则可勾「任意级别」绕过门限</li>
+            <li><b>AI 汇总推送可配</b>：上面对应的 4 档状态各自勾选是否推送，并可设冷却间隔（默认只推 critical），让通知少而精</li>
+            <li><b>凭据来源</b>：可在设置页填写，也可由环境变量提供；设置页优先</li>
+            <li><b>不拖累主链路</b>：推送失败只记录日志，不影响采集与告警落库；通道未配置时告警仍会正常入库</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-users-cog" style="color:var(--lm-accent);"></i> 8. 用户、权限与接口</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>三级权限</b>：管理员（含用户管理）、操作员（可改过滤器与设置）、只读（仅查看）</li>
+            <li><b>认证</b>：口令以强哈希存储，支持在线改密；会话经签名保护，登录后按角色显示可用功能</li>
+            <li><b>REST 接口</b>：查询与写入成对提供，便于接入外部系统；写入接口需登录，日志投递接口用独立令牌</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-heartbeat" style="color:var(--lm-accent);"></i> 9. 运维与可靠性</h4>
+        <ul style="margin: 0 0 1.4rem 0;">
+            <li><b>定时任务</b>：AI 分析、过期清理、健康巡检、容器日志轮询，各自独立，单个任务异常不影响其它任务，失败原因可在日志中看到</li>
+            <li><b>健康巡检与告警</b>：定时体检三类问题——<b>未分析积压</b>超过阈值、<b>AI 后端不可达</b>、<b>自动分析疑似停止</b>；命中即推送，<b>每个条件各自冷却</b>（不会因为刚发过积压告警就吞掉 AI 宕机告警），问题恢复后再补一条恢复通知，并可每日汇总一次体检结果</li>
+            <li><b>资源上限与自保</b>：分页条数、单批分析量、容器日志行数、请求体大小都有硬上限，避免单个请求把内存吃满；越界的取值被收敛到上限而不是让进程崩溃</li>
+            <li><b>可观测</b>：每个后台任务都留正向判据——分析成功写 <code>[Analysis] analyzed N log(s)</code>、清理写 <code>[Cleanup] removed …</code>、告警推送写 <code>[Telegram] alert sent</code>；分析失败除日志外还在存储里留一条带原因的记录，便于事后追溯</li>
+            <li><b>单一容器部署</b>：应用与界面一体，仅依赖一个 Redis；配置经环境变量注入</li>
+            <li><b>写入护栏</b>：连接到生产库时默认禁止后台写入组件启动，避免误操作污染数据；确认接管时显式放行</li>
+            <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；AI 端点/协议在启动时读取，模型名与提示词模式每轮分析重读（改完下一轮生效、无需重启）。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
+        </ul>
+
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
+        <ul style="margin: 0;">
+            <li><b>11 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置（内含管理员专用的「模型评测」类目）、用户、关于；另有登录页与 404 页</li>
+            <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / 🧪 模型评测 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
+            <li><b>热/冷拆分</b>：仪表盘 Total Logs、分析历史 Total Analyses、告警 Total 都显示「热(Redis) / 冷(SQLite 归档)」条数，一眼看出哪些数据还在内存、哪些已落盘</li>
+            <li><b>分级卡片可点</b>：告警页与分析历史页点上面一排分级卡片，即按该档<b>筛选</b>下面的列表（服务端筛选，翻页条总数同步跟着变成该档条数；再点一次或点 Total 取消）</li>
+            <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
+        </ul>
     </div>
 </div>
+</div>
 
+<div class="about-tab-panel" data-about-panel="tech" hidden>
 <div class="card">
     <div class="card-header">
         <h3><i class="fas fa-cogs"></i> 开发技术 <span style="font-weight: 400; color: var(--lm-ink-2); font-size: 0.85rem;">Technology Stack</span></h3>
@@ -330,7 +324,9 @@
         </ul>
     </div>
 </div>
+</div>
 
+<div class="about-tab-panel" data-about-panel="design" hidden>
 <div class="card">
     <div class="card-header">
         <h3><i class="fas fa-drafting-compass"></i> 实现设计说明</h3>
@@ -409,4 +405,26 @@
         </ul>
     </div>
 </div>
+</div>
+
+<script>
+(function () {
+    var tabs = Array.prototype.slice.call(document.querySelectorAll("#aboutTabs .settings-tab"));
+    var panels = Array.prototype.slice.call(document.querySelectorAll("[data-about-panel]"));
+    if (!tabs.length || !panels.length) return;
+    function show(key, persist) {
+        var valid = tabs.map(function (t) { return t.dataset.aboutTarget; });
+        if (valid.indexOf(key) < 0) key = valid[0];
+        tabs.forEach(function (t) { t.classList.toggle("active", t.dataset.aboutTarget === key); });
+        panels.forEach(function (p) { p.hidden = p.dataset.aboutPanel !== key; });
+        if (persist) { try { localStorage.setItem("about_tab", key); } catch (e) {} }
+    }
+    tabs.forEach(function (t) { t.addEventListener("click", function () { show(t.dataset.aboutTarget, true); }); });
+    window.addEventListener("hashchange", function () { show((location.hash || "").replace(/^#/, ""), false); });
+    var want = (location.hash || "").replace(/^#/, "");
+    if (!want) { try { want = localStorage.getItem("about_tab") || ""; } catch (e) {} }
+    show(want, false);
+})();
+</script>
+
 {% endblock %}
