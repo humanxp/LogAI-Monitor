@@ -172,7 +172,10 @@
         elStatus.textContent = text;
         elStatus.style.color = color;
 
+        // 有问题时数字用红字：积压超阈值这一档最直观，一眼能看到是"多少条"堆着
         set('aiBacklog', fmtNum(backlog));
+        var elBacklog = document.getElementById('aiBacklog');
+        if (elBacklog) elBacklog.style.color = backlog > threshold ? 'var(--lm-danger-ink)' : 'inherit';
         set('aiCapacity', Math.round(batch / interval) + ' 条/分');
         set('aiLastRun', (typeof age === 'number' && age >= 0)
             ? (age < 60 ? age + ' 秒前' : Math.round(age / 60) + ' 分钟前') : '—');
