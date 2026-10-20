@@ -347,9 +347,26 @@ app.MapFallback((HttpContext http, JinjaEngine engine) =>
 //
 // 现在的做法：先等 Redis 可达，再启动后台子系统。失败会持续重试并明确记录，
 // 超过一定时间升级为醒目的警告，绝不静默。
-_ = WaitForRedisThenStartAsync(app);
+var startupDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+_ = WaitForRedisThenStartAsync(app, startupDone);
 
-static async Task WaitForRedisThenStartAsync(WebApplication app)
+// 启动看门狗：Web 能访问、但采集/分析/巡检全都没起来的"静默停摆"必须自愈。
+// 真出现过：进程活着、页面正常、/api/health 也回 200，可时间线不再增长、
+// syslog 诊断接口 500（ReceiverState 为空），连 stdio 都没有一行输出。
+// 后台子系统超过时限仍未就绪，就让进程退出，交给容器的 --restart 重新拉起。
+_ = WatchdogAsync(startupDone);
+
+static async Task WatchdogAsync(TaskCompletionSource<bool> started)
+{
+    try { await Task.Delay(TimeSpan.FromMinutes(6)); }
+    catch (OperationCanceledException) { return; }
+    if (started.Task.IsCompletedSuccessfully) return;
+    Console.Error.WriteLine("[AppHost] 启动看门狗：后台子系统（采集/分析/巡检）6 分钟内没有就绪，"
+        + "进程退出让容器重启，避免出现\"Web 正常但采集全停\"的静默状态");
+    Environment.Exit(3);
+}
+
+static async Task WaitForRedisThenStartAsync(WebApplication app, TaskCompletionSource<bool> started)
 {
     var store = app.Services.GetRequiredService<LogAI.Core.Store.RedisStore>();
     var stopping = app.Lifetime.ApplicationStopping;
@@ -392,6 +409,7 @@ static async Task WaitForRedisThenStartAsync(WebApplication app)
         // 只在应用停止时随取消令牌退出。所以这里不做"启动成功"的输出——
         // 子系统是否真的起来了，由 AppHost 自己打印的 [AppHost] 标记说明。
         await LogAI.Web.AppHost.StartAsync(app, stopping);
+        started.TrySetResult(true);
         // 正常情况：StartAsync 只负责"搭建并启动"各子系统
         // （接收器与调度器都在内部以后台任务运行），随即返回。因此返回本身不是
         // 异常信号——子系统是否起来了，由它自己打印的 [AppHost] 标记说明。
