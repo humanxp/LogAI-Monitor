@@ -6,7 +6,7 @@
 {% block content %}
 <!-- AI 分析队列状态：一行显示 后端健康 / 积压 / 处理能力 / ETA / 上轮时间 -->
 <div class="card" id="aiQueueCard" style="margin-bottom: 1rem;">
-    <div class="card-body" style="display:flex; align-items:center; gap:.5rem; padding:.6rem 1.1rem; font-size:.88rem; white-space:nowrap; overflow-x:auto;">
+    <div class="card-body" style="display:flex; align-items:center; justify-content:flex-end; gap:.5rem; padding:.6rem 1.1rem; font-size:.88rem; white-space:nowrap; overflow-x:auto;">
         <span id="aiHealthDot" style="width:9px; height:9px; border-radius:50%; background:var(--lm-ink-3); flex:none;"></span>
         <b id="aiStatusText">检查中…</b>
         <span style="color:var(--lm-line);">·</span>
@@ -189,6 +189,9 @@
         var eta = '—';
         if (backlog === 0) {
             eta = '已清空';
+        } else if (backlog < batch) {
+            // 不足一批：不进追积压模式，按定时器一拍消化掉即可，不算"没下降"
+            eta = '已跟上';
         } else if (samples.length >= 2) {
             var a = samples[0], b = samples[samples.length - 1];
             var dt = (b.t - a.t) / 60000;
