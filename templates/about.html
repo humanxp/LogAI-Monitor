@@ -145,6 +145,48 @@
             <li>规范化后的记录带统一字段（来源 / 主机 / 级别 / 程序 / 时间戳 / 消息），使后续检索、过滤与 AI 分析口径一致</li>
         </ul>
 
+        <!-- 客户端日志发送格式：主机名必须放在报文头部，否则会被回退成来源 IP -->
+        <div style="margin: 0 0 1.4rem 0; padding: .85rem 1.05rem; border-left: 3px solid var(--lm-accent); background: var(--lm-accent-soft); border-radius: 6px;">
+            <div style="font-weight: 600; color: var(--lm-ink); margin-bottom: .5rem;">
+                <i class="fas fa-paper-plane" style="color: var(--lm-accent);"></i> 客户端日志发送格式（决定「主机名 ↔ IP」能否对上）
+            </div>
+            <p style="margin: .2rem 0 .45rem; color: var(--lm-ink-2);">
+                采集时<b>来源 IP 总是会被记录</b>（就是发包那台机器的地址）；而<b>主机名只能从报文头部解析</b>。
+                所以客户端必须把主机名放在时间戳和程序名之间，格式如下：
+            </p>
+            <pre style="font-size:.76rem;background:var(--lm-subtle);padding:.6rem .7rem;border-radius:6px;overflow:auto;margin:.3rem 0 .55rem;">&lt;PRI&gt;Mmm dd HH:MM:SS HOSTNAME TAG[PID]: MESSAGE
+
+&lt;12&gt;Oct 21 05:00:52 BRAVIA adbd[2588]: timed out while waiting for FUNCTIONFS_BIND
+&lt;14&gt;Oct 21 05:00:42 GTKing-PRO storaged[3533]: getDiskStats failed with result NOT_SUPPORTED</pre>
+            <ul style="margin:.2rem 0 .55rem; padding-left:1.3rem; color:var(--lm-ink-2);">
+                <li><code>&lt;PRI&gt;</code> <b>可以省略</b>（省略时级别按 info 计）；出现时会换算成 facility / severity。</li>
+                <li><code>Mmm dd HH:MM:SS</code> 形如 <code>Oct 21 05:00:52</code>，<b>不能带毫秒</b>。</li>
+                <li><code>HOSTNAME</code> 必须是<b>独立的一段</b>：不含空格、冒号、方括号。例：<code>BRAVIA</code>、<code>GTKing-PRO</code>、<code>192.168.50.9</code>（不是 <code>GTKing PRO</code>）。</li>
+                <li><code>TAG[PID]:</code> 是程序名（PID 可选），它<b>后面的</b>才是消息正文。</li>
+                <li>也支持 RFC 5424：<code>&lt;PRI&gt;1 2026-10-21T05:00:52+08:00 HOSTNAME APP-NAME PROCID MSGID [SD] MESSAGE</code>。</li>
+                <li>传输：UDP 514 / TCP 515；TCP 按行分帧，多行报文见下面的坑。</li>
+            </ul>
+            <p style="margin:.2rem 0 .3rem; color: var(--lm-ink);"><b>四种常见错误</b>（都会让主机名显示成来源 IP）：</p>
+            <ul style="margin:.2rem 0 .55rem; padding-left:1.3rem; color:var(--lm-ink-2);">
+                <li><b>① 主机名塞进了正文</b>（Sony 电视旧格式）：<br>
+                    <code>Oct 21 04:57:33 BRAVIA 10-21 04:57:33.270 W/adbd ( 2572): timed out…</code><br>
+                    → 头部只看到 <code>BRAVIA 10-21</code>，取不到「主机名 + 程序名」结构，整条回退成 IP。
+                    改成 <code>Oct 21 04:57:33 BRAVIA adbd[2572]: timed out…</code>（消息里别再重复日期和主机名）。</li>
+                <li><b>② 时间戳带毫秒</b>：<code>Oct 21 04:19:52.329 GTKing-PRO vold[3370]: …</code><br>
+                    → RFC 3164 只认到秒，多出的 <code>.329</code> 会让解析失败。去掉毫秒即可。</li>
+                <li><b>③ 多行报文第一行没有头</b>：一次发多行（如 Java 堆栈）时，<b>第一行必须带完整头部</b>；
+                    后续行直接跟在后面，<b>不要</b>每行都重复 <code>&lt;PRI&gt;时间戳主机名</code>。
+                    若第一行是续行、头部出现在第二行，整帧都会被当成消息体、主机名回退成 IP。</li>
+                <li><b>④ 主机名带空格 / 中文 / 括号</b>：<code>PlausibleHostname</code> 只接受
+                    <code>[A-Za-z0-9._-]</code>，其他字符一律不认。</li>
+            </ul>
+            <p style="margin:.2rem 0 0; color: var(--lm-ink-2);">
+                <b>怎么验证</b>：改完发送端后，在「日志」页看 <b>Host</b> 列是否显示设备名（而不是 IP）——
+                显示设备名就说明主机名解析成功，它和「来源」列里的 IP 就能对上；
+                若 Host 显示成 IP，就是上面四种错误之一。
+            </p>
+        </div>
+
         <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填；仪表盘 Total Logs 按此显示<b>热/冷拆分</b>（`logs_hot`/`logs_cold`）</li>
