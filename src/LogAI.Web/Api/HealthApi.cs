@@ -61,12 +61,38 @@ internal static class HealthApi
             double? liveAge = await store.LastAnalysisAgeSecondsAsync();
             int age = liveAge.HasValue ? (int)liveAge.Value : HealthState.LastAnalysisAgeSeconds;
 
-            var inputs = new HealthInputs(backlog, total, HealthState.AiAvailable,
+            // AI 可达性：巡检快照默认每 health_watch_minutes（5 分钟）才更新一拍，
+            // 容器刚重启时快照还是 false，页面上就会红着报"后端不可达"，而模型其实好好的。
+            // 所以只在快照说"不可达"时当场复核一次。
+            bool aiAvailable = HealthState.AiAvailable;
+            if (!aiAvailable)
+            {
+                try
+                {
+                    string provider = RedisStore.ToText(settings.GetValueOrDefault("ai_provider"));
+                    if (provider.Length == 0) provider = "openai";
+                    string host = RedisStore.ToText(settings.GetValueOrDefault("ollama_host"));
+                    if (host.Length == 0) host = Environment.GetEnvironmentVariable("AI_BASE_URL") ?? "";
+                    aiAvailable = await new AiClient
+                    {
+                        Provider = provider,
+                        BaseUrl = AiClient.NormalizeBaseUrl(host, provider),
+                        Model = AiClient.ResolveModel(store, HealthState.AiModel),
+                        ApiKey = Environment.GetEnvironmentVariable("AI_API_KEY") ?? "",
+                    }.IsAvailableAsync();
+                }
+                catch
+                {
+                    // 复核失败就沿用快照，不因为探测本身出错而改判。
+                }
+            }
+
+            var inputs = new HealthInputs(backlog, total, aiAvailable,
                 age, HealthState.WarnThreshold, HealthState.AnalysisMinutes);
 
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
-                ["ai_available"] = HealthState.AiAvailable,
+                ["ai_available"] = aiAvailable,
                 // 模型名当场从设置里解析，不用巡检快照。快照只在 health_watch_minutes
                 // （默认 5 分钟）那一拍更新，而模型现在每轮分析都会重读——用它就会
                 // 出现"设置页已经改了、真正在跑的也是新模型，偏偏 /api/health 还报旧值
