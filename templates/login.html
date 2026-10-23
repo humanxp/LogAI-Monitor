@@ -70,7 +70,8 @@
             margin: 0 auto 1rem;
         }
         
-        .login-header .logo i {
+        .login-header .logo i,
+        .login-header .logo .lx {
             font-size: 2.5rem;
             color: white;
         }
@@ -117,7 +118,8 @@
             position: relative;
         }
         
-        .form-group .input-icon i {
+        .form-group .input-icon i,
+        .form-group .input-icon .lx {
             position: absolute;
             left: 1rem;
             top: 50%;
@@ -200,6 +202,7 @@
     </style>
 </head>
 <body>
+{{ lucide_sprite|safe }}
     <div class="login-container">
         <div class="login-header">
             <div class="logo">
