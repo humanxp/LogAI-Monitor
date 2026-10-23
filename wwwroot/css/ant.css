@@ -216,16 +216,16 @@ code {
 /* 分组标题：整块作为"分隔带"，靠上留白拉开距离；字号与菜单项同尺寸，
    层级由字重 + 降低不透明度体现（Ant Design 菜单分组的做法）。 */
 .nav-section-title {
-  color: rgba(255, 255, 255, 0.55) !important;
-  font-size: 16px;
+  color: rgba(255, 255, 255, 0.42) !important;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: .03em;
-  padding: 11px 12px 5px;
+  letter-spacing: .1em;
+  padding: 16px 12px 6px;
   margin: 0;              /* 清掉 style.css 的 margin-bottom: .5rem */
-  text-transform: none;
-  line-height: 1.35;
+  text-transform: uppercase;
+  line-height: 1.3;
 }
-.nav-section:first-child .nav-section-title { padding-top: 4px; }
+.nav-section:first-child .nav-section-title { padding-top: 6px; }
 
 /* 菜单项：固定 40px 行高 + 2px 间隙，圆角药丸悬浮；去掉旧样式残留的 3px 左边框
    （那是"左侧竖条"风格留下的，和圆角药丸混在一起会显得错位）。 */
@@ -235,7 +235,7 @@ code {
   min-height: 40px;
   margin: 2px 0;
   padding: 0 12px;
-  color: var(--ant-sider-ink) !important;
+  color: rgba(255, 255, 255, 0.72) !important;
   font-size: 16px;
   gap: 10px;
   transition: background .15s, color .15s;
@@ -251,7 +251,8 @@ code {
 }
 .nav-item.active .lx, .nav-item:hover .lx { color: inherit; }
 .nav-item span { font-size: 16px; line-height: 1.4; }
-.nav-item .lx { font-size: 18px; width: 20px; opacity: .9; }
+.nav-item .lx { font-size: 18px; width: 20px; opacity: .78; }
+.nav-item:hover .lx, .nav-item.active .lx { opacity: 1; }
 
 .sidebar-footer { border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .sidebar-user-info, .sidebar-user-row { color: var(--ant-sider-ink); }
