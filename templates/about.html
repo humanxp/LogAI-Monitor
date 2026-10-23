@@ -273,7 +273,9 @@
             <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / 🧪 模型评测 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
             <li><b>热/冷拆分</b>：仪表盘 Total Logs、分析历史 Total Analyses、告警 Total 都显示「热(Redis) / 冷(SQLite 归档)」条数，一眼看出哪些数据还在内存、哪些已落盘</li>
             <li><b>分级卡片可点</b>：告警页与分析历史页点上面一排分级卡片，即按该档<b>筛选</b>下面的列表（服务端筛选，翻页条总数同步跟着变成该档条数；再点一次或点 Total 取消）</li>
-            <li>统一的深色侧栏与顶栏、卡片式分区、表格与级别徽标；日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
+            <li><b>统一的视觉语言</b>：深色侧栏（Ant Design Pro 经典 sider）+ 白底顶栏与内容区；卡片、按钮、表格、标签页、弹窗统一按 Ant Design 规范；分组标题用「小号大写 + 宽字距 + 低亮度」的微标签，与 16px 菜单项形成层次而不靠色块抢视觉</li>
+            <li><b>图标</b>一律 Lucide 线性图标（1.5–2px 描边），颜色跟随文字与主题，不再有字体图标的闪烁与对齐问题</li>
+            <li>日志详情、分析详情以弹窗呈现，不打断当前浏览位置</li>
         </ul>
     </div>
 </div>
@@ -291,7 +293,9 @@
         <ul style="margin: 0 0 1rem 0;">
             <li><b>C# / .NET 8</b> —— 后端服务、REST 接口与页面渲染，使用 ASP.NET Core minimal API</li>
             <li><b>模板渲染</b> —— 自实现的模板引擎，服务端渲染 HTML（extends / block / if / for），页面不依赖前端框架</li>
-            <li><b>前端</b> —— 原生 JavaScript + CSS（无打包构建步骤），图标使用 Font Awesome</li>
+            <li><b>前端</b> —— 原生 JavaScript + CSS（无打包构建步骤，无 React/Vue）</li>
+            <li><b>图标</b> —— <b>Lucide</b>：83 个 SVG symbol 离线内置成一份精灵，同文档 &lt;use&gt; 引用，直接继承 <code>currentColor</code> 跟着主题变色（替代原来的 Font Awesome 字体图标，省掉 1.1 MB 字体文件）</li>
+            <li><b>视觉体系</b> —— <b>Ant Design 5</b> 的设计令牌与组件规范，以原生 CSS 写在 <code>ant.css</code>（加载顺序 style → refined → ant）：主色 #1677ff、圆角 6/8、中性色 88/65/45%，按钮 32 高、输入框 focus 光晕、表格浅灰表头无竖线、标签页下划线选中、Tag 描边、Empty 空态；夜间主题按 Ant Design dark algorithm 重算</li>
         </ul>
 
         <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:#DC382D;">{{ icon("database")|safe }}</span> 数据存储</h4>
