@@ -24,6 +24,10 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 |---|---|
 | ![登录](docs/screenshots/login.png) | ![夜间主题](docs/screenshots/dashboard-night.png) |
 
+| 手机：仪表盘 | 手机：日志（筛选项纵向排列，表格横向滚动） |
+|---|---|
+| ![手机仪表盘](docs/screenshots/mobile-dashboard.png) | ![手机日志](docs/screenshots/mobile-logs.png) |
+
 ---
 
 ## 功能

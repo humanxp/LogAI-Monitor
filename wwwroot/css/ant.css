@@ -790,3 +790,79 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
 }
 .modal-header, .modal-footer { flex: 0 0 auto; }
 .modal-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+
+/* ==========================================================================
+   移动端（≤768px）修正
+   1) 侧栏：手机上是"抽屉"，必须按完整宽度渲染。旧样式会把 .collapsed 压回
+      --sidebar-width，而我们这套令牌下 .collapsed 是 64px —— 抽屉只有 64px 宽、
+      文字却按"展开"显示，于是换行溢出盖住内容（用户截图里就是这样）。
+   2) 顶栏：390px 宽度放不下 状态文字 + 主题按钮文字 + 用户名，会把标题挤出重叠。
+   ========================================================================== */
+@media (max-width: 768px) {
+  .sidebar.collapsed { width: var(--ant-sider-w); }
+  .sidebar.collapsed .nav-item { justify-content: flex-start; padding: 0 12px; }
+  .sidebar.collapsed .nav-item .lx { width: 20px; }
+
+  .header-status { display: none; }
+  #themeToggleLabel { display: none; }
+  .user-menu > span { display: none; }        /* 用户名 */
+  .user-menu { margin-left: 0 !important; gap: 0.5rem !important; }
+  .header-actions { gap: 0.5rem; }
+  .header-title { font-size: 15px; }
+
+  .page-content { padding: 12px; }
+  .card-body { padding: 16px; }
+  .card-header { padding: 0 16px; min-height: 52px; }
+  .modal { max-width: 100%; }
+  .modal-body { padding: 16px; }
+  .modal-footer { padding: 10px 16px; flex-wrap: wrap; }
+  .stats-grid { gap: 12px; }
+  .ant-stat { padding: 16px; }
+  .ant-stat-value { font-size: 22px; }
+  .filter-bar { padding: 12px; gap: 10px 12px; }
+  .ant-form-item { width: 100%; }
+  .filter-bar .form-control, .filter-bar .form-select { flex: 1 1 auto; min-width: 0; }
+  .ant-form-actions { width: 100%; }
+  .ant-form-actions .btn { flex: 1 1 0; }
+}
+
+/* ---- 移动端：其它页面的通用优化 ---- */
+@media (max-width: 768px) {
+  /* 卡片头：标题与操作按钮在窄屏换行，别把标题挤成竖排 */
+  .card-header { flex-wrap: wrap; padding: 12px 16px; gap: 8px; min-height: 0; }
+  .card-header h3 { font-size: 15px; }
+  .card-header .btn { height: 28px; padding: 0 10px; font-size: 12px; }
+  .card-header .badge { font-size: 11px; }
+
+  /* 表格：宁可横向滚动，也不要把 6 列压成一列 */
+  .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .table-container table { min-width: 680px; }
+  thead th, tbody td { padding: 10px 12px; font-size: 13px; }
+
+  /* 设置页类目条：横向滚动，不换行堆两排 */
+  .settings-tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .settings-tab { flex: 0 0 auto; padding: 10px 12px; font-size: 13px; }
+
+  /* 日志行：元信息换行但时间戳保持一行 */
+  .log-meta { flex-wrap: wrap; gap: 4px 8px; font-size: 12px; }
+  .log-meta > span { white-space: nowrap; }
+  .log-message { font-size: 13px; }
+  .duplicate-badge { font-size: 11px; padding: 1px 6px; }
+
+  /* 徽标/级别标签略缩 */
+  .badge, .severity-badge { font-size: 11px; padding: 0 6px; }
+
+  /* 表单控件占满整行，避免半宽输入框 */
+  .form-group { margin-bottom: 14px; }
+  .ant-form-item-grow { flex-basis: 100%; }
+
+  /* 分页条：允许换行 */
+  .pager, .pager-buttons { flex-wrap: wrap; row-gap: 6px; }
+}
+
+/* 日期区间：窄屏下两个日期框要和标签挤在一行，必须允许压缩（原来 min-width:140px
+   会顶出 7px 横向滚动，第二个日期框被切掉一半）。 */
+@media (max-width: 768px) {
+  .filter-bar .date-filter-input { min-width: 0; flex: 1 1 0; width: auto; }
+  .ant-form-item[title] > span { flex: 1 1 auto; min-width: 0; }
+}
