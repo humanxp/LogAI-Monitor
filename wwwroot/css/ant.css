@@ -197,6 +197,20 @@ code {
 .sidebar-header .logo,
 .sidebar-header .logo * { color: #fff !important; }
 
+/* 品牌名就是侧栏里的 <h1>LogAI Monitor</h1>：它不在 .logo 里，之前只给图标设了白色，
+   h1 仍继承全局 h1 的深色（88% 黑），在 #001529 的侧栏上等于看不清。 */
+.sidebar-header h1 {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: .01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-nav { padding: 6px 8px 10px; }
 
 /* 分组标题：整块作为"分隔带"，靠上留白拉开距离；字号与菜单项同尺寸，
