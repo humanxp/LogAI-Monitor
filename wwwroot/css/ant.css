@@ -749,3 +749,15 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
 .main-content { min-width: 0; }
 .page-content { min-width: 0; }
 .header-actions { min-width: 0; flex-shrink: 0; }
+
+/* Token 明细行：只让中间明细区横向滚动，「复位」按钮始终贴在右侧可见。
+   原样式把整行设为 overflow-x:auto，按钮跟着内容一起被推出可视区/被文字盖住。 */
+.token-usage-head { overflow: visible; }
+.token-usage-title { flex: 0 0 auto; }
+.token-usage-items {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.token-usage-head > .btn { flex: 0 0 auto; margin-left: auto; }

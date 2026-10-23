@@ -20,9 +20,9 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 |---|---|
 | ![设置](docs/screenshots/settings.png) | ![关于](docs/screenshots/about.png) |
 
-| 登录 |
-|---|
-| ![登录](docs/screenshots/login.png) |
+| 登录 | 夜间主题 |
+|---|---|
+| ![登录](docs/screenshots/login.png) | ![夜间主题](docs/screenshots/dashboard-night.png) |
 
 ---
 
