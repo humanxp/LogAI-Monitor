@@ -62,13 +62,13 @@ function toggleTheme() {
 
 function updateThemeToggleBtn(theme) {
     const btn   = document.getElementById('themeToggleBtn');
-    const icon  = document.getElementById('themeToggleIcon');
+    const iconEl = document.getElementById('themeToggleIcon');
     const label = document.getElementById('themeToggleLabel');
     if (!btn) return;
     const meta = THEME_META[theme] || THEME_META['default'];
     // Swap icon
-    if (icon) {
-        setIcon(icon, meta.icon);
+    if (iconEl) {
+        setIcon(iconEl, meta.icon);
     }
     if (label) label.textContent = meta.label;
     btn.title = meta.title;
@@ -1244,8 +1244,8 @@ function goToAlertsPage(delta) {
 // Refresh with visible feedback (spinner + result count)
 async function refreshAlerts() {
     const btn = document.getElementById('refreshAlertsBtn');
-    const icon = btn?.querySelector('svg.lx, i');
-    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
+    const iconEl = btn?.querySelector('svg.lx, i');
+    if (btn) { btn.disabled = true; if (iconEl) setIcon(iconEl, 'loader-circle', 'lx-spin'); }
     try {
         const alerts = await fetchAlerts() || [];
         fetchAlertStats();
@@ -1254,7 +1254,7 @@ async function refreshAlerts() {
         console.error('Error refreshing alerts:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
+        if (btn) { btn.disabled = false; if (iconEl) setIcon(iconEl, 'refresh-cw'); }
     }
 }
 
@@ -1556,8 +1556,8 @@ async function fetchContainers() {
 // Refresh with visible feedback (spinner + result count)
 async function refreshContainers() {
     const btn = document.getElementById('refreshContainersBtn');
-    const icon = btn?.querySelector('svg.lx, i');
-    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
+    const iconEl = btn?.querySelector('svg.lx, i');
+    if (btn) { btn.disabled = true; if (iconEl) setIcon(iconEl, 'loader-circle', 'lx-spin'); }
     try {
         const containers = await fetchContainers() || [];
         const rows = document.querySelectorAll('#containersContainer tbody tr').length;
@@ -1566,7 +1566,7 @@ async function refreshContainers() {
         console.error('Error refreshing containers:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
+        if (btn) { btn.disabled = false; if (iconEl) setIcon(iconEl, 'refresh-cw'); }
     }
 }
 
@@ -2060,11 +2060,11 @@ function updateAnalysisDisplay(analysis) {
     if (!container) return;
     
     const status = String(analysis.overall_status || 'unknown').toLowerCase();
-    const icon = status === 'healthy' ? '✅' : (status === 'warning' ? '⚠️' : '🚨');
+    const statusEmoji = status === 'healthy' ? '✅' : (status === 'warning' ? '⚠️' : '🚨');
     
     container.innerHTML = `
         <div class="analysis-status ${severityClass(analysis.overall_status)}">
-            ${icon}
+            ${statusEmoji}
             ${escapeHtml(aiStatusZh(analysis.overall_status))}
         </div>
         
@@ -2072,7 +2072,7 @@ function updateAnalysisDisplay(analysis) {
         <div style="margin-top: 1rem;">
             <h4>${icon('server')} 受影响主机</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                ${analysis.affected_hosts.map(host => `<span class="badge" style="background: var(--lm-nav-active-bg); color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
+                ${analysis.affected_hosts.map(host => `<span class="badge badge-primary">${escapeHtml(host)}</span>`).join('')}
             </div>
         </div>
         ` : ''}
@@ -2582,8 +2582,8 @@ async function loadOllamaModels(customHost = null, force = false) {
 // Refresh the AI model list with visible feedback (spinner + result toast).
 async function refreshOllamaModels() {
     const btn = document.getElementById('ollamaRefreshBtn');
-    const icon = btn?.querySelector('svg.lx, i');
-    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
+    const iconEl = btn?.querySelector('svg.lx, i');
+    if (btn) { btn.disabled = true; if (iconEl) setIcon(iconEl, 'loader-circle', 'lx-spin'); }
     try {
         const data = await loadOllamaModels(null, true);
         const n = (data.models || []).length;
@@ -2596,7 +2596,7 @@ async function refreshOllamaModels() {
         console.error('Error refreshing AI models:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
+        if (btn) { btn.disabled = false; if (iconEl) setIcon(iconEl, 'refresh-cw'); }
     }
 }
 
@@ -3180,8 +3180,8 @@ function _selectedHostKind() {
 // unresponsive even though it is fetching fresh data.
 async function refreshLogs() {
     const btn = document.getElementById('refreshLogsBtn');
-    const icon = btn?.querySelector('svg.lx, i');
-    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
+    const iconEl = btn?.querySelector('svg.lx, i');
+    if (btn) { btn.disabled = true; if (iconEl) setIcon(iconEl, 'loader-circle', 'lx-spin'); }
     try {
         const host = document.getElementById('filterHost')?.value || '';
         const hostKind = _selectedHostKind();
@@ -3213,15 +3213,15 @@ async function refreshLogs() {
         console.error('Error refreshing logs:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
+        if (btn) { btn.disabled = false; if (iconEl) setIcon(iconEl, 'refresh-cw'); }
     }
 }
 
 // Clear all filters
 async function clearFilters() {
     const btn = document.getElementById('clearFiltersBtn');
-    const icon = btn?.querySelector('svg.lx, i');
-    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
+    const iconEl = btn?.querySelector('svg.lx, i');
+    if (btn) { btn.disabled = true; if (iconEl) setIcon(iconEl, 'loader-circle', 'lx-spin'); }
     try {
         // Reset dropdowns and search
         const hostEl = document.getElementById('filterHost');
@@ -3263,7 +3263,7 @@ async function clearFilters() {
         console.error('Error clearing filters:', error);
         showToast('Clear', 'Failed to clear filters', 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'x'); }
+        if (btn) { btn.disabled = false; if (iconEl) setIcon(iconEl, 'x'); }
     }
 }
 
