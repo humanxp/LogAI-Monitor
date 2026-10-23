@@ -200,11 +200,15 @@ code {
 .sidebar-nav { padding: 8px; }
 
 .nav-section-title {
-  color: rgba(255, 255, 255, 0.45) !important;
-  font-size: 12px;
-  letter-spacing: .02em;
-  padding: 12px 12px 4px;
+  /* 分组标题：原来是 0.7rem(11px) 全大写，太小也难认；
+     这里和菜单项同字号(13px)、加粗、略提高不透明度，靠字重与留白区分层级。 */
+  color: rgba(255, 255, 255, 0.62) !important;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 16px 12px 6px;
   text-transform: none;
+  line-height: 1.4;
 }
 
 .nav-item {
