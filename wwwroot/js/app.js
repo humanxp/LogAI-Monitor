@@ -305,7 +305,7 @@ function updateTelegramUsage() {
 // 复位清零：清掉累计与所有日用量（管理员限定，不可撤销）。
 async function resetTokenUsage() {
     const btn = document.getElementById('resetTokenUsageBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '' + icon('loader-circle', 'lx-spin') + ' 清零中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = icon('loader-circle', 'lx-spin') + ' 清零中...'; }
     try {
         const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
         if (response.ok) {
@@ -321,14 +321,14 @@ async function resetTokenUsage() {
         console.error('Error resetting token usage:', error);
         showToast('Error', '清零失败', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '' + icon('rotate-ccw') + ' 复位'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = icon('rotate-ccw') + ' 复位'; }
     }
 }
 
 // Telegram 发送量复位清零（管理员限定，不可撤销）。
 async function resetTelegramUsage() {
     const btn = document.getElementById('resetTelegramUsageBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '' + icon('loader-circle', 'lx-spin') + ' 清零中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = icon('loader-circle', 'lx-spin') + ' 清零中...'; }
     try {
         const response = await fetch('/api/telegram-usage/reset', { method: 'POST' });
         if (response.ok) {
@@ -344,7 +344,7 @@ async function resetTelegramUsage() {
         console.error('Error resetting telegram usage:', error);
         showToast('Error', '清零失败', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '' + icon('rotate-ccw') + ' 复位'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = icon('rotate-ccw') + ' 复位'; }
     }
 }
 
@@ -1209,7 +1209,7 @@ function goToAlertsPage(delta) {
 // Refresh with visible feedback (spinner + result count)
 async function refreshAlerts() {
     const btn = document.getElementById('refreshAlertsBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const alerts = await fetchAlerts() || [];
@@ -1347,12 +1347,12 @@ async function analyzeAlertFromDetail(alertId) {
         if (!btn) return;
         btn.disabled = busy;
         btn.innerHTML = busy
-            ? '' + icon('loader-circle', 'lx-spin') + ' 分析中…'
-            : '' + icon('bot') + ' AI 分析';
+            ? icon('loader-circle', 'lx-spin') + ' 分析中…'
+            : icon('bot') + ' AI 分析';
     };
     setBusy(true);
     box.innerHTML = '<div style="margin-top:.6rem; color:var(--lm-ink-2); font-size:.9rem;">'
-        + '' + icon('loader-circle', 'lx-spin') + ' 正在调用 AI 分析该日志，请稍候…</div>';
+        + icon('loader-circle', 'lx-spin') + ' 正在调用 AI 分析该日志，请稍候…</div>';
 
     const post = (payload) => fetch('/api/ollama/analyze', {
         method: 'POST',
@@ -1521,7 +1521,7 @@ async function fetchContainers() {
 // Refresh with visible feedback (spinner + result count)
 async function refreshContainers() {
     const btn = document.getElementById('refreshContainersBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const containers = await fetchContainers() || [];
@@ -1983,7 +1983,7 @@ async function analyzeLog() {
         console.error('Error analyzing log:', error);
         showToast('Error', 'AI 分析失败', 'error');
     } finally {
-        btn.innerHTML = '' + icon('brain') + ' AI 分析';
+        btn.innerHTML = icon('brain') + ' AI 分析';
         btn.disabled = false;
     }
 }
@@ -2014,7 +2014,7 @@ async function analyzeAllLogs() {
         console.error('Error analyzing logs:', error);
         showToast('Error', 'Failed to analyze logs', 'error');
     } finally {
-        btn.innerHTML = '' + icon('brain') + ' Analyze Recent Logs';
+        btn.innerHTML = icon('brain') + ' Analyze Recent Logs';
         btn.disabled = false;
     }
 }
@@ -2270,7 +2270,7 @@ async function testTelegram() {
         console.error('Error testing Telegram:', error);
         showToast('Error', 'Failed to test Telegram connection', 'error');
     } finally {
-        btn.innerHTML = '' + icon('send') + ' Test Connection';
+        btn.innerHTML = icon('send') + ' Test Connection';
         btn.disabled = false;
     }
 }
@@ -2547,7 +2547,7 @@ async function loadOllamaModels(customHost = null, force = false) {
 // Refresh the AI model list with visible feedback (spinner + result toast).
 async function refreshOllamaModels() {
     const btn = document.getElementById('ollamaRefreshBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const data = await loadOllamaModels(null, true);
@@ -3145,7 +3145,7 @@ function _selectedHostKind() {
 // unresponsive even though it is fetching fresh data.
 async function refreshLogs() {
     const btn = document.getElementById('refreshLogsBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const host = document.getElementById('filterHost')?.value || '';
@@ -3185,7 +3185,7 @@ async function refreshLogs() {
 // Clear all filters
 async function clearFilters() {
     const btn = document.getElementById('clearFiltersBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         // Reset dropdowns and search

@@ -102,7 +102,7 @@
 // Refresh with visible feedback (spinner + result toast)
 async function refreshSyslogClients() {
     const btn = document.getElementById('syslogRefreshBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await loadSyslogDiagnostics();

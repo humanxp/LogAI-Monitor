@@ -371,7 +371,7 @@ async function fetchHistoryStats(seq) {
 // button silently re-fetches and looks unresponsive when nothing changed.
 async function refreshAIHistory() {
     const btn = document.getElementById('refreshAIHistoryBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await fetchAIHistory(historyPage);

@@ -113,7 +113,7 @@ async function fetchUsers() {
 // Refresh with visible feedback (spinner + result count)
 async function refreshUsers() {
     const btn = document.getElementById('refreshUsersBtn');
-    const icon = btn?.querySelector('i');
+    const icon = btn?.querySelector('svg.lx, i');
     if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await fetchUsers();
