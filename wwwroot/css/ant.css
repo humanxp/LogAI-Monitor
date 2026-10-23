@@ -197,18 +197,17 @@ code {
 .sidebar-header .logo,
 .sidebar-header .logo * { color: #fff !important; }
 
-.sidebar-nav { padding: 8px; }
+.sidebar-nav { padding: 6px 8px 8px; }
 
 .nav-section-title {
-  /* 分组标题：原来是 0.7rem(11px) 全大写，太小也难认；
-     这里和菜单项同字号(13px)、加粗、略提高不透明度，靠字重与留白区分层级。 */
+  /* 分组标题：字号与菜单项一致(14px)更易读，上下留白收紧（8/2px）让列表更紧凑。 */
   color: rgba(255, 255, 255, 0.62) !important;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: .04em;
-  padding: 16px 12px 6px;
+  letter-spacing: .03em;
+  padding: 8px 12px 2px;
   text-transform: none;
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .nav-item {
@@ -614,7 +613,7 @@ tbody tr { transition: background .15s; }
 ::-webkit-scrollbar-thumb { background: var(--lm-scroll-thumb); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--lm-ink-3); }
 
-.nav-section { margin-bottom: 4px; }
+.nav-section { margin-bottom: 0; }
 .section-save { margin-top: 8px; }
 .section-save-hint { font-size: 12px; color: var(--lm-ink-3); }
 
