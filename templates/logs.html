@@ -4,11 +4,13 @@
 {% block header_title %}Logs{% endblock %}
 
 {% block content %}
-<!-- Filter Bar -->
+<!-- Filter Bar：Ant Design inline Form（标签在左、控件在右） -->
 <div class="filter-bar">
     <!-- Device filter: a custom dropdown instead of a native <select>, because
          the native popup cannot show per-row hints. Rows show the full
          "name (ip)" and hover shows the larger bubble. -->
+    <div class="ant-form-item">
+    <label class="ant-form-label">主机</label>
     <div class="host-combo" id="hostCombo">
         <button type="button" class="form-control form-select host-combo-toggle" id="filterHostBtn"
                 onclick="toggleHostCombo(event)" aria-haspopup="listbox" aria-expanded="false">
@@ -17,11 +19,14 @@
         </button>
         <div class="host-combo-list" id="hostComboList" role="listbox"></div>
     </div>
+    </div>
     <input type="hidden" id="filterHost" value="" data-kind="host" data-full="">
     <!-- Custom hover bubble for the (shortened) device label: the native title
          tooltip cannot be styled, and this one uses a larger font. -->
     <div id="hostTooltip" class="host-tooltip" role="tooltip"></div>
     
+    <div class="ant-form-item">
+    <label class="ant-form-label">级别</label>
     <select class="form-control form-select" id="filterSeveritySelect" onchange="applyLogFilters()">
         <option value="">All Severities</option>
         <option value="emergency">Emergency</option>
@@ -33,20 +38,26 @@
         <option value="info">Info</option>
         <option value="debug">Debug</option>
     </select>
+    </div>
     
-    <input type="text" class="form-control" id="filterSearch" placeholder="Search logs..." 
+    <div class="ant-form-item ant-form-item-grow">
+    <label class="ant-form-label">关键字</label>
+    <input type="text" class="form-control" id="filterSearch" placeholder="搜索日志内容…"
            onkeyup="if(event.key === 'Enter') applyLogFilters()">
+    </div>
 
-    <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;"
-          title="按日期查看日志（本地日期，含起止当天）">
-        <span style="color: var(--lm-ink-2);">{{ icon("calendar-days")|safe }}</span>
+    <div class="ant-form-item" title="按日期查看日志（本地日期，含起止当天）">
+        <label class="ant-form-label">{{ icon("calendar-days")|safe }} 日期</label>
+        <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;">
         <input type="date" class="form-control date-filter-input" id="filterStartDate"
                onchange="applyLogFilters()" title="起始日期（当天 00:00 起）">
         <span style="color: var(--lm-ink-2);">~</span>
         <input type="date" class="form-control date-filter-input" id="filterEndDate"
                onchange="applyLogFilters()" title="结束日期（当天 23:59 止）">
-    </span>
+        </span>
+    </div>
     
+    <div class="ant-form-item ant-form-actions">
     <button class="btn btn-primary" onclick="applyLogFilters()">
         {{ icon("search")|safe }} Search
     </button>
@@ -58,6 +69,7 @@
     <button class="btn btn-outline" id="clearFiltersBtn" onclick="clearFilters()">
         {{ icon("x")|safe }} Clear
     </button>
+    </div>
 </div>
 
 <div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-accent-soft); border-radius: 4px; font-size: 0.85rem; color: var(--lm-accent);">

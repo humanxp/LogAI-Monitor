@@ -4,39 +4,44 @@
 {% block header_title %}Dashboard{% endblock %}
 
 {% block content %}
-<!-- Stats Grid -->
+<!-- Stats Grid：Ant Design Statistic 风格（标题+趋势在上、数值居中大号、脚注在下） -->
 <div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-icon primary">
-            {{ icon("file-text")|safe }}
+    <div class="ant-stat">
+        <div class="ant-stat-head">
+            <span class="ant-stat-icon">{{ icon("file-text")|safe }}</span>
+            <span class="ant-stat-title">Total Logs</span>
+            <span class="ant-stat-trend" id="totalLogsTrend" title="按最近一次统计间隔估算的增速"></span>
         </div>
-        <div class="stat-value" id="totalLogs">0</div>
-        <div class="stat-label">Total Logs</div>
-        <div class="stat-label" id="logsHotCold" style="color:var(--lm-ink-2);font-size:0.72rem;margin-top:0.15rem;">热 0 · 冷 0</div>
+        <div class="ant-stat-value" id="totalLogs">0</div>
+        <div class="ant-stat-footer" id="logsHotCold">热 0 · 冷 0</div>
     </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon success">
-            {{ icon("clock")|safe }}
+
+    <div class="ant-stat">
+        <div class="ant-stat-head">
+            <span class="ant-stat-icon">{{ icon("clock")|safe }}</span>
+            <span class="ant-stat-title">Logs (Last Hour)</span>
         </div>
-        <div class="stat-value" id="logsLastHour">0</div>
-        <div class="stat-label">Logs (Last Hour)</div>
+        <div class="ant-stat-value" id="logsLastHour">0</div>
+        <div class="ant-stat-footer">最近 1 小时入库</div>
     </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon warning">
-            {{ icon("bell")|safe }}
+
+    <div class="ant-stat">
+        <div class="ant-stat-head">
+            <span class="ant-stat-icon">{{ icon("bell")|safe }}</span>
+            <span class="ant-stat-title">Active Alerts</span>
+            <span class="ant-stat-trend" id="totalAlertsTrend"></span>
         </div>
-        <div class="stat-value" id="totalAlerts">0</div>
-        <div class="stat-label">Active Alerts</div>
+        <div class="ant-stat-value" id="totalAlerts">0</div>
+        <div class="ant-stat-footer">命中过滤规则待确认</div>
     </div>
-    
-    <div class="stat-card">
-        <div class="stat-icon danger">
-            {{ icon("filter")|safe }}
+
+    <div class="ant-stat">
+        <div class="ant-stat-head">
+            <span class="ant-stat-icon">{{ icon("filter")|safe }}</span>
+            <span class="ant-stat-title">Active Filters</span>
         </div>
-        <div class="stat-value" id="totalFilters">0</div>
-        <div class="stat-label">Active Filters</div>
+        <div class="ant-stat-value" id="totalFilters">0</div>
+        <div class="ant-stat-footer">已启用的过滤规则</div>
     </div>
 </div>
 

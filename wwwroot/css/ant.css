@@ -658,3 +658,94 @@ tbody tr { transition: background .15s; }
 
 /* 主内容区滚动条与背景 */
 .page-content { min-height: calc(100vh - var(--ant-header-h)); }
+
+/* ==========================================================================
+   Ant Design 组件补充：Statistic / 内联表单 / 表格增强 / 移动端抽屉
+   ========================================================================== */
+
+/* ---- Statistic 卡片（仪表盘） ---- */
+.ant-stat {
+  background: var(--lm-surface);
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-card);
+  padding: 20px;
+  box-shadow: var(--lm-shadow);
+  transition: box-shadow .2s, border-color .2s;
+}
+.ant-stat:hover { box-shadow: var(--lm-shadow-hover); border-color: var(--lm-line-strong); }
+.ant-stat-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ant-stat-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px;
+  background: var(--lm-accent-soft); color: var(--lm-accent); font-size: 15px;
+}
+.ant-stat-title { font-size: 14px; color: var(--lm-ink-2); }
+.ant-stat-trend {
+  margin-left: auto; font-size: 12px; font-weight: 500;
+  display: inline-flex; align-items: center; gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
+.ant-stat-trend.up { color: var(--lm-success-ink); }
+.ant-stat-trend.down { color: var(--lm-danger-ink); }
+.ant-stat-trend.flat { color: var(--lm-ink-3); }
+.ant-stat-value {
+  font-size: 28px; font-weight: 600; line-height: 1.2;
+  color: var(--lm-ink); font-variant-numeric: tabular-nums;
+}
+.ant-stat-footer { margin-top: 8px; font-size: 12px; color: var(--lm-ink-3); }
+
+/* ---- 内联表单（日志页筛选区） ---- */
+.filter-bar {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 12px 20px; padding: 16px 20px;
+  background: var(--lm-surface);
+  border: 1px solid var(--lm-line);
+  border-radius: var(--lm-radius-card);
+  margin-bottom: 16px;
+}
+.filter-bar .form-control, .filter-bar .form-select { width: auto; min-width: 120px; }
+.filter-bar .date-filter-input { min-width: 140px; }
+.ant-form-item { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ant-form-label {
+  font-size: 14px; color: var(--lm-ink-2); white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.ant-form-item-grow { flex: 1 1 240px; }
+.ant-form-item-grow .form-control { width: 100%; min-width: 0; }
+.ant-form-actions { gap: 8px; margin-left: auto; }
+
+/* ---- 表格增强：斑马纹 + 吸顶表头 + 排序指示 ---- */
+tbody tr:nth-child(even) td { background: var(--lm-surface-2); }
+tbody tr:hover td { background: var(--lm-hover); }
+.table-container { overflow: auto; max-height: 72vh; }
+thead th { position: sticky; top: 0; z-index: 2; }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { background: var(--lm-hover); }
+th.sortable .sort-ind {
+  display: inline-block; margin-left: 4px; vertical-align: -2px;
+  opacity: .25; transition: transform .15s, opacity .15s;
+}
+th.sortable[data-dir="asc"] .sort-ind { opacity: 1; transform: rotate(180deg); }
+th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
+
+/* ---- 移动端：侧栏抽屉 + 遮罩 ---- */
+.sidebar-backdrop {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+.sidebar-backdrop.show { opacity: 1; pointer-events: auto; }
+@media (max-width: 768px) {
+  .sidebar { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35); }
+  .main-content { margin-left: 0; }
+  .page-content { padding: 16px; }
+  .ant-form-actions { margin-left: 0; width: 100%; }
+  .ant-stat-value { font-size: 24px; }
+}
+
+/* flex 子项默认 min-width:auto，会被内容的最小宽度撑破容器：
+   仪表盘的 Token 明细行等 nowrap 内容曾把 .main-content 撑到 1262px，
+   整页横向溢出 72px，右上角用户名被裁掉。显式允许收缩。 */
+.main-content { min-width: 0; }
+.page-content { min-width: 0; }
+.header-actions { min-width: 0; flex-shrink: 0; }

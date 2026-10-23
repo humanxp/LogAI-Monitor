@@ -4,6 +4,28 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 
 ---
 
+## 界面预览
+
+> 全部界面自托管、无外部 CDN：图标为 **Lucide**（83 个 SVG symbol 内联），视觉层为 **Ant Design 5** 令牌与组件规范（原生 CSS），交互为原生 JavaScript，无前端框架、无构建步骤。
+
+| 仪表盘（总览 / 热冷拆分 / 服务状态） | 日志（筛选 + 分页） |
+|---|---|
+| ![仪表盘](docs/screenshots/dashboard.png) | ![日志](docs/screenshots/logs.png) |
+
+| AI 分析历史（耗时 / token / 分级筛选） | 告警（分级卡片 + 可排序表格） |
+|---|---|
+| ![AI 分析历史](docs/screenshots/ai-history.png) | ![告警](docs/screenshots/alerts.png) |
+
+| 设置（按类目分页） | 关于（功能说明分页） |
+|---|---|
+| ![设置](docs/screenshots/settings.png) | ![关于](docs/screenshots/about.png) |
+
+| 登录 |
+|---|
+| ![登录](docs/screenshots/login.png) |
+
+---
+
 ## 功能
 
 | 模块 | 说明 |

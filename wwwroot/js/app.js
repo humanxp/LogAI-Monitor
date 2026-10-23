@@ -210,6 +210,39 @@ async function fetchStats() {
     }
 }
 
+// 统计卡右上角的趋势：用相邻两次 /api/stats 的差值估算。
+// 只显示"变化量/分钟"，避免编造百分比（没有历史基线时百分比没有意义）。
+let _statTrendPrev = null;
+
+function renderStatTrend(el, delta, unit, invert) {
+    if (!el) return;
+    if (!isFinite(delta) || delta === 0) {
+        el.className = 'ant-stat-trend flat';
+        el.textContent = '—';
+        return;
+    }
+    const up = delta > 0;
+    // invert=true 时"涨"是坏事（例如告警数）
+    const good = invert ? !up : up;
+    el.className = 'ant-stat-trend ' + (good ? 'up' : 'down');
+    el.textContent = (up ? '▲ ' : '▼ ') + Math.abs(delta).toLocaleString('en-US') + (unit || '') + '/分';
+}
+
+function updateStatTrends() {
+    const s = state.stats || {};
+    const total = Number(s.total_logs || 0);
+    const alerts = Number(s.unacknowledged_alerts || 0);
+    const now = Date.now();
+    const prev = _statTrendPrev;
+    _statTrendPrev = { t: now, total, alerts };
+    if (!prev) return;                       // 第一次只记录基线
+    const minutes = (now - prev.t) / 60000;
+    if (!(minutes > 0.05)) return;           // 太密不计算，避免抖动
+    const perMin = (v) => Math.round(v / minutes);
+    renderStatTrend(document.getElementById('totalLogsTrend'), perMin(total - prev.total), '');
+    renderStatTrend(document.getElementById('totalAlertsTrend'), perMin(alerts - prev.alerts), '', true);
+}
+
 // Update stats display
 function updateStatsDisplay() {
     const elements = {
@@ -221,6 +254,8 @@ function updateStatsDisplay() {
         'totalSources': state.stats.sources?.length || 0
     };
     
+    updateStatTrends();
+
     for (const [id, value] of Object.entries(elements)) {
         const el = document.getElementById(id);
         if (el) el.textContent = value;
@@ -3539,11 +3574,86 @@ document.addEventListener('keypress', (e) => {
 // Sidebar toggle: narrow (icons only) <-> wide (icons + labels).
 // Below 768px the sidebar is an off-canvas drawer instead, so the same button
 // opens/closes it rather than collapsing it.
+
+// --- 表格排序（当前页） ---------------------------------------------------
+// 后端没有排序参数，所以这里只排"已加载的行"，并明确不跨页——避免给出假的全局序。
+// 表头加了 .sortable 之后点一下 asc / 再点 desc / 第三下恢复原始顺序。
+function decorateSortableHeaders() {
+    document.querySelectorAll('table thead th').forEach((th, idx) => {
+        if (th.classList.contains('sortable') || th.dataset.nosort !== undefined) return;
+        const label = (th.textContent || '').trim();
+        if (!label || /^(操作|actions?)$/i.test(label)) { th.dataset.nosort = '1'; return; }
+        th.classList.add('sortable');
+        th.insertAdjacentHTML('beforeend', '<span class="sort-ind">' + icon('chevron-down') + '</span>');
+        th.dataset.col = String(idx);
+    });
+}
+
+function sortTableByColumn(th) {
+    const table = th.closest('table');
+    const tbody = table && table.querySelector('tbody');
+    const idx = Number(th.dataset.col);
+    if (!tbody || !Number.isInteger(idx)) return;
+    const dir = th.dataset.dir === 'asc' ? 'desc' : (th.dataset.dir === 'desc' ? '' : 'asc');
+    th.parentElement.querySelectorAll('th').forEach(o => { if (o !== th) delete o.dataset.dir; });
+    if (dir) th.dataset.dir = dir; else delete th.dataset.dir;
+
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.forEach((r, i) => { if (r.dataset.origIdx === undefined) r.dataset.origIdx = String(i); });
+    const key = (row) => {
+        const txt = (row.children[idx]?.textContent || '').trim();
+        const num = parseFloat(txt.replace(/[^\d.-]/g, ''));
+        return { txt, num: Number.isFinite(num) && /\d/.test(txt) && !/[a-z]/i.test(txt.replace(/[eE][+-]?\d+/g, '')) ? num : null };
+    };
+    if (!dir) {
+        rows.sort((x, y) => Number(x.dataset.origIdx) - Number(y.dataset.origIdx));
+    } else {
+        const sign = dir === 'asc' ? 1 : -1;
+        rows.sort((x, y) => {
+            const a1 = key(x), b1 = key(y);
+            if (a1.num !== null && b1.num !== null) return (a1.num - b1.num) * sign;
+            return a1.txt.localeCompare(b1.txt, 'zh-Hans-CN') * sign;
+        });
+    }
+    rows.forEach(r => tbody.appendChild(r));
+}
+
+document.addEventListener('click', (e) => {
+    const th = e.target.closest && e.target.closest('th.sortable');
+    if (th) sortTableByColumn(th);
+});
+
+// 表头是动态渲染的：观察 DOM，节流后补标记（幂等，只处理还没标记过的表头）
+let _sortDecorateTimer = null;
+const _sortObserver = new MutationObserver(() => {
+    if (_sortDecorateTimer) return;
+    _sortDecorateTimer = setTimeout(() => { _sortDecorateTimer = null; decorateSortableHeaders(); }, 300);
+});
+document.addEventListener('DOMContentLoaded', () => {
+    decorateSortableHeaders();
+    _sortObserver.observe(document.body, { childList: true, subtree: true });
+});
+
+function syncSidebarBackdrop(show) {
+    let bd = document.querySelector('.sidebar-backdrop');
+    if (!bd) {
+        bd = document.createElement('div');
+        bd.className = 'sidebar-backdrop';
+        bd.addEventListener('click', () => {
+            document.querySelector('.sidebar')?.classList.remove('open');
+            syncSidebarBackdrop(false);
+        });
+        document.body.appendChild(bd);
+    }
+    bd.classList.toggle('show', !!show);
+}
+
 function toggleSidebar() {
     const sidebar = document.querySelector('.sidebar');
     if (!sidebar) return;
     if (window.innerWidth < 768) {
-        sidebar.classList.toggle('open');
+        const opened = sidebar.classList.toggle('open');
+        syncSidebarBackdrop(opened);
         return;
     }
     sidebar.classList.toggle('collapsed');
