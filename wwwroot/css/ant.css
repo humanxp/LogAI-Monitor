@@ -206,11 +206,11 @@ code {
   font-size: 16px;
   font-weight: 600;
   letter-spacing: .03em;
-  padding: 18px 12px 8px;
+  padding: 10px 12px 4px;
   text-transform: none;
   line-height: 1.4;
 }
-.nav-section:first-child .nav-section-title { padding-top: 8px; }
+.nav-section:first-child .nav-section-title { padding-top: 4px; }
 
 /* 菜单项：固定 40px 行高 + 2px 间隙，圆角药丸悬浮；去掉旧样式残留的 3px 左边框
    （那是"左侧竖条"风格留下的，和圆角药丸混在一起会显得错位）。 */
