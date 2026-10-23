@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }} - LogAI Monitor</title>
     <!-- local copy of fontawesome -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lucide.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ant.css') }}">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -116,9 +117,10 @@
     </style>
 </head>
 <body>
+{{ lucide_sprite|safe }}
 <div class="error-container">
     <div class="error-icon">
-        <i class="fas fa-{{ icon | default('exclamation-triangle') }}"></i>
+        {{ icon(icon_name)|safe }}
     </div>
     
     <h1 class="error-title">{{ title }}</h1>
@@ -127,7 +129,7 @@
     
     {% if details %}
     <div class="error-details">
-        <h4><i class="fas fa-wrench"></i> {{ details_title | default('How to fix this') }}</h4>
+        <h4>{{ icon("wrench")|safe }} {{ details_title | default('How to fix this') }}</h4>
         <ul>
             {% for detail in details %}
             <li>{{ detail | safe }}</li>
@@ -138,17 +140,17 @@
     
     {% if error_code %}
     <div class="status-badge offline">
-        <i class="fas fa-bug"></i> Error: {{ error_code }}
+        {{ icon("bug")|safe }} Error: {{ error_code }}
     </div>
     {% endif %}
     
     <div style="margin-top: 2rem;">
         <button onclick="location.reload()" class="btn btn-primary">
-            <i class="fas fa-sync"></i> Retry
+            {{ icon("refresh-cw")|safe }} Retry
         </button>
         {% if show_home_link %}
         <a href="/" class="btn btn-outline">
-            <i class="fas fa-home"></i> Home
+            {{ icon("house")|safe }} Home
         </a>
         {% endif %}
     </div>

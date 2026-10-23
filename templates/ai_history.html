@@ -14,7 +14,7 @@
 <div class="stats-grid" style="margin-bottom: 1.5rem;">
     <div class="stat-card stat-clickable" data-status="" onclick="setHistoryStatusFilter('')" title="显示全部">
         <div class="stat-icon primary">
-            <i class="fas fa-history"></i>
+            {{ icon("history")|safe }}
         </div>
         <div class="stat-info">
             <h3 id="totalAnalyses">0</h3>
@@ -24,7 +24,7 @@
     </div>
     <div class="stat-card stat-clickable" data-status="critical" onclick="setHistoryStatusFilter('critical')" title="只看 critical">
         <div class="stat-icon danger">
-            <i class="fas fa-times-circle"></i>
+            {{ icon("circle-x")|safe }}
         </div>
         <div class="stat-info">
             <h3 id="criticalCount">0</h3>
@@ -33,7 +33,7 @@
     </div>
     <div class="stat-card stat-clickable" data-status="warning" onclick="setHistoryStatusFilter('warning')" title="只看 warning">
         <div class="stat-icon warning">
-            <i class="fas fa-exclamation-triangle"></i>
+            {{ icon("triangle-alert")|safe }}
         </div>
         <div class="stat-info">
             <h3 id="warningCount">0</h3>
@@ -42,7 +42,7 @@
     </div>
     <div class="stat-card stat-clickable" data-status="healthy" onclick="setHistoryStatusFilter('healthy')" title="只看 healthy">
         <div class="stat-icon success">
-            <i class="fas fa-check-circle"></i>
+            {{ icon("circle-check")|safe }}
         </div>
         <div class="stat-info">
             <h3 id="healthyCount">0</h3>
@@ -51,7 +51,7 @@
     </div>
     <div class="stat-card stat-clickable" data-status="other" onclick="setHistoryStatusFilter('other')" title="只看 other">
         <div class="stat-icon">
-            <i class="fas fa-question-circle"></i>
+            {{ icon("circle-help")|safe }}
         </div>
         <div class="stat-info">
             <h3 id="otherCount">0</h3>
@@ -63,17 +63,17 @@
 <!-- Page action: sits directly above the Analysis History card -->
 <div style="display: flex; justify-content: flex-end; margin-bottom: 0.75rem;">
     <button class="btn btn-danger btn-sm" id="clearAllHistoryBtn" onclick="clearAllHistory()">
-        <i class="fas fa-trash-alt"></i> Clear All History
+        {{ icon("trash-2")|safe }} Clear All History
     </button>
 </div>
 
 <!-- History List -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-history"></i> Analysis History</h3>
+        <h3>{{ icon("history")|safe }} Analysis History</h3>
         <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
             <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap; margin-right: 0.25rem;" title="按分析日期查看（本地日期，含起止当天）">
-                <i class="fas fa-calendar-day" style="color: var(--lm-ink-2);"></i>
+                <span style="color: var(--lm-ink-2);">{{ icon("calendar-days")|safe }}</span>
                 <input type="date" class="form-control" id="historyStartDate"
                        style="width: 8.4rem; min-width: 0; padding: 0.25rem 0.3rem;"
                        onchange="historyApplyTimeFilter()" title="起始日期（当天 00:00 起）">
@@ -86,10 +86,10 @@
             </span>
             <div style="display: flex; align-items: center; gap: 0.4rem; margin-right: 0.25rem; flex-wrap: wrap;">
                 <button type="button" class="btn btn-sm btn-outline" id="historyFirstBtn" onclick="historyPageFirst()" disabled title="First page">
-                    <i class="fas fa-angles-left"></i>
+                    {{ icon("chevrons-left")|safe }}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline" id="historyPrevBtn" onclick="historyPagePrev()" disabled title="Previous page">
-                    <i class="fas fa-chevron-left"></i> Prev
+                    {{ icon("chevron-left")|safe }} Prev
                 </button>
                 <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem;">
                     Page
@@ -101,21 +101,21 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-outline" id="historyGoBtn" onclick="historyPageGo()" title="跳转到输入的页码">Go</button>
                 <button type="button" class="btn btn-sm btn-outline" id="historyNextBtn" onclick="historyPageNext()" disabled title="Next page">
-                    Next <i class="fas fa-chevron-right"></i>
+                    Next {{ icon("chevron-right")|safe }}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline" id="historyLastBtn" onclick="historyPageLast()" disabled title="Last page">
-                    <i class="fas fa-angles-right"></i>
+                    {{ icon("chevrons-right")|safe }}
                 </button>
             </div>
             <button class="btn btn-secondary btn-sm" id="refreshAIHistoryBtn" onclick="refreshAIHistory()">
-                <i class="fas fa-sync"></i> Refresh
+                {{ icon("refresh-cw")|safe }} Refresh
             </button>
         </div>
     </div>
     <div class="card-body" style="padding: 0;">
         <div id="historyContainer" class="table-container">
             <div class="empty-state">
-                <i class="fas fa-spinner fa-spin"></i>
+                {{ icon("loader-circle", "lx-spin")|safe }}
                 <h4>Loading history...</h4>
             </div>
         </div>
@@ -133,10 +133,10 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" id="reanalyzeBtn" onclick="reanalyzeHistory()">
-                <i class="fas fa-sync"></i> Re-analyze
+                {{ icon("refresh-cw")|safe }} Re-analyze
             </button>
             <button class="btn btn-danger" id="deleteHistoryBtn" onclick="deleteCurrentHistory()">
-                <i class="fas fa-trash"></i> Delete
+                {{ icon("trash-2")|safe }} Delete
             </button>
             <button class="btn btn-secondary" onclick="closeModal('historyDetailModal')">Close</button>
         </div>
@@ -270,7 +270,7 @@ async function fetchAIHistory(page) {
         console.error('Error fetching AI history:', error);
         document.getElementById('historyContainer').innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-exclamation-triangle"></i>
+                {{ icon("triangle-alert")|safe }}
                 <h4>Error loading history</h4>
             </div>
         `;
@@ -372,7 +372,7 @@ async function fetchHistoryStats(seq) {
 async function refreshAIHistory() {
     const btn = document.getElementById('refreshAIHistoryBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await fetchAIHistory(historyPage);
         showToast('Refresh', `History refreshed - ${historyData.length} shown (${historyTotal} total)`, 'info');
@@ -380,7 +380,7 @@ async function refreshAIHistory() {
         console.error('Error refreshing AI history:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -390,7 +390,7 @@ function renderHistory() {
     if (historyData.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-history"></i>
+                {{ icon("history")|safe }}
                 <h4>No analysis history</h4>
                 <p>AI analyses will appear here after you analyze logs</p>
             </div>
@@ -456,10 +456,10 @@ function renderHistoryRow(entry) {
             </td>
             <td>
                 <button class="btn btn-sm btn-primary" onclick="showHistoryDetail('${entry.id}')">
-                    <i class="fas fa-eye"></i> View
+                    {{ icon("eye")|safe }} View
                 </button>
                 <button class="btn btn-sm btn-danger" onclick="deleteHistory('${entry.id}')">
-                    <i class="fas fa-trash"></i>
+                    {{ icon("trash-2")|safe }}
                 </button>
             </td>
         </tr>
@@ -644,7 +644,7 @@ async function reanalyzeHistory() {
         console.error('Error re-analyzing:', error);
         showToast('Error', 'Re-analysis failed', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-sync"></i> Re-analyze'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '{{ icon("refresh-cw")|safe }} Re-analyze'; }
     }
 }
 
@@ -695,7 +695,7 @@ async function clearAllHistory() {
         console.error('Error clearing history:', error);
         showToast('Error', 'Failed to clear history', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-trash-alt"></i> Clear All History'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '{{ icon("trash-2")|safe }} Clear All History'; }
     }
 }
 

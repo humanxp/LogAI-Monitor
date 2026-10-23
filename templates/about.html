@@ -10,16 +10,16 @@
     .about-tab-panel[hidden] { display: none !important; }
 </style>
 <div class="settings-tabs" id="aboutTabs" style="margin-bottom: 1rem;">
-    <button type="button" class="settings-tab active" data-about-target="overview"><i class="fas fa-circle-info"></i> 概览</button>
-    <button type="button" class="settings-tab" data-about-target="features"><i class="fas fa-list-check"></i> 功能说明</button>
-    <button type="button" class="settings-tab" data-about-target="tech"><i class="fas fa-cogs"></i> 开发技术</button>
-    <button type="button" class="settings-tab" data-about-target="design"><i class="fas fa-drafting-compass"></i> 实现设计</button>
+    <button type="button" class="settings-tab active" data-about-target="overview">{{ icon("info")|safe }} 概览</button>
+    <button type="button" class="settings-tab" data-about-target="features">{{ icon("list-checks")|safe }} 功能说明</button>
+    <button type="button" class="settings-tab" data-about-target="tech">{{ icon("settings-2")|safe }} 开发技术</button>
+    <button type="button" class="settings-tab" data-about-target="design">{{ icon("drafting-compass")|safe }} 实现设计</button>
 </div>
 
 <div class="about-tab-panel" data-about-panel="overview">
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-shield-alt"></i> LogAI Monitor</h3>
+        <h3>{{ icon("shield")|safe }} LogAI Monitor</h3>
     </div>
     <div style="padding: 1.5rem;">
         <div style="text-align: center; padding: 0.7rem 0 1.1rem 0;">
@@ -38,7 +38,7 @@
         </p>
         <div style="margin-top: 1.25rem; padding: 1rem 1.1rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-notice-line); border-radius: 10px;">
             <div style="font-weight: 600; color: var(--lm-accent); margin-bottom: 0.6rem;">
-                <i class="fas fa-route"></i> 数据流一览
+                {{ icon("route")|safe }} 数据流一览
             </div>
             <style>
                 @keyframes lmFlow { to { stroke-dashoffset: -26; } }
@@ -141,18 +141,18 @@
 <div class="about-tab-panel" data-about-panel="features" hidden>
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-list-check"></i> 功能说明</h3>
+        <h3>{{ icon("list-checks")|safe }} 功能说明</h3>
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-satellite-dish" style="color:var(--lm-accent);"></i> 1. 日志采集</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("satellite-dish")|safe }}</span> 1. 日志采集</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>syslog 双协议</b>：UDP 与 TCP 同时监听，接收网络设备、服务器、嵌入式终端通过标准 syslog 发出的日志；对端断线重连、半包与粘包均按行边界正确处理</li>
             <li><b>容器日志</b>：通过 Docker 接口读取运行中容器的 stdout / stderr，无需在容器内安装任何采集代理；支持排除列表，避免把监控系统自身的日志反复采集进来</li>
             <li><b>外部投递</b>：提供带令牌鉴权的日志投递接口，脚本与自动化任务可安全地把日志送进来</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-code" style="color:var(--lm-accent);"></i> 2. 协议解析与规范化</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("code")|safe }}</span> 2. 协议解析与规范化</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>RFC 3164 与 RFC 5424</b> 两种格式，自动识别 PRI 优先级并换算为 facility 与 severity</li>
             <li>抽出<b>主机名、程序名、消息体</b>等字段；对"发送方省略主机名"的常见畸形格式做了保护，不会把程序名误当成主机名</li>
@@ -163,7 +163,7 @@
         <!-- 客户端日志发送格式：主机名必须放在报文头部，否则会被回退成来源 IP -->
         <div style="margin: 0 0 1.4rem 0; padding: .85rem 1.05rem; border-left: 3px solid var(--lm-accent); background: var(--lm-accent-soft); border-radius: 6px;">
             <div style="font-weight: 600; color: var(--lm-ink); margin-bottom: .5rem;">
-                <i class="fas fa-paper-plane" style="color: var(--lm-accent);"></i> 客户端日志发送格式（决定「主机名 ↔ IP」能否对上）
+                <span style="color: var(--lm-accent);">{{ icon("send")|safe }}</span> 客户端日志发送格式（决定「主机名 ↔ IP」能否对上）
             </div>
             <p style="margin: .2rem 0 .45rem; color: var(--lm-ink-2);">
                 采集时<b>来源 IP 总是会被记录</b>（就是发包那台机器的地址）；而<b>主机名只能从报文头部解析</b>。
@@ -202,7 +202,7 @@
             </p>
         </div>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:var(--lm-accent);"></i> 3. 存储与检索</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("database")|safe }}</span> 3. 存储与检索</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>数据存放于 <b>Redis + SQLite</b>：日志时间线 + <b>多维索引</b>（来源 / 主机 / 级别）在 Redis，另有一条"待 AI 分析"队列；<b>冷热分层</b>把超过热窗口（默认 7 天）的日志/分析/告警哈希归档到 SQLite，Redis 只留索引，读取时自动回填；仪表盘 Total Logs 按此显示<b>热/冷拆分</b>（`logs_hot`/`logs_cold`）</li>
             <li><b>保留期可配置</b>（默认 30 天），过期日志由清理任务自动回收，索引同步维护，不会留下空壳；<b>手动清理/按来源删除会同时作用于 Redis 与 SQLite 两个库</b>，不会在冷库里留下看不见却占磁盘的残留</li>
@@ -210,7 +210,7 @@
             <li>日志列表、仪表盘、告警页共用同一份数据，看到的口径始终一致</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-bolt" style="color:var(--lm-accent);"></i> 4. 实时观察</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("zap")|safe }}</span> 4. 实时观察</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>实时推送</b>：新日志、新告警、分析完成、统计变化会即时推送到已打开的页面，<b>无需手动刷新</b></li>
             <li><b>仪表盘</b>：日志总量与速率、级别分布、来源与主机排行、未分析积压、AI 后端与模型状态、最近告警</li>
@@ -218,7 +218,7 @@
             <li><b>异常可见</b>：客户端若出现错误级别日志或长时间静默，会在列表中标出原因</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-filter" style="color:var(--lm-accent);"></i> 5. 过滤与告警</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("filter")|safe }}</span> 5. 过滤与告警</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>四条件组合</b>（全部满足才命中）：级别、来源、消息关键字、<b>正则表达式</b>；过滤器可在页面上增删改，即时生效</li>
             <li>命中即写入<b>告警记录</b>（来源、主机、级别、消息、命中的规则、时间、确认状态等），可在告警页筛选、<b>单条确认 / 全部确认 / 清除已确认</b></li>
@@ -227,7 +227,7 @@
             <li>每条规则可独立决定是否推送 Telegram</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-brain" style="color:var(--lm-accent);"></i> 6. AI 智能分析</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("brain")|safe }}</span> 6. AI 智能分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>批量分析</b>：调度器定期把未分析的日志成批交给大模型，输出<b>整体状态、问题清单、严重问题计数、处置建议、受影响主机</b>，并生成一句话告警摘要</li>
             <li><b>结果分档（4 档）</b>：整体状态归为 <b>critical / warning / healthy / other</b>。与 python-legacy 版一致：<b>纯模型判定</b>——模型判什么就是什么，程序只做同义词归一（critical/error/… → 4 档）；默认模型 <b>Qwen3.5-9B</b>（MoE，快且准），日志按级别排序、带 <code>[SEVERITY]</code> 前缀原样交给模型；「发现的问题 / 处理建议」由模型自己带 <code>[主机名/IP]</code> 前缀（「发现的问题」每条强制带，同一问题跨主机拆条、禁止合并成 Multiple hosts；判为 critical 的那条再加 <code>* </code> 前缀，详情页带 <b style="color:var(--lm-danger-ink);">*</b> 的就是计入"严重问题数"的那条），返回结果原样保留（不去重、不封顶 critical_count）。提示词可在设置页「建议使用模型匹配优化」选（选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化、Gemma-4-12B 短提示词 + 爆破强化 + 数据丢失判据、Gemma-4-e4b 短提示词 + 爆破强化 + 边界校准、Gemma-4-26B-A4B 短提示词 + 爆破强化（实测 27/27）；模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启</li>
@@ -239,7 +239,7 @@
             <li><b>模型评测</b>：设置页的一个类目（仅管理员）。任选多个模型 × 多份评测集（内置 27 例可逐条勾选，或上传自定义 JSON）跑一轮，横向对比档位命中 / critical 召回 / 关键词命中 / 延迟等；<b>成绩按模型持久化</b>（重评同一模型即覆盖旧记录）</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-paper-plane" style="color:var(--lm-accent);"></i> 7. 通知推送</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("send")|safe }}</span> 7. 通知推送</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>总开关</b>：设置页「Enable Telegram notifications」不勾则完全不发（发通知前会检查该开关）</li>
             <li><b>告警推送</b>：命中规则并同时通过<b>级别门限</b>与<b>冷却</b>检查后推送；冷却按「主机 × 规则」独立计时，避免同一问题反复刷屏</li>
@@ -249,14 +249,14 @@
             <li><b>不拖累主链路</b>：推送失败只记录日志，不影响采集与告警落库；通道未配置时告警仍会正常入库</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-users-cog" style="color:var(--lm-accent);"></i> 8. 用户、权限与接口</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("users")|safe }}</span> 8. 用户、权限与接口</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>三级权限</b>：管理员（含用户管理）、操作员（可改过滤器与设置）、只读（仅查看）</li>
             <li><b>认证</b>：口令以强哈希存储，支持在线改密；会话经签名保护，登录后按角色显示可用功能</li>
             <li><b>REST 接口</b>：查询与写入成对提供，便于接入外部系统；写入接口需登录，日志投递接口用独立令牌</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-heartbeat" style="color:var(--lm-accent);"></i> 9. 运维与可靠性</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("heart-pulse")|safe }}</span> 9. 运维与可靠性</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>定时任务</b>：AI 分析、过期清理、健康巡检、容器日志轮询，各自独立，单个任务异常不影响其它任务，失败原因可在日志中看到</li>
             <li><b>健康巡检与告警</b>：定时体检三类问题——<b>未分析积压</b>超过阈值、<b>AI 后端不可达</b>、<b>自动分析疑似停止</b>；命中即推送，<b>每个条件各自冷却</b>（不会因为刚发过积压告警就吞掉 AI 宕机告警），问题恢复后再补一条恢复通知，并可每日汇总一次体检结果</li>
@@ -267,7 +267,7 @@
             <li><b>设置改动即时生效</b>：分析间隔、告警最低推送级别、巡检周期与阈值、Telegram 总开关都在使用时重新读取，改完无需重启；AI 端点/协议在启动时读取，模型名与提示词模式每轮分析重读（改完下一轮生效、无需重启）。设置页各类目底部各有一个「保存本类目」，只提交本类目字段，避免改一处却把其他类目界面上显示的值一起写回去</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-desktop" style="color:var(--lm-accent);"></i> 10. 界面</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("monitor")|safe }}</span> 10. 界面</h4>
         <ul style="margin: 0;">
             <li><b>11 个主页面 + 登录页</b>：仪表盘、日志、分析、分析历史、告警、过滤器、连接客户端、Docker 容器、设置（内含管理员专用的「模型评测」类目）、用户、关于；另有登录页与 404 页</li>
             <li><b>设置页按类目分页</b>：顶部切换按键（Telegram / AI 分析 / 🧪 模型评测 / UI 主题 / 通用设置 / 日志数据库 / 配置指南），一次只显示一个类目；每个类目底部有独立的<b>「保存本类目」</b>，只提交本类目的字段，不会因为改一处而把其他类目界面上显示的值一起写回去</li>
@@ -282,26 +282,26 @@
 <div class="about-tab-panel" data-about-panel="tech" hidden>
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-cogs"></i> 开发技术 <span style="font-weight: 400; color: var(--lm-ink-2); font-size: 0.85rem;">Technology Stack</span></h3>
+        <h3>{{ icon("settings-2")|safe }} 开发技术 <span style="font-weight: 400; color: var(--lm-ink-2); font-size: 0.85rem;">Technology Stack</span></h3>
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
         <p style="color: var(--lm-ink-2); margin-top: 0;">这个项目用以下技术开发：</p>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-code" style="color:#512BD4;"></i> 语言与框架</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:#512BD4;">{{ icon("code")|safe }}</span> 语言与框架</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>C# / .NET 8</b> —— 后端服务、REST 接口与页面渲染，使用 ASP.NET Core minimal API</li>
             <li><b>模板渲染</b> —— 自实现的模板引擎，服务端渲染 HTML（extends / block / if / for），页面不依赖前端框架</li>
             <li><b>前端</b> —— 原生 JavaScript + CSS（无打包构建步骤），图标使用 Font Awesome</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-database" style="color:#DC382D;"></i> 数据存储</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:#DC382D;">{{ icon("database")|safe }}</span> 数据存储</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>Redis 7</b> —— 主数据存储；.NET 客户端库为 <b>StackExchange.Redis</b></li>
             <li><b>SQLite</b>（<b>Microsoft.Data.Sqlite</b>）—— 冷热分层的冷存储：超过热窗口的日志/分析/告警哈希归档到磁盘，Redis 只保留 ZSET 索引</li>
             <li>数据结构选型：有序集合承载时间线与多维索引（分数=写入时间，便于范围检索与排序），哈希承载日志 / 告警 / 用户 / 客户端档案，集合承载各类注册表，日志按保留期设置 TTL</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-plug" style="color:var(--lm-accent);"></i> 采集与外部集成</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("plug")|safe }}</span> 采集与外部集成</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li><b>syslog UDP/TCP</b> —— 基于 .NET Socket 自行实现接收循环，内置 RFC 3164 / RFC 5424 解析与编码回退</li>
             <li><b>容器日志</b> —— 直接调用 <b>Docker Engine API</b>（只读挂载 unix socket，不引入 Docker SDK）</li>
@@ -310,13 +310,13 @@
             <li><b>实时推送</b> —— 自实现 <b>Engine.IO v4</b> 长轮询（含会话鉴权与多包帧封装）</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-lock" style="color:#c62828;"></i> 安全</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:#c62828;">{{ icon("lock")|safe }}</span> 安全</h4>
         <ul style="margin: 0 0 1rem 0;">
             <li>口令 —— <b>scrypt</b> 强哈希，校验参数从存储值自身读取</li>
             <li>会话 —— <b>HMAC 签名 Cookie</b>；写类接口要求已登录，日志投递使用独立令牌</li>
         </ul>
 
-        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><i class="fas fa-cube" style="color:#2496ED;"></i> 部署与依赖</h4>
+        <h4 style="margin: 0.9rem 0 0.4rem 0; color: var(--lm-ink);"><span style="color:#2496ED;">{{ icon("box")|safe }}</span> 部署与依赖</h4>
         <ul style="margin: 0;">
             <li><b>Docker 多阶段构建</b> —— SDK 镜像编译，产物拷贝到 SDK 运行时镜像（含 nuget.config 国内镜像，做离线构建兜底）</li>
             <li>对外端口 <b>5059</b>（HTTP）、<b>514/UDP</b> 与 <b>515/TCP</b>（syslog）；容器时区 Asia/Shanghai</li>
@@ -329,11 +329,11 @@
 <div class="about-tab-panel" data-about-panel="design" hidden>
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-drafting-compass"></i> 实现设计说明</h3>
+        <h3>{{ icon("drafting-compass")|safe }} 实现设计说明</h3>
     </div>
     <div style="padding: 1.5rem; line-height: 1.9;">
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-sitemap" style="color:var(--lm-accent);"></i> 数据模型</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("network")|safe }}</span> 数据模型</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>时间线</b>用有序集合承载，分数取写入时间，因此"某时间段内最新的 N 条"由存储层直接定位，翻页不随数据量退化</li>
             <li><b>多维索引</b>（来源 / 主机 / 级别）同样以写入时间为分数，级别与时间范围可以天然叠加；三张索引与时间线在同一批写入中同步维护</li>
@@ -344,14 +344,14 @@
             <li><b>客户端档案</b>：每个发送方保留一份汇总记录（首见/末见、主机名、消息与错误计数、最近错误）另配两个附属结构——协议集合与<b>最近一分钟的滑动窗口</b>，因此"当前速率"与"是否停滞"都能即时算出，无需扫描历史</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-tachometer-alt" style="color:var(--lm-accent);"></i> 写入路径</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("gauge")|safe }}</span> 写入路径</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>单条日志的落库是<b>一次管道往返</b>：哈希本体 + 时间线 + 待分析队列 + 三张索引 + 客户端档案一并提交，避免逐键往返把接收线程拖住</li>
             <li>接收与存储解耦：接收循环只负责收包与解析，落库交由存储层；<b>落库变慢不会导致丢包</b>，但队列有界，溢出计数（dropped）会被记录下来而不是静默丢弃</li>
             <li>接收器对外暴露收发与丢弃计数，便于判断"是没收到"还是"收到了但没落库"——这是排查采集问题最常用的两个数字</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-broadcast-tower" style="color:var(--lm-accent);"></i> 实时通道</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("radio-tower")|safe }}</span> 实时通道</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>采用长轮询：客户端一次请求挂起等待，有事件立即返回，无事件则超时后重连；<b>连接建立时校验会话</b>，未登录的连接会被明确拒绝</li>
             <li>事件模型固定为四类：新日志、新告警、分析完成、统计变化；<b>统计推送做了节流</b>（每 2 秒最多一次），否则高日志量下会变成推送给客户端的主要负担</li>
@@ -359,7 +359,7 @@
             <li>运维动作（确认告警、删除日志、改设置）同样触发统计推送，使多个已打开页面的状态保持一致</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-gavel" style="color:var(--lm-accent);"></i> 告警判定</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("gavel")|safe }}</span> 告警判定</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>规则条件是<b>合取</b>且<b>短路求值</b>：级别、来源、关键字、正则依次判断，前面的条件不满足就不做后面的开销（正则是其中最贵的）</li>
             <li>正则<b>预编译并复用</b>；规则里的正则若非法，该条规则视为不匹配而<b>不抛异常</b>——一条写错的正则不应该让整条采集链路中断</li>
@@ -367,7 +367,7 @@
             <li>落库与推送分离：告警先落库（保证可追溯），推送结果不影响告警记录；单条规则可独立关闭推送，或设为"任意级别"以旁路级别门限</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-robot" style="color:var(--lm-accent);"></i> AI 分析</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("bot")|safe }}</span> AI 分析</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>批次大小<b>有界</b>，避免一次把过多日志塞进上下文；提示词明确要求模型输出固定键集的结构化结果，界面对这些键有确定的呈现方式</li>
             <li>模型返回要经过<b>提取与修复</b>：从可能夹带说明文字的输出中取出 JSON，修复被截断或括号不配对的片段；仍不合法时做一次<b>纠正性重试</b></li>
@@ -377,7 +377,7 @@
             <li><b>用量可观测</b>：Service Status 卡片显示 <b>AI token 用量</b>（总量 / 今日 / 近 7 天 / 提示 / 生成 / 缓存命中 / 调用次数 / 均次，含复位清零按键）与 <b>Telegram 发送量</b>（已发送 / 今日 / 失败，含复位按键），每次调用与发送后累计</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-stream" style="color:var(--lm-accent);"></i> 调度</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("waves")|safe }}</span> 调度</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li>分析、清理、健康巡检、容器轮询四类任务<b>彼此独立</b>：单个任务抛异常只记录该任务的失败原因与调用栈，不影响其它任务继续运行</li>
             <li>任务间隔<b>不缓存</b>：每次调度重新读取设置，因此改完间隔无需重启即生效</li>
@@ -385,7 +385,7 @@
             <li>巡检告警的冷却状态保存在进程内，因此重启会重置冷却；对体检类告警而言这是有意的取舍——宁可重启后多提醒一次，也不要静默漏报</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-shield-halved" style="color:var(--lm-accent);"></i> 安全与防护</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("shield-check")|safe }}</span> 安全与防护</h4>
         <ul style="margin: 0 0 1.4rem 0;">
             <li><b>写入护栏</b>：连接到生产库时，后台写入组件默认拒绝启动并明确提示，避免"只想读一下"却改了数据；接管时需显式放行</li>
             <li>口令以<b>强哈希</b>存储，校验参数从存储值自身读取，因此参数的调整不会让既有口令失效</li>
@@ -393,7 +393,7 @@
             <li>容器日志采集仅以<b>只读</b>方式访问 Docker 接口，并支持排除列表，避免采集监控系统自身而形成回环</li>
         </ul>
 
-        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><i class="fas fa-vial" style="color:var(--lm-accent);"></i> 测试与验证设计</h4>
+        <h4 style="margin: 0 0 0.5rem 0; color: var(--lm-ink);"><span style="color:var(--lm-accent);">{{ icon("test-tube")|safe }}</span> 测试与验证设计</h4>
         <ul style="margin: 0 0 0;">
             <li><b>21 套自测</b>覆盖解析、过滤、告警、会话、通知模板、提示词、调度、清理、健康巡检、客户端跟踪、Docker 采集等模块，可用命令行单独运行</li>
             <li>自测的<b>退出码就是结论</b>：成功 0、有断言失败 1、拒绝在 0 号库上执行写类用例 2。因此可直接串进脚本或 CI；模型等外部依赖不可用时，自测会报告失败而<b>不是崩溃</b>，以免把"环境没配好"误判成"功能坏了"</li>

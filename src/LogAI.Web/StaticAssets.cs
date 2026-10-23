@@ -36,6 +36,21 @@ internal static class StaticAssets
     /// </summary>
     public static readonly string Version = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
 
+    /// <summary>
+    /// Lucide 图标精灵：内联进每个页面（同文档 &lt;use&gt; 兼容性最好，图标还能
+    /// 直接继承 currentColor 跟着主题变色）。只读一次，模板渲染时取这个字符串。
+    /// </summary>
+    private static string? _lucideSprite;
+    public static string LucideSprite => _lucideSprite ??= LoadSprite();
+
+    private static string LoadSprite()
+    {
+        string root = Path.Combine(AppContext.BaseDirectory, "wwwroot");
+        if (!Directory.Exists(root)) root = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+        string file = Path.Combine(root, "vendor", "lucide", "sprite.svg");
+        return File.Exists(file) ? File.ReadAllText(file) : "<!-- lucide sprite missing -->";
+    }
+
     public static void Map(WebApplication app)
     {
         string root = Path.Combine(AppContext.BaseDirectory, "wwwroot");

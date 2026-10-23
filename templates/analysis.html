@@ -25,15 +25,15 @@
         <!-- Batch Analysis -->
         <div class="card analysis-card">
             <div class="card-header">
-                <h3><i class="fas fa-brain"></i> Log Analysis</h3>
+                <h3>{{ icon("brain")|safe }} Log Analysis</h3>
                 <button class="btn btn-primary" id="analyzeAllBtn" onclick="analyzeAllLogs()">
-                    <i class="fas fa-brain"></i> Analyze Recent Logs
+                    {{ icon("brain")|safe }} Analyze Recent Logs
                 </button>
             </div>
             <div class="card-body analysis-result-body">
                 <div id="analysisResult">
                     <div class="empty-state">
-                        <i class="fas fa-chart-line"></i>
+                        {{ icon("chart-line")|safe }}
                         <h4>No analysis yet</h4>
                         <p>Click "Analyze Recent Logs" to run AI analysis on recent log entries</p>
                     </div>
@@ -44,7 +44,7 @@
         <!-- Recent Logs for Context -->
         <div class="card recent-logs-card">
             <div class="card-header recent-logs-header">
-                <h3 style="margin:0;"><i class="fas fa-file-alt"></i> Recent Logs</h3>
+                <h3 style="margin:0;">{{ icon("file-text")|safe }} Recent Logs</h3>
                 <label class="form-check" style="margin-left: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
                     <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
                     <span style="font-size: 0.9rem;">Hide repeated</span>
@@ -55,7 +55,7 @@
             <div class="card-body recent-logs-body">
                 <div id="logsContainer" class="logs-list">
                     <div class="empty-state">
-                        <i class="fas fa-file-alt"></i>
+                        {{ icon("file-text")|safe }}
                         <h4>Loading logs...</h4>
                     </div>
                 </div>
@@ -67,7 +67,7 @@
     <div class="analysis-right-column">
         <div class="card chat-card">
             <div class="card-header">
-                <h3><i class="fas fa-comments"></i> AI Chat Assistant</h3>
+                <h3>{{ icon("messages-square")|safe }} AI Chat Assistant</h3>
             </div>
             <div class="card-body chat-card-body">
                 <div class="chat-container-fixed">
@@ -83,7 +83,7 @@
                         <input type="text" class="form-control" id="chatInput" 
                                placeholder="Ask about your logs..." onkeypress="if(event.key==='Enter')sendChatMessage()">
                         <button class="btn btn-primary" onclick="sendChatMessage()">
-                            <i class="fas fa-paper-plane"></i>
+                            {{ icon("send")|safe }}
                         </button>
                     </div>
                 </div>
@@ -95,7 +95,7 @@
 <!-- Info Card (Hidden by default) -->
 <div id="analysisInfoCard" class="card analysis-info" style="display: none; margin-top: 1.5rem;">
     <div class="card-header" style="display:flex; align-items:center; gap:0.5rem;">
-        <h3 style="margin:0;"><i class="fas fa-info-circle"></i> AI-Powered Analysis</h3>
+        <h3 style="margin:0;">{{ icon("info")|safe }} AI-Powered Analysis</h3>
         <div style="margin-left:auto; display:flex; gap:0.5rem; align-items:center;">
             <span id="analysisInfoStatus" style="color:var(--lm-ink-2); font-size:0.9rem;">Info</span>
             <button id="closeAnalysisInfoBtn" class="btn btn-outline">Hide</button>
@@ -125,7 +125,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
-                <i class="fas fa-brain"></i> Analyze with AI
+                {{ icon("brain")|safe }} Analyze with AI
             </button>
             <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
         </div>

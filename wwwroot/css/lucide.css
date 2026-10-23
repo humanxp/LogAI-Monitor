@@ -1,0 +1,11 @@
+/* Lucide 图标基础样式：尺寸跟随字号，颜色跟随文字（stroke=currentColor） */
+.lx {
+    width: 1em;
+    height: 1em;
+    display: inline-block;
+    vertical-align: -0.125em;
+    flex: none;
+}
+.lx-spin { animation: lx-spin 1s linear infinite; }
+@keyframes lx-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lx-spin { animation: none; } }

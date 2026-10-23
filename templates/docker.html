@@ -7,7 +7,7 @@
 <!-- Actions Bar -->
 <div style="margin-bottom: 1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
     <button class="btn btn-outline" id="refreshContainersBtn" onclick="refreshContainers()">
-        <i class="fas fa-sync"></i> Refresh
+        {{ icon("refresh-cw")|safe }} Refresh
     </button>
     <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
         <input type="checkbox" class="form-check-input" id="dockerEnabledToggle" checked onchange="toggleDockerCollection(this.checked)">
@@ -18,7 +18,7 @@
 <!-- Containers List -->
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3><i class="fab fa-docker"></i> Containers</h3>
+        <h3>{{ icon("container")|safe }} Containers</h3>
         <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
             <input type="checkbox" class="form-check-input" id="excludeAllCheckbox" onchange="toggleExcludeAll(this.checked)">
             <span style="font-size: 0.9rem;">Exclude All from Logging</span>
@@ -27,7 +27,7 @@
     <div class="card-body" style="padding: 0;">
         <div id="containersContainer" class="table-container">
             <div class="empty-state">
-                <i class="fab fa-docker"></i>
+                {{ icon("container")|safe }}
                 <h4>Loading containers...</h4>
             </div>
         </div>
@@ -37,7 +37,7 @@
 <!-- Info Card -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-info-circle"></i> Docker Log Collection</h3>
+        <h3>{{ icon("info")|safe }} Docker Log Collection</h3>
     </div>
     <div class="card-body">
         <p>LogAI Monitor automatically collects logs from all running Docker containers. Features:</p>
@@ -61,7 +61,7 @@
         <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
             <div id="containerLogsContent">
                 <div class="empty-state">
-                    <i class="fas fa-spinner fa-spin"></i>
+                    {{ icon("loader-circle", "lx-spin")|safe }}
                     <h4>Loading logs...</h4>
                 </div>
             </div>

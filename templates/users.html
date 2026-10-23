@@ -7,22 +7,22 @@
 <!-- Actions Bar -->
 <div style="margin-bottom: 1rem; display: flex; gap: 1rem;">
     <button class="btn btn-primary" onclick="showAddUserModal()">
-        <i class="fas fa-user-plus"></i> Add User
+        {{ icon("user-plus")|safe }} Add User
     </button>
     <button class="btn btn-outline" id="refreshUsersBtn" onclick="refreshUsers()">
-        <i class="fas fa-sync"></i> Refresh
+        {{ icon("refresh-cw")|safe }} Refresh
     </button>
 </div>
 
 <!-- Users Table -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-users"></i> Users</h3>
+        <h3>{{ icon("users")|safe }} Users</h3>
     </div>
     <div class="card-body" style="padding: 0;">
         <div id="usersContainer" class="table-container">
             <div class="empty-state">
-                <i class="fas fa-users"></i>
+                {{ icon("users")|safe }}
                 <h4>Loading users...</h4>
             </div>
         </div>
@@ -66,7 +66,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" onclick="saveUser()">
-                <i class="fas fa-save"></i> Save
+                {{ icon("save")|safe }} Save
             </button>
             <button class="btn btn-secondary" onclick="closeModal('userModal')">Cancel</button>
         </div>
@@ -76,7 +76,7 @@
 <!-- Info Card -->
 <div class="card" style="margin-top: 1.5rem;">
     <div class="card-header">
-        <h3><i class="fas fa-info-circle"></i> User Roles</h3>
+        <h3>{{ icon("info")|safe }} User Roles</h3>
     </div>
     <div class="card-body">
         <ul>
@@ -114,7 +114,7 @@ async function fetchUsers() {
 async function refreshUsers() {
     const btn = document.getElementById('refreshUsersBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await fetchUsers();
         showToast('Refresh', `Users refreshed - ${users.length} user(s)`, 'info');
@@ -122,7 +122,7 @@ async function refreshUsers() {
         console.error('Error refreshing users:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -133,7 +133,7 @@ function renderUsers() {
     if (users.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-users"></i>
+                {{ icon("users")|safe }}
                 <h4>No users found</h4>
             </div>
         `;
@@ -155,7 +155,7 @@ function renderUsers() {
                 ${users.map(user => `
                     <tr>
                         <td>
-                            <i class="fas fa-user" style="margin-right: 0.5rem; color: ${user.role === 'admin' ? '#e74c3c' : '#3498db'};"></i>
+                            <span style="margin-right: 0.5rem; color: ${user.role === 'admin' ? '#e74c3c' : '#3498db'};">{{ icon("user")|safe }}</span>
                             ${escapeHtml(user.username)}
                         </td>
                         <td>${escapeHtml(user.email || '-')}</td>
@@ -167,10 +167,10 @@ function renderUsers() {
                         <td>${user.created_at ? new Date(user.created_at).toLocaleDateString() : '-'}</td>
                         <td>
                             <button class="btn btn-sm btn-outline" onclick="editUser('${user.id}')">
-                                <i class="fas fa-edit"></i>
+                                {{ icon("pencil")|safe }}
                             </button>
                             <button class="btn btn-sm btn-danger" onclick="deleteUser('${user.id}', '${escapeHtml(user.username)}')">
-                                <i class="fas fa-trash"></i>
+                                {{ icon("trash-2")|safe }}
                             </button>
                         </td>
                     </tr>

@@ -331,7 +331,7 @@ app.MapFallback((HttpContext http, JinjaEngine engine) =>
     var scope = BuildScope("Page not found", http.Request.Path, CookiesOf(http), IsSignedIn(http));
     scope.Set("error_code", 404);
     scope.Set("details_title", "How to fix this");
-    scope.Set("icon", "exclamation-triangle");
+    scope.Set("icon_name", "circle-alert");
     scope.Set("icon_color", "#dc3545");
     scope.Set("details", new List<object?>());
     return Results.Content(engine.Render("error.html", scope), "text/html; charset=utf-8", statusCode: 404);
@@ -890,6 +890,18 @@ static Scope BuildScope(string title, string path, Dictionary<string, string> co
             ? "/static/" + ValueFormatter.ToText(call.Get("filename")) + "?v=" + StaticAssets.Version
             : "/" + endpoint;
     }));
+
+    // Lucide 图标（替代 Font Awesome）：模板里写 {{ icon("bell")|safe }}，
+    // 第二个参数可加 class（例如 "lx-spin" 表示旋转）。
+    scope.Set("icon", (Func<CallArgs, object?>)(call =>
+    {
+        string name = ValueFormatter.ToText(call[0]);
+        string extra = ValueFormatter.ToText(call[1]);
+        return "<svg class=\"lx" + (extra.Length > 0 ? " " + extra : "")
+             + "\" aria-hidden=\"true\"><use href=\"#lx-" + name + "\"></use></svg>";
+    }));
+    // 整份图标精灵，base.html 末尾内联一次。
+    scope.Set("lucide_sprite", StaticAssets.LucideSprite);
 
     return scope;
 }

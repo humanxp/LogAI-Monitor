@@ -15,11 +15,13 @@
             document.documentElement.classList.add('theme-' + theme);
         })();
     </script>
-    <!-- fontawesome is bundled locally to avoid CDN delays when offline -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    <!-- 图标：Lucide（离线内置 SVG 精灵，见 body 起始处；替代原 Font Awesome） -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lucide.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- 视觉叠加层：必须在 style.css 之后加载 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/refined.css') }}">
+    <!-- Ant Design 视觉层：令牌 + 组件样式，必须最后加载 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ant.css') }}">
     <script>
     // Suppress the sidebar width animation while the initial collapsed state is
     // applied; app.js re-enables it right after the first paint, so navigating
@@ -28,12 +30,14 @@
     </script>
 </head>
 <body>
+<!-- Lucide 图标精灵：同文档 <use> 引用，图标继承 currentColor 跟着主题走 -->
+{{ lucide_sprite|safe }}
     <div class="app-container">
         <!-- Sidebar Navigation (oVirt/Foreman style) -->
         <nav class="sidebar{% if request.cookies.get('sidebar_collapsed') == '1' %} collapsed{% endif %}">
             <div class="sidebar-header">
                 <div class="logo">
-                    <i class="fas fa-shield-alt"></i>
+                    {{ icon("shield")|safe }}
                 </div>
                 <h1>LogAI Monitor</h1>
             </div>
@@ -44,15 +48,15 @@
                     <div class="nav-section-title">Main</div>
                 </div>
                 <a href="/" class="nav-item {% if request.path == '/' %}active{% endif %}">
-                    <i class="fas fa-tachometer-alt"></i>
+                    {{ icon("gauge")|safe }}
                     <span>Dashboard</span>
                 </a>
                 <a href="/logs" class="nav-item {% if request.path == '/logs' %}active{% endif %}">
-                    <i class="fas fa-file-alt"></i>
+                    {{ icon("file-text")|safe }}
                     <span>Logs</span>
                 </a>
                 <a href="/clients" class="nav-item {% if request.path == '/clients' %}active{% endif %}">
-                    <i class="fas fa-ethernet"></i>
+                    {{ icon("cable")|safe }}
                     <span>Connected Clients</span>
                 </a>
                 
@@ -61,7 +65,7 @@
                     <div class="nav-section-title">Infrastructure</div>
                 </div>
                 <a href="/docker" class="nav-item {% if request.path == '/docker' %}active{% endif %}">
-                    <i class="fab fa-docker"></i>
+                    {{ icon("container")|safe }}
                     <span>Docker Containers</span>
                 </a>
                 
@@ -70,11 +74,11 @@
                     <div class="nav-section-title">Monitoring</div>
                 </div>
                 <a href="/filters" class="nav-item {% if request.path == '/filters' %}active{% endif %}">
-                    <i class="fas fa-filter"></i>
+                    {{ icon("filter")|safe }}
                     <span>Filters</span>
                 </a>
                 <a href="/alerts" class="nav-item {% if request.path == '/alerts' %}active{% endif %}">
-                    <i class="fas fa-bell"></i>
+                    {{ icon("bell")|safe }}
                     <span>Alerts</span>
                     <span class="badge" id="alertBadge" style="display: none;">0</span>
                 </a>
@@ -84,11 +88,11 @@
                     <div class="nav-section-title">AI Analysis</div>
                 </div>
                 <a href="/analysis" class="nav-item {% if request.path == '/analysis' %}active{% endif %}">
-                    <i class="fas fa-brain"></i>
+                    {{ icon("brain")|safe }}
                     <span>AI Analysis</span>
                 </a>
                 <a href="/ai-history" class="nav-item {% if request.path == '/ai-history' %}active{% endif %}">
-                    <i class="fas fa-history"></i>
+                    {{ icon("history")|safe }}
                     <span>AI History</span>
                 </a>
                 
@@ -97,17 +101,17 @@
                     <div class="nav-section-title">Administration</div>
                 </div>
                 <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
-                    <i class="fas fa-cog"></i>
+                    {{ icon("settings")|safe }}
                     <span>Settings</span>
                 </a>
                 {% if current_user.is_admin %}
                 <a href="/users" class="nav-item {% if request.path == '/users' %}active{% endif %}">
-                    <i class="fas fa-users"></i>
+                    {{ icon("users")|safe }}
                     <span>Users</span>
                 </a>
                 {% endif %}
                 <a href="/about" class="nav-item {% if request.path == '/about' %}active{% endif %}">
-                    <i class="fas fa-info-circle"></i>
+                    {{ icon("info")|safe }}
                     <span>About</span>
                 </a>
             </div>
@@ -116,10 +120,10 @@
             <div class="sidebar-footer" style="padding: 1rem; border-top: 1px solid rgba(255,255,255,0.1); margin-top: auto;">
                 <div class="sidebar-user-row" style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem;">
                     <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar (Ctrl+B)">
-                        <i class="fas fa-chevron-left"></i>
+                        {{ icon("chevron-left")|safe }}
                     </button>
                     <div class="sidebar-user-info" style="display: flex; align-items: center; gap: 0.75rem; color: rgba(255,255,255,0.8); flex: 1;">
-                        <i class="fas fa-user-circle" style="font-size: 1.5rem;"></i>
+                        <span style="font-size: 1.5rem;">{{ icon("circle-user")|safe }}</span>
                         <div>
                             <div style="font-weight: 500;">{{ current_user.username }}</div>
                             <div style="font-size: 0.75rem; opacity: 0.7;">{{ current_user.role }}</div>
@@ -127,7 +131,7 @@
                     </div>
                 </div>
                 <a href="/logout" class="btn btn-outline" style="width: 100%; text-align: center; color: white; border-color: rgba(255,255,255,0.3);">
-                    <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+                    {{ icon("log-out")|safe }} <span>Logout</span>
                 </a>
             </div>
         </nav>
@@ -159,7 +163,7 @@
             <header class="main-header">
                 <div class="header-left">
                     <button class="header-sidebar-toggle" onclick="toggleSidebar()" title="收缩 / 展开侧栏 (Ctrl+B)" aria-label="Toggle sidebar">
-                        <i class="fas fa-bars"></i>
+                        {{ icon("menu")|safe }}
                     </button>
                     <h2 class="header-title">{% block header_title %}Dashboard{% endblock %}</h2>
                 </div>
@@ -171,11 +175,11 @@
                     </div>
                     <div class="user-menu" style="display: flex; align-items: center; gap: 0.75rem; margin-left: 1rem;">
                         <button id="themeToggleBtn" onclick="toggleTheme()" title="Toggle theme" style="background: none; border: 1px solid var(--lm-line-strong); border-radius: 6px; padding: 0.35rem 0.6rem; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; color: var(--lm-ink-2); transition: all 0.2s;">
-                            <i id="themeToggleIcon" class="fas fa-moon"></i>
+                            <span id="themeToggleIcon">{{ icon("moon")|safe }}</span>
                             <span id="themeToggleLabel">Theme</span>
                         </button>
                         <span style="color: var(--lm-ink-2);">
-                            <i class="fas fa-user"></i> {{ current_user.username }}
+                            {{ icon("user")|safe }} {{ current_user.username }}
                         </span>
                     </div>
                 </div>
@@ -194,6 +198,7 @@
     <!-- Scripts -->
     <!-- socket.io client is served locally to remove external dependency -->
     <script src="{{ url_for('static', filename='vendor/socket.io/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/icons.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>

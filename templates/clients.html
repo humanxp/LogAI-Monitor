@@ -7,24 +7,24 @@
 <!-- Syslog Receiver Status -->
 <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
-        <h3><i class="fas fa-stethoscope"></i> Syslog Receiver Status</h3>
+        <h3>{{ icon("stethoscope")|safe }} Syslog Receiver Status</h3>
         <div>
             <button type="button" class="btn btn-outline btn-sm" id="syslogTestBtn" onclick="sendTestSyslog()" title="Send a test syslog message">
-                <i class="fas fa-paper-plane"></i> Send Test
+                {{ icon("send")|safe }} Send Test
             </button>
             <button type="button" class="btn btn-outline btn-sm" id="syslogRefreshBtn" onclick="refreshSyslogClients()" title="Refresh diagnostics">
-                <i class="fas fa-sync"></i> Refresh
+                {{ icon("refresh-cw")|safe }} Refresh
             </button>
         </div>
     </div>
     <div class="card-body">
         <div id="syslogDiagnosticsLoading" style="text-align: center; padding: 2rem;">
-            <i class="fas fa-spinner fa-spin"></i> Loading diagnostics...
+            {{ icon("loader-circle", "lx-spin")|safe }} Loading diagnostics...
         </div>
         <div id="syslogDiagnosticsContent" style="display: none;">
             <!-- Port Conflict Warning -->
             <div id="portConflictWarning" class="alert alert-warning" style="display: none; margin-bottom: 1rem; padding: 1rem;">
-                <i class="fas fa-exclamation-triangle" style="color: var(--lm-warn-ink);"></i>
+                <span style="color: var(--lm-warn-ink);">{{ icon("triangle-alert")|safe }}</span>
                 <strong>Port Conflict Detected!</strong>
                 <span id="portConflictMessage"></span>
                 <br><small>请检查是否有其它进程占用 514/UDP 或 515/TCP（可用 <code>ss -lunp</code> 查看）</small>
@@ -63,9 +63,9 @@
             </div>
             
             <!-- Client List -->
-            <h4 style="margin-bottom: 1rem;"><i class="fas fa-server"></i> Connected Clients</h4>
+            <h4 style="margin-bottom: 1rem;">{{ icon("server")|safe }} Connected Clients</h4>
             <div id="noClientsMessage" style="display: none; text-align: center; padding: 2rem; color: var(--lm-ink-2);">
-                <i class="fas fa-inbox" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+                <span style="font-size: 2rem; margin-bottom: 0.5rem;">{{ icon("inbox")|safe }}</span>
                 <p>No syslog clients have connected yet.</p>
                 <small>Configure your servers to send syslogs to this instance.</small>
             </div>
@@ -90,7 +90,7 @@
             </div>
         </div>
         <div id="syslogDiagnosticsError" style="display: none; text-align: center; padding: 2rem; color: var(--lm-danger-ink);">
-            <i class="fas fa-exclamation-triangle" style="font-size: 2rem; margin-bottom: 0.5rem;"></i>
+            <span style="font-size: 2rem; margin-bottom: 0.5rem;">{{ icon("triangle-alert")|safe }}</span>
             <p id="syslogDiagnosticsErrorMsg">Failed to load diagnostics</p>
         </div>
     </div>
@@ -103,7 +103,7 @@
 async function refreshSyslogClients() {
     const btn = document.getElementById('syslogRefreshBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         await loadSyslogDiagnostics();
         const n = document.getElementById('totalClients')?.textContent || '0';
@@ -112,7 +112,7 @@ async function refreshSyslogClients() {
         console.error('Error refreshing clients:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 

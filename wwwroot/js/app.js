@@ -48,8 +48,8 @@ function applyTheme(theme) {
 // Available themes cycle order
 const THEMES = ['default', 'night'];
 const THEME_META = {
-    default: { icon: 'fa-moon', label: '默认', title: '切换到晚上模式' },
-    night:   { icon: 'fa-sun',  label: '晚上', title: '切换到默认模式' }
+    default: { icon: 'moon', label: '默认', title: '切换到晚上模式' },
+    night:   { icon: 'sun',  label: '晚上', title: '切换到默认模式' }
 };
 
 function toggleTheme() {
@@ -68,7 +68,7 @@ function updateThemeToggleBtn(theme) {
     const meta = THEME_META[theme] || THEME_META['default'];
     // Swap icon
     if (icon) {
-        icon.className = `fas ${meta.icon}`;
+        setIcon(icon, meta.icon);
     }
     if (label) label.textContent = meta.label;
     btn.title = meta.title;
@@ -305,7 +305,7 @@ function updateTelegramUsage() {
 // 复位清零：清掉累计与所有日用量（管理员限定，不可撤销）。
 async function resetTokenUsage() {
     const btn = document.getElementById('resetTokenUsageBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清零中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '' + icon('loader-circle', 'lx-spin') + ' 清零中...'; }
     try {
         const response = await fetch('/api/ai-usage/reset', { method: 'POST' });
         if (response.ok) {
@@ -321,14 +321,14 @@ async function resetTokenUsage() {
         console.error('Error resetting token usage:', error);
         showToast('Error', '清零失败', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 复位'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '' + icon('rotate-ccw') + ' 复位'; }
     }
 }
 
 // Telegram 发送量复位清零（管理员限定，不可撤销）。
 async function resetTelegramUsage() {
     const btn = document.getElementById('resetTelegramUsageBtn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 清零中...'; }
+    if (btn) { btn.disabled = true; btn.innerHTML = '' + icon('loader-circle', 'lx-spin') + ' 清零中...'; }
     try {
         const response = await fetch('/api/telegram-usage/reset', { method: 'POST' });
         if (response.ok) {
@@ -344,7 +344,7 @@ async function resetTelegramUsage() {
         console.error('Error resetting telegram usage:', error);
         showToast('Error', '清零失败', 'error');
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-left"></i> 复位'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '' + icon('rotate-ccw') + ' 复位'; }
     }
 }
 
@@ -727,7 +727,7 @@ function renderLogs() {
     if (state.logs.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-file-alt"></i>
+                ${icon('file-text')}
                 <h4>No logs found</h4>
                 <p>Logs will appear here when received from rsyslog or Docker</p>
             </div>
@@ -944,7 +944,7 @@ function renderFilters() {
     if (state.filters.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-filter"></i>
+                ${icon('filter')}
                 <h4>No filters created</h4>
                 <p>Create filters to monitor specific log patterns and receive alerts</p>
             </div>
@@ -978,10 +978,10 @@ function renderFilters() {
                         </td>
                         <td>
                             <button class="btn btn-sm btn-outline" onclick="editFilter('${filter.id}')">
-                                <i class="fas fa-edit"></i>
+                                ${icon('pencil')}
                             </button>
                             <button class="btn btn-sm btn-danger" onclick="deleteFilter('${filter.id}')">
-                                <i class="fas fa-trash"></i>
+                                ${icon('trash-2')}
                             </button>
                         </td>
                     </tr>
@@ -1189,11 +1189,11 @@ function renderAlertsPager() {
         <div class="pager-buttons">
             <button type="button" class="btn btn-outline btn-sm" ${hasPrev ? '' : 'disabled'}
                     onclick="goToAlertsPage(-1)">
-                <i class="fas fa-chevron-left"></i> 上一页
+                ${icon('chevron-left')} 上一页
             </button>
             <button type="button" class="btn btn-outline btn-sm" ${hasNext ? '' : 'disabled'}
                     onclick="goToAlertsPage(1)">
-                下一页 <i class="fas fa-chevron-right"></i>
+                下一页 ${icon('chevron-right')}
             </button>
         </div>
     `;
@@ -1210,7 +1210,7 @@ function goToAlertsPage(delta) {
 async function refreshAlerts() {
     const btn = document.getElementById('refreshAlertsBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const alerts = await fetchAlerts() || [];
         fetchAlertStats();
@@ -1219,7 +1219,7 @@ async function refreshAlerts() {
         console.error('Error refreshing alerts:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -1242,7 +1242,7 @@ function renderAlerts() {
     if (state.alerts.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fas fa-bell"></i>
+                ${icon('bell')}
                 <h4>No alerts</h4>
                 <p>Alerts will appear here when filters match incoming logs</p>
             </div>
@@ -1276,11 +1276,11 @@ function renderAlerts() {
                         <td>${alert.acknowledged ? '✓ Acknowledged' : '⚠ New'}</td>
                         <td>
                             <button class="btn btn-sm btn-outline" onclick="showAlertDetail('${alert.id}')" title="查看告警详情">
-                                <i class="fas fa-info-circle"></i> Details
+                                ${icon('info')} Details
                             </button>
                             ${!alert.acknowledged ? `
                                 <button class="btn btn-sm btn-success" onclick="acknowledgeAlert('${alert.id}')" title="标记为已确认">
-                                    <i class="fas fa-check"></i> Ack
+                                    ${icon('check')} Ack
                                 </button>
                             ` : ''}
                         </td>
@@ -1321,11 +1321,11 @@ function showAlertDetail(alertId) {
     if (footer) {
         footer.innerHTML =
             `<button type="button" class="btn btn-primary" id="alertAiBtn" onclick="analyzeAlertFromDetail('${alert.id}')">
-                 <i class="fas fa-robot"></i> AI 分析
+                 ${icon('bot')} AI 分析
              </button>` +
             (!alert.acknowledged
                 ? `<button type="button" class="btn btn-success" onclick="acknowledgeAlertFromDetail('${alert.id}')">
-                       <i class="fas fa-check"></i> Acknowledge
+                       ${icon('check')} Acknowledge
                    </button>`
                 : '') +
             `<button type="button" class="btn btn-secondary" onclick="closeModal('alertDetailModal')">Close</button>`;
@@ -1347,12 +1347,12 @@ async function analyzeAlertFromDetail(alertId) {
         if (!btn) return;
         btn.disabled = busy;
         btn.innerHTML = busy
-            ? '<i class="fas fa-spinner fa-spin"></i> 分析中…'
-            : '<i class="fas fa-robot"></i> AI 分析';
+            ? '' + icon('loader-circle', 'lx-spin') + ' 分析中…'
+            : '' + icon('bot') + ' AI 分析';
     };
     setBusy(true);
     box.innerHTML = '<div style="margin-top:.6rem; color:var(--lm-ink-2); font-size:.9rem;">'
-        + '<i class="fas fa-spinner fa-spin"></i> 正在调用 AI 分析该日志，请稍候…</div>';
+        + '' + icon('loader-circle', 'lx-spin') + ' 正在调用 AI 分析该日志，请稍候…</div>';
 
     const post = (payload) => fetch('/api/ollama/analyze', {
         method: 'POST',
@@ -1402,7 +1402,7 @@ function renderAiAnalysisBox(box, analysis, opts) {
     box.innerHTML = `
         <div style="margin-top:.75rem; border-top:1px solid var(--lm-line); padding-top:.6rem;">
             <div style="font-weight:600; margin-bottom:.4rem;">
-                <i class="fas fa-robot"></i> AI 分析结果
+                ${icon('bot')} AI 分析结果
                 <span style="font-weight:400; color:var(--lm-ink-3); font-size:.8rem;">${escapeHtml(opts.note || '（已写入 AI History）')}</span>
             </div>
             <div style="margin-bottom:.4rem;">状态：${severityBadge(status)}</div>
@@ -1522,7 +1522,7 @@ async function fetchContainers() {
 async function refreshContainers() {
     const btn = document.getElementById('refreshContainersBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const containers = await fetchContainers() || [];
         const rows = document.querySelectorAll('#containersContainer tbody tr').length;
@@ -1531,7 +1531,7 @@ async function refreshContainers() {
         console.error('Error refreshing containers:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -1612,7 +1612,7 @@ function renderContainers(containers, excludedContainers = []) {
     if (containers.length === 0) {
         container.innerHTML = `
             <div class="empty-state">
-                <i class="fab fa-docker"></i>
+                ${icon('container')}
                 <h4>No Docker containers</h4>
                 <p>Docker containers will appear here when detected</p>
             </div>
@@ -1650,7 +1650,7 @@ function renderContainers(containers, excludedContainers = []) {
                         </td>
                         <td>
                             <button class="btn btn-sm btn-outline" onclick="showContainerLogs('${c.id}', '${escapeHtml(c.name)}')">
-                                <i class="fas fa-file-alt"></i> Logs
+                                ${icon('file-text')} Logs
                             </button>
                         </td>
                     </tr>
@@ -1983,7 +1983,7 @@ async function analyzeLog() {
         console.error('Error analyzing log:', error);
         showToast('Error', 'AI 分析失败', 'error');
     } finally {
-        btn.innerHTML = '<i class="fas fa-brain"></i> AI 分析';
+        btn.innerHTML = '' + icon('brain') + ' AI 分析';
         btn.disabled = false;
     }
 }
@@ -2014,7 +2014,7 @@ async function analyzeAllLogs() {
         console.error('Error analyzing logs:', error);
         showToast('Error', 'Failed to analyze logs', 'error');
     } finally {
-        btn.innerHTML = '<i class="fas fa-brain"></i> Analyze Recent Logs';
+        btn.innerHTML = '' + icon('brain') + ' Analyze Recent Logs';
         btn.disabled = false;
     }
 }
@@ -2035,7 +2035,7 @@ function updateAnalysisDisplay(analysis) {
         
         ${analysis.affected_hosts?.length > 0 ? `
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-server"></i> 受影响主机</h4>
+            <h4>${icon('server')} 受影响主机</h4>
             <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
                 ${analysis.affected_hosts.map(host => `<span class="badge" style="background: var(--lm-nav-active-bg); color: white; padding: 0.3rem 0.6rem; border-radius: 4px;">${escapeHtml(host)}</span>`).join('')}
             </div>
@@ -2043,7 +2043,7 @@ function updateAnalysisDisplay(analysis) {
         ` : ''}
         
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-exclamation-triangle"></i> 发现的问题（${analysis.critical_count || 0} 个严重）</h4>
+            <h4>${icon('triangle-alert')} 发现的问题（${analysis.critical_count || 0} 个严重）</h4>
             ${analysis.issues_found?.length > 0 ? `
                 <ul>
                     ${analysis.issues_found.map(issue => `<li>${fmtMarked(issue)}</li>`).join('')}
@@ -2052,7 +2052,7 @@ function updateAnalysisDisplay(analysis) {
         </div>
         
         <div style="margin-top: 1rem;">
-            <h4><i class="fas fa-lightbulb"></i> 处理建议</h4>
+            <h4>${icon('lightbulb')} 处理建议</h4>
             ${analysis.recommendations?.length > 0 ? `
                 <ul>
                     ${analysis.recommendations.map(rec => `<li>${fmtMarked(rec)}</li>`).join('')}
@@ -2270,7 +2270,7 @@ async function testTelegram() {
         console.error('Error testing Telegram:', error);
         showToast('Error', 'Failed to test Telegram connection', 'error');
     } finally {
-        btn.innerHTML = '<i class="fab fa-telegram"></i> Test Connection';
+        btn.innerHTML = '' + icon('send') + ' Test Connection';
         btn.disabled = false;
     }
 }
@@ -2359,8 +2359,8 @@ async function loadSyslogDiagnostics() {
             tbodyEl.innerHTML = data.clients.map((client, idx) => {
                 const statusClass = client.status === 'active' ? 'success' : 
                                    client.status === 'idle' ? 'warning' : 'error';
-                const statusIcon = client.status === 'active' ? 'check-circle' : 
-                                  client.status === 'idle' ? 'clock' : 'exclamation-circle';
+                const statusIcon = client.status === 'active' ? 'circle-check' : 
+                                  client.status === 'idle' ? 'clock' : 'circle-alert';
                 
                 const protocols = client.protocols.join(', ');
                 const lastActivity = formatTimeAgo(client.seconds_since_last);
@@ -2373,7 +2373,7 @@ async function loadSyslogDiagnostics() {
                         <td style="text-align: center; color: var(--lm-ink-2);">${idx + 1}</td>
                         <td>
                             <span class="status-indicator ${statusClass}">
-                                <i class="fas fa-${statusIcon}"></i> ${client.status}
+                                ${icon(statusIcon)} ${client.status}
                             </span>
                         </td>
                         <td>
@@ -2387,7 +2387,7 @@ async function loadSyslogDiagnostics() {
                         <td>${issues}</td>
                         <td>
                             <button class="btn btn-sm btn-danger" onclick="deleteHostAndLogs('${client.ip}', ${client.message_count})" title="永久删除该主机及其全部日志">
-                                <i class="fas fa-trash"></i>
+                                ${icon('trash-2')}
                             </button>
                         </td>
                     </tr>
@@ -2548,7 +2548,7 @@ async function loadOllamaModels(customHost = null, force = false) {
 async function refreshOllamaModels() {
     const btn = document.getElementById('ollamaRefreshBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const data = await loadOllamaModels(null, true);
         const n = (data.models || []).length;
@@ -2561,7 +2561,7 @@ async function refreshOllamaModels() {
         console.error('Error refreshing AI models:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -2741,7 +2741,7 @@ async function loadBenchCorpora(selectNew = false) {
         </label>`).join('');
 
     const customRows = custom.map(c => {
-        const del = `<button type="button" class="btn btn-outline btn-sm" onclick="deleteBenchCorpus('${c.id}')" title="删除该评测集" style="padding:0 0.45rem;line-height:1.4;"><i class="fas fa-trash"></i></button>`;
+        const del = `<button type="button" class="btn btn-outline btn-sm" onclick="deleteBenchCorpus('${c.id}')" title="删除该评测集" style="padding:0 0.45rem;line-height:1.4;">${icon('trash-2')}</button>`;
         return `<label style="display:inline-flex;align-items:center;gap:0.4rem;cursor:pointer;margin:0;font-weight:normal;">
             <input type="checkbox" value="${escapeHtml(c.id)}" ${onCustom(c.id) ? 'checked' : ''}>
             <span>${escapeHtml(c.name)}（${c.case_count} 例）</span>${del}
@@ -2895,7 +2895,7 @@ function renderBenchResults(list, isHistory = false) {
         ? `历史成绩（${list.length} 个模型，重评同一模型即覆盖旧记录）`
         : `对比（${list.length} 个模型，高亮为档位命中最高者）`;
     const clearBtn = isHistory
-        ? `<button type="button" class="btn btn-outline btn-sm" onclick="clearBenchHistory()" style="margin-left:0.75rem;"><i class="fas fa-trash"></i> 清空历史</button>`
+        ? `<button type="button" class="btn btn-outline btn-sm" onclick="clearBenchHistory()" style="margin-left:0.75rem;">${icon('trash-2')} 清空历史</button>`
         : '';
     const timeTh = isHistory ? '<th>评测时间</th>' : '';
     el.innerHTML = `
@@ -3146,7 +3146,7 @@ function _selectedHostKind() {
 async function refreshLogs() {
     const btn = document.getElementById('refreshLogsBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         const host = document.getElementById('filterHost')?.value || '';
         const hostKind = _selectedHostKind();
@@ -3178,7 +3178,7 @@ async function refreshLogs() {
         console.error('Error refreshing logs:', error);
         showToast('Refresh', 'Refresh failed: ' + (error.message || error), 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-sync'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'refresh-cw'); }
     }
 }
 
@@ -3186,7 +3186,7 @@ async function refreshLogs() {
 async function clearFilters() {
     const btn = document.getElementById('clearFiltersBtn');
     const icon = btn?.querySelector('i');
-    if (btn) { btn.disabled = true; if (icon) icon.className = 'fas fa-spinner fa-spin'; }
+    if (btn) { btn.disabled = true; if (icon) setIcon(icon, 'loader-circle', 'lx-spin'); }
     try {
         // Reset dropdowns and search
         const hostEl = document.getElementById('filterHost');
@@ -3228,7 +3228,7 @@ async function clearFilters() {
         console.error('Error clearing filters:', error);
         showToast('Clear', 'Failed to clear filters', 'error');
     } finally {
-        if (btn) { btn.disabled = false; if (icon) icon.className = 'fas fa-times'; }
+        if (btn) { btn.disabled = false; if (icon) setIcon(icon, 'x'); }
     }
 }
 
@@ -3693,7 +3693,7 @@ function showShortcutsHelp() {
         modal.innerHTML = `
             <div class="shortcuts-content">
                 <div class="shortcuts-header">
-                    <h3><i class="fas fa-keyboard"></i> Keyboard Shortcuts</h3>
+                    <h3>" + icon('keyboard') + " Keyboard Shortcuts</h3>
                     <button onclick="document.getElementById('shortcutsModal').style.display='none'" class="close-btn">&times;</button>
                 </div>
                 <div class="shortcuts-body" style="display: flex; gap: 2rem;">

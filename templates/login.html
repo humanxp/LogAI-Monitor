@@ -13,11 +13,11 @@
             document.documentElement.classList.add('theme-' + theme);
         })();
     </script>
-    <!-- local fontawesome copy for offline use -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/lucide.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <!-- 视觉叠加层：与其它页面一致地加载，令输入框/按钮继承同一套主题令牌 -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/refined.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/ant.css') }}">
 
     <style>
         body {
@@ -203,7 +203,7 @@
     <div class="login-container">
         <div class="login-header">
             <div class="logo">
-                <i class="fas fa-shield-alt"></i>
+                {{ icon("shield")|safe }}
             </div>
             <h1>LogAI Monitor</h1>
             <p>AI-Powered Log Monitoring</p>
@@ -225,7 +225,7 @@
             <div class="form-group">
                 <label for="username">Username</label>
                 <div class="input-icon">
-                    <i class="fas fa-user"></i>
+                    {{ icon("user")|safe }}
                     <input type="text" id="username" name="username" placeholder="Enter your username" required autofocus>
                 </div>
             </div>
@@ -233,7 +233,7 @@
             <div class="form-group">
                 <label for="password">Password</label>
                 <div class="input-icon">
-                    <i class="fas fa-lock"></i>
+                    {{ icon("lock")|safe }}
                     <input type="password" id="password" name="password" placeholder="Enter your password" required>
                 </div>
             </div>
@@ -244,7 +244,7 @@
             </div>
             
             <button type="submit" class="btn-login">
-                <i class="fas fa-sign-in-alt"></i> Sign In
+                {{ icon("log-in")|safe }} Sign In
             </button>
         </form>
     </div>

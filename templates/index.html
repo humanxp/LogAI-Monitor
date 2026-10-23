@@ -8,7 +8,7 @@
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon primary">
-            <i class="fas fa-file-alt"></i>
+            {{ icon("file-text")|safe }}
         </div>
         <div class="stat-value" id="totalLogs">0</div>
         <div class="stat-label">Total Logs</div>
@@ -17,7 +17,7 @@
     
     <div class="stat-card">
         <div class="stat-icon success">
-            <i class="fas fa-clock"></i>
+            {{ icon("clock")|safe }}
         </div>
         <div class="stat-value" id="logsLastHour">0</div>
         <div class="stat-label">Logs (Last Hour)</div>
@@ -25,7 +25,7 @@
     
     <div class="stat-card">
         <div class="stat-icon warning">
-            <i class="fas fa-bell"></i>
+            {{ icon("bell")|safe }}
         </div>
         <div class="stat-value" id="totalAlerts">0</div>
         <div class="stat-label">Active Alerts</div>
@@ -33,7 +33,7 @@
     
     <div class="stat-card">
         <div class="stat-icon danger">
-            <i class="fas fa-filter"></i>
+            {{ icon("filter")|safe }}
         </div>
         <div class="stat-value" id="totalFilters">0</div>
         <div class="stat-label">Active Filters</div>
@@ -43,7 +43,7 @@
 <!-- Service Status -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-server"></i> Service Status</h3>
+        <h3>{{ icon("server")|safe }} Service Status</h3>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
@@ -61,7 +61,7 @@
              强制单行：字段用细分隔线串起来，窄屏改为横向滚动而不是换行。 -->
         <div class="token-usage" id="aiTokenUsage">
             <div class="token-usage-head">
-                <i class="fas fa-coins"></i>
+                {{ icon("coins")|safe }}
                 <span class="token-usage-title">AI Token 用量（百万）</span>
                 <div class="token-usage-items">
                     <span class="tu"><i>总用量</i><b id="aiTokensTotal">—</b></span>
@@ -75,7 +75,7 @@
                 </div>
                 <button type="button" class="btn btn-outline btn-sm" id="resetTokenUsageBtn"
                         onclick="resetTokenUsage()" title="清零累计与所有日用量，不可撤销">
-                    <i class="fas fa-rotate-left"></i> 复位
+                    {{ icon("rotate-ccw")|safe }} 复位
                 </button>
             </div>
         </div>
@@ -83,7 +83,7 @@
         <!-- Telegram 发送量：字段来自 /api/stats 的 telegram_sent*（每次发送后累计） -->
         <div class="token-usage" id="telegramUsage">
             <div class="token-usage-head">
-                <i class="fab fa-telegram"></i>
+                {{ icon("send")|safe }}
                 <span class="token-usage-title">Telegram 推送</span>
                 <div class="token-usage-items">
                     <span class="tu"><i>已发送</i><b id="telegramSent">—</b></span>
@@ -94,7 +94,7 @@
                 </div>
                 <button type="button" class="btn btn-outline btn-sm" id="resetTelegramUsageBtn"
                         onclick="resetTelegramUsage()" title="清零累计与所有日计数，不可撤销">
-                    <i class="fas fa-rotate-left"></i> 复位
+                    {{ icon("rotate-ccw")|safe }} 复位
                 </button>
             </div>
         </div>
@@ -104,7 +104,7 @@
 <!-- Recent Logs -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-stream"></i> Recent Logs</h3>
+        <h3>{{ icon("waves")|safe }} Recent Logs</h3>
         <div style="display: flex; align-items: center; gap: 1rem;">
             <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                 <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
@@ -116,7 +116,7 @@
     <div class="card-body" style="padding: 0;">
         <div id="logsContainer" class="table-container">
             <div class="empty-state">
-                <i class="fas fa-file-alt"></i>
+                {{ icon("file-text")|safe }}
                 <h4>Loading logs...</h4>
             </div>
         </div>
@@ -126,13 +126,13 @@
 <!-- Recent Alerts -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-exclamation-triangle"></i> Recent Alerts</h3>
+        <h3>{{ icon("triangle-alert")|safe }} Recent Alerts</h3>
         <a href="/alerts" class="btn btn-outline btn-sm">View All</a>
     </div>
     <div class="card-body" style="padding: 0;">
         <div id="alertsContainer" class="table-container">
             <div class="empty-state">
-                <i class="fas fa-bell"></i>
+                {{ icon("bell")|safe }}
                 <h4>Loading alerts...</h4>
             </div>
         </div>
@@ -150,7 +150,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
-                <i class="fas fa-brain"></i> Analyze with AI
+                {{ icon("brain")|safe }} Analyze with AI
             </button>
             <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
         </div>

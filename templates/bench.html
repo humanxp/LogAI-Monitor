@@ -17,7 +17,7 @@
 </style>
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-flask"></i> 用内置/自定义语料给模型打分</h3>
+        <h3>{{ icon("flask-conical")|safe }} 用内置/自定义语料给模型打分</h3>
     </div>
     <div class="card-body">
         <p style="margin-top:0;color:var(--lm-ink-2);">评测只调用 AI 端点（与定时分析同一条提示词/解析/归类路径），不改日志、不改数据。一次只跑一个，避免和每 2 分钟的生产分析抢端点。</p>
@@ -47,10 +47,10 @@
 
         <div class="form-group" style="display:flex;gap:0.75rem;align-items:center;">
             <button type="button" class="btn btn-primary" id="benchStartBtn" onclick="startBench()">
-                <i class="fas fa-flask"></i> 开始评测
+                {{ icon("flask-conical")|safe }} 开始评测
             </button>
             <button type="button" class="btn btn-outline" onclick="refreshBenchModels()">
-                <i class="fas fa-sync"></i> 刷新模型列表
+                {{ icon("refresh-cw")|safe }} 刷新模型列表
             </button>
         </div>
 
@@ -59,7 +59,7 @@
             <div style="display:flex;gap:0.75rem;align-items:center;">
                 <input type="file" id="benchCorpusFile" accept="application/json,.json" style="flex:1;">
                 <button type="button" class="btn btn-outline" onclick="uploadBenchCorpus()">
-                    <i class="fas fa-upload"></i> 上传
+                    {{ icon("upload")|safe }} 上传
                 </button>
             </div>
             <details style="margin-top:0.5rem;">

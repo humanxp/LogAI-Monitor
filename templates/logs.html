@@ -13,7 +13,7 @@
         <button type="button" class="form-control form-select host-combo-toggle" id="filterHostBtn"
                 onclick="toggleHostCombo(event)" aria-haspopup="listbox" aria-expanded="false">
             <span id="filterHostText">All Hosts</span>
-            <i class="fas fa-caret-down" style="opacity: 0.6;"></i>
+            <span style="opacity: 0.6;">{{ icon("chevron-down")|safe }}</span>
         </button>
         <div class="host-combo-list" id="hostComboList" role="listbox"></div>
     </div>
@@ -39,7 +39,7 @@
 
     <span style="display: flex; align-items: center; gap: 0.3rem; white-space: nowrap;"
           title="按日期查看日志（本地日期，含起止当天）">
-        <i class="fas fa-calendar-day" style="color: var(--lm-ink-2);"></i>
+        <span style="color: var(--lm-ink-2);">{{ icon("calendar-days")|safe }}</span>
         <input type="date" class="form-control date-filter-input" id="filterStartDate"
                onchange="applyLogFilters()" title="起始日期（当天 00:00 起）">
         <span style="color: var(--lm-ink-2);">~</span>
@@ -48,27 +48,27 @@
     </span>
     
     <button class="btn btn-primary" onclick="applyLogFilters()">
-        <i class="fas fa-search"></i> Search
+        {{ icon("search")|safe }} Search
     </button>
     
     <button class="btn btn-outline" id="refreshLogsBtn" onclick="refreshLogs()">
-        <i class="fas fa-sync"></i> Refresh
+        {{ icon("refresh-cw")|safe }} Refresh
     </button>
     
     <button class="btn btn-outline" id="clearFiltersBtn" onclick="clearFilters()">
-        <i class="fas fa-times"></i> Clear
+        {{ icon("x")|safe }} Clear
     </button>
 </div>
 
 <div id="timeFilterHint" style="display: none; margin: 0 0 1rem; padding: 0.4rem 0.75rem; background: var(--lm-accent-soft); border: 1px solid var(--lm-accent-soft); border-radius: 4px; font-size: 0.85rem; color: var(--lm-accent);">
-    <i class="fas fa-calendar-day"></i> 日期过滤：<b id="timeFilterRange"></b>
+    {{ icon("calendar-days")|safe }} 日期过滤：<b id="timeFilterRange"></b>
     <button type="button" class="btn btn-sm btn-outline" style="margin-left: 0.5rem;" onclick="clearTimeFilter()">清除</button>
 </div>
 
 <!-- Logs Table -->
 <div class="card">
     <div class="card-header">
-        <h3><i class="fas fa-file-alt"></i> Log Entries</h3>
+        <h3>{{ icon("file-text")|safe }} Log Entries</h3>
         <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
             <label class="form-check" style="margin: 0; display: flex; align-items: center; gap: 0.5rem;">
                 <input type="checkbox" class="form-check-input" id="hideDuplicates" onchange="renderLogs()">
@@ -77,10 +77,10 @@
             <span><span id="logCount">0</span> logs shown</span>
             <div style="display: flex; align-items: center; gap: 0.4rem; margin-left: auto; flex-wrap: wrap;">
                 <button type="button" class="btn btn-sm btn-outline" id="firstLogPageBtn" onclick="logPageFirst()" disabled title="First page">
-                    <i class="fas fa-angles-left"></i>
+                    {{ icon("chevrons-left")|safe }}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline" id="prevLogPageBtn" onclick="logPagePrev()" disabled title="Previous page">
-                    <i class="fas fa-chevron-left"></i> Prev
+                    {{ icon("chevron-left")|safe }} Prev
                 </button>
                 <span style="display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; font-size: 0.9rem;">
                     Page
@@ -92,21 +92,21 @@
                 </span>
                 <button type="button" class="btn btn-sm btn-outline" id="goLogPageBtn" onclick="logPageGo()" title="跳转到输入的页码">Go</button>
                 <button type="button" class="btn btn-sm btn-outline" id="nextLogPageBtn" onclick="logPageNext()" disabled title="Next page">
-                    Next <i class="fas fa-chevron-right"></i>
+                    Next {{ icon("chevron-right")|safe }}
                 </button>
                 <button type="button" class="btn btn-sm btn-outline" id="lastLogPageBtn" onclick="logPageLast()" disabled title="Last page">
-                    <i class="fas fa-angles-right"></i>
+                    {{ icon("chevrons-right")|safe }}
                 </button>
             </div>
         </div>
     </div>
     <div class="card-body" style="padding: 0;">
         <div id="hideRepeatsHint" style="display: none; padding: 0.25rem 0.75rem; background: var(--lm-warn-bg); color: var(--lm-warn-ink); font-size: 0.75rem; border-bottom: 1px solid var(--lm-warn-line);">
-            <i class="fas fa-info-circle"></i> “Hide repeated” 开启中，重复消息已合并；如需每页查看原始 100 条，请取消勾选。
+            {{ icon("info")|safe }} “Hide repeated” 开启中，重复消息已合并；如需每页查看原始 100 条，请取消勾选。
         </div>
         <div id="logsContainer" style="max-height: 70vh; overflow-y: auto;">
             <div class="empty-state">
-                <i class="fas fa-file-alt"></i>
+                {{ icon("file-text")|safe }}
                 <h4>Loading logs...</h4>
             </div>
         </div>
@@ -124,7 +124,7 @@
         </div>
         <div class="modal-footer">
             <button class="btn btn-primary" id="analyzeLogBtn" onclick="analyzeLog()">
-                <i class="fas fa-brain"></i> AI 分析
+                {{ icon("brain")|safe }} AI 分析
             </button>
             <button class="btn btn-secondary" onclick="closeModal('logDetailModal')">Close</button>
         </div>
