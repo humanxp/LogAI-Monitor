@@ -866,3 +866,16 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
   .filter-bar .date-filter-input { min-width: 0; flex: 1 1 0; width: auto; }
   .ant-form-item[title] > span { flex: 1 1 auto; min-width: 0; }
 }
+
+/* 徽标可读性：12px 偏小，"受影响主机" 这类主机名一长就吃力。
+   统一放大到 13px 并加中等字重（移动端 12px）。 */
+.badge, .severity-badge, .tag {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 22px;
+  height: 24px;
+}
+.badge-primary { background: var(--lm-info-bg); border-color: var(--lm-info-line); color: var(--lm-info-ink); }
+@media (max-width: 768px) {
+  .badge, .severity-badge { font-size: 12px; height: 22px; line-height: 20px; }
+}
