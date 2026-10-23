@@ -2368,8 +2368,8 @@ async function loadSyslogDiagnostics() {
         // Show port status with bound indicator
         const udpStatus = data.udp_bound ? '✓' : '✗';
         const tcpStatus = data.tcp_bound ? '✓' : '✗';
-        document.getElementById('udpPort').innerHTML = `${data.udp_port || '--'} <small style="color: ${data.udp_bound ? '#28a745' : '#dc3545'};">${udpStatus}</small>`;
-        document.getElementById('tcpPort').innerHTML = `${data.tcp_port || '--'} <small style="color: ${data.tcp_bound ? '#28a745' : '#dc3545'};">${tcpStatus}</small>`;
+        document.getElementById('udpPort').innerHTML = `${data.udp_port || '--'} <small style="color: ${data.udp_bound ? 'var(--lm-success-ink)' : 'var(--lm-danger-ink)'};">${udpStatus}</small>`;
+        document.getElementById('tcpPort').innerHTML = `${data.tcp_port || '--'} <small style="color: ${data.tcp_bound ? 'var(--lm-success-ink)' : 'var(--lm-danger-ink)'};">${tcpStatus}</small>`;
         
         document.getElementById('totalClients').textContent = data.total_clients || 0;
         document.getElementById('activeClients').textContent = data.active_clients || 0;
@@ -2377,7 +2377,7 @@ async function loadSyslogDiagnostics() {
         const issuesEl = document.getElementById('clientsWithIssues');
         const issueCount = data.clients_with_issues || 0;
         issuesEl.textContent = issueCount;
-        issuesEl.style.color = issueCount > 0 ? '#dc3545' : '#28a745';
+        issuesEl.style.color = issueCount > 0 ? 'var(--lm-danger-ink)' : 'var(--lm-success-ink)';
         
         // Render clients table
         const noClientsEl = document.getElementById('noClientsMessage');

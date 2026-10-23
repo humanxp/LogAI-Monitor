@@ -51,10 +51,10 @@
   --lm-nav-active-bg: #e6f4ff;
 
   /* ---- 语义色（Ant Design success / warning / error / info） ---- */
-  --lm-success-ink: #389e0d;
+  --lm-success-ink: #237804;   /* #f6ffed 底 5.9:1（原 #389e0d 只有 3.4:1） */
   --lm-success-bg: #f6ffed;
   --lm-success-line: #b7eb8f;
-  --lm-warn-ink: #d46b08;
+  --lm-warn-ink: #ad4e00;      /* #fffbe6 底 5.5:1（原 #d46b08 约 3.9:1） */
   --lm-warn-bg: #fffbe6;
   --lm-warn-line: #ffe58f;
   --lm-danger-ink: #cf1322;
@@ -216,7 +216,7 @@ code {
 /* 分组标题：整块作为"分隔带"，靠上留白拉开距离；字号与菜单项同尺寸，
    层级由字重 + 降低不透明度体现（Ant Design 菜单分组的做法）。 */
 .nav-section-title {
-  color: rgba(255, 255, 255, 0.42) !important;
+  color: rgba(255, 255, 255, 0.52) !important;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: .1em;
@@ -245,7 +245,7 @@ code {
   color: var(--ant-sider-ink-active) !important;
 }
 .nav-item.active {
-  background: var(--ant-sider-item-active) !important;
+  background: #0958d9 !important;   /* Ant primary-700：白字 5.7:1 */
   color: #fff !important;
   font-weight: 500;
 }
@@ -761,3 +761,32 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
   scrollbar-width: thin;
 }
 .token-usage-head > .btn { flex: 0 0 auto; margin-left: auto; }
+
+/* ---- 按钮变体的优先级修复 ----
+   refined.css 里写的是 `.btn-secondary, button.btn-secondary { background: var(--lm-btn-secondary-bg);
+   color: #fff; border-color: transparent }`，其中 `button.btn-secondary`(0,1,1) 比本文件的
+   `.btn-secondary`(0,1,0) 更具体——于是白色文字配上我们改浅的 #f5f5f5 底色，弹窗里的
+   "Close" 几乎看不见。这里用两个类(0,2,0)压回去，统一成 Ant Design 的默认描边按钮。 */
+.btn.btn-secondary {
+  background: var(--lm-surface);
+  border: 1px solid var(--lm-line-strong);
+  color: var(--lm-ink);
+  filter: none;
+}
+.btn.btn-secondary:hover {
+  background: var(--lm-surface);
+  border-color: var(--lm-btn-primary-bg);
+  color: var(--lm-btn-primary-bg);
+  filter: none;
+}
+
+/* 弹窗过高时，让头部与底部固定、只滚动正文：否则 Close / Re-analyze 会被推到
+   视口之外（分析详情动辄十几屏），用户以为"按钮没了"。 */
+.modal-overlay { align-items: center; padding: 40px 16px; }
+.modal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 80px);
+}
+.modal-header, .modal-footer { flex: 0 0 auto; }
+.modal-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
