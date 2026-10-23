@@ -221,6 +221,7 @@ code {
   font-weight: 600;
   letter-spacing: .03em;
   padding: 6px 12px 2px;
+  margin: 0;              /* 清掉 style.css 的 margin-bottom: .5rem */
   text-transform: none;
   line-height: 1.35;
 }
@@ -634,7 +635,12 @@ tbody tr { transition: background .15s; }
 ::-webkit-scrollbar-thumb { background: var(--lm-scroll-thumb); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--lm-ink-3); }
 
-.nav-section { margin-bottom: 0; }
+.nav-section {
+  /* 清掉 style.css 遗留的 padding .5rem 1.25rem + margin-top .5rem：
+     之前只改标题 padding，这两处 margin 一直额外撑开约 16px。 */
+  padding: 0;
+  margin: 0;
+}
 .section-save { margin-top: 8px; }
 .section-save-hint { font-size: 12px; color: var(--lm-ink-3); }
 
