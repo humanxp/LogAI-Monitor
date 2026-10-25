@@ -886,9 +886,9 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 1.55rem;           /* 项间距 1.55rem（略大于最初 1.5rem，正好压进一行不溢出） */
+  gap: 0.95rem;           /* 项间距 0.95rem：字号提到 14px 后，行宽已到容器上限 */
   overflow-x: auto;       /* 一行到底：放不下就横向滚动，绝不折行 */
-  font-size: 13px;        /* 13px 才能在保留 [模型] + 大间距的前提下压进一行 */
+  font-size: 14px;        /* 与正文一致；间距相应收紧以保持一行 */
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -899,7 +899,7 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
 }
 .service-row .status-indicator .lx { color: var(--lm-ink-3); }
 /* 模型名弱化：保留 [模型] 信息，但用更小字号，避免把整行撑到换行/溢出 */
-.service-row .svc-model { font-size: 10.5px; color: var(--lm-ink-3); }
+.service-row .svc-model { font-size: 10px; color: var(--lm-ink-3); }
 /* 资源组（CPU / 内存 / 磁盘）整体贴右：第一项吃掉剩余空间 */
 .service-row .svc-res-group { margin-left: auto; }
 .service-row b {
