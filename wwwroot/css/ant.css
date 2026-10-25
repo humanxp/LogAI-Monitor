@@ -879,3 +879,26 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
 @media (max-width: 768px) {
   .badge, .severity-badge { font-size: 12px; height: 22px; line-height: 20px; }
 }
+
+/* Service Status：服务连通性 + 宿主机资源统一在一行。
+   窄屏不换行而是横向滚动——换行会让"同一组状态"看起来像两组。 */
+.service-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 1.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.service-row .status-indicator {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  gap: 6px;
+}
+.service-row .status-indicator .lx { color: var(--lm-ink-3); }
+.service-row b {
+  color: var(--lm-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 768px) { .service-row { gap: 1rem; } }

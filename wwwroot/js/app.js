@@ -310,7 +310,7 @@ function updateStatsDisplay() {
     // Update service status
     const aiModel = state.stats.ai_model || 'AI';
     updateServiceStatus('redisStatus', 'Redis', state.stats.redis_connected);
-    updateServiceStatus('ollamaStatus', `[${aiModel}] AI`, state.stats.ollama_available);
+    updateServiceStatus('ollamaStatus', 'AI', state.stats.ollama_available, aiModel);
     updateServiceStatus('telegramStatus', 'Telegram', state.stats.telegram_enabled);
     updateTokenUsage();
     updateTelegramUsage();
@@ -414,12 +414,14 @@ async function resetTelegramUsage() {
     }
 }
 
-function updateServiceStatus(elementId, serviceName, status) {
+function updateServiceStatus(elementId, serviceName, status, title) {
     const el = document.getElementById(elementId);
     if (el) {
-        el.innerHTML = status 
+        el.innerHTML = status
             ? `<span class="status-dot"></span> ${serviceName}: Connected`
             : `<span class="status-dot offline"></span> ${serviceName}: Offline`;
+        // 模型名等补充信息放 tooltip：内联显示会把这一行顶宽、挤到换行
+        el.title = title ? `${serviceName}: ${status ? 'Connected' : 'Offline'} — ${title}` : '';
     }
 }
 
