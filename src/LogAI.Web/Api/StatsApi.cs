@@ -212,6 +212,11 @@ internal static class StatsApi
             // Telegram 发送量（每次 SendAsync 后由 TelegramUsage 累计）
             var tgUsage = await LogAI.Core.Notify.TelegramUsage.ReadAsync(store);
 
+            // 宿主机资源（Service Status 里显示 CPU / 内存 / 磁盘）
+            double cpuPercent = SystemMetrics.CpuPercent();
+            var (memTotal, memAvailable) = SystemMetrics.Memory();
+            var (diskTotal, diskFree) = SystemMetrics.Disk();
+
             var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["ai_calls"] = tokens.Calls,
@@ -242,6 +247,12 @@ internal static class StatsApi
                 ["total_filters"] = totalFilters,
                 ["total_logs"] = totalLogs,
                 ["unacknowledged_alerts"] = unacknowledged,
+                // 宿主机资源（Service Status 一行显示）：CPU 使用率、内存、磁盘
+                ["cpu_percent"] = cpuPercent,
+                ["mem_total_bytes"] = memTotal,
+                ["mem_available_bytes"] = memAvailable,
+                ["disk_total_bytes"] = diskTotal,
+                ["disk_free_bytes"] = diskFree,
             };
             return payload;
     }

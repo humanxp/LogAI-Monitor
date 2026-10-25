@@ -243,6 +243,14 @@ function updateStatTrends() {
     renderStatTrend(document.getElementById('totalAlertsTrend'), perMin(alerts - prev.alerts), '', true);
 }
 
+// 字节数 → 人类可读（GB / MB）
+function fmtBytes(n) {
+    if (!n || n <= 0) return '—';
+    const gb = n / 1073741824;
+    if (gb >= 1) return gb.toFixed(1) + ' GB';
+    return Math.round(n / 1048576) + ' MB';
+}
+
 // Update stats display
 function updateStatsDisplay() {
     const elements = {
@@ -269,6 +277,29 @@ function updateStatsDisplay() {
         hotCold.textContent = `热 ${hot} · 冷 ${cold}`;
     }
     
+    // 宿主机资源：CPU / 内存 / 磁盘（/api/stats 的 cpu_percent 与 *_bytes）
+    const cpuEl = document.getElementById('cpuUsage');
+    if (cpuEl) {
+        const cpu = state.stats.cpu_percent;
+        cpuEl.textContent = (typeof cpu === 'number' && cpu >= 0) ? Math.round(cpu) + '%' : '—';
+    }
+    const memEl = document.getElementById('memUsage');
+    if (memEl) {
+        const total = state.stats.mem_total_bytes || 0;
+        const free = state.stats.mem_available_bytes || 0;
+        if (total > 0) {
+            const used = total - free;
+            const pct = Math.round(used * 100 / total);
+            memEl.textContent = fmtBytes(used) + ' / ' + fmtBytes(total) + ' (' + pct + '%)';
+        } else memEl.textContent = '—';
+    }
+    const diskEl = document.getElementById('diskUsage');
+    if (diskEl) {
+        const total = state.stats.disk_total_bytes || 0;
+        const free = state.stats.disk_free_bytes || 0;
+        diskEl.textContent = total > 0 ? fmtBytes(free) + ' 可用 / ' + fmtBytes(total) : '—';
+    }
+
     // Update alert badge in sidebar
     const alertBadge = document.getElementById('alertBadge');
     if (alertBadge) {

@@ -62,6 +62,22 @@
                 <span class="status-dot offline"></span> Telegram: Checking...
             </div>
         </div>
+
+        <!-- 宿主机资源：CPU 使用率 / 内存占用 / 磁盘剩余（数据来自 /api/stats） -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--lm-line);">
+            <div class="status-indicator" title="宿主机 CPU 使用率（/proc/stat 采样）">
+                {{ icon("gauge")|safe }} CPU
+                <b id="cpuUsage" style="margin-left: auto; color: var(--lm-ink); font-variant-numeric: tabular-nums;">—</b>
+            </div>
+            <div class="status-indicator" title="宿主机内存占用（/proc/meminfo）">
+                {{ icon("box")|safe }} 内存
+                <b id="memUsage" style="margin-left: auto; color: var(--lm-ink); font-variant-numeric: tabular-nums;">—</b>
+            </div>
+            <div class="status-indicator" title="归档所在磁盘的剩余空间">
+                {{ icon("database")|safe }} 磁盘
+                <b id="diskUsage" style="margin-left: auto; color: var(--lm-ink); font-variant-numeric: tabular-nums;">—</b>
+            </div>
+        </div>
         <!-- AI token 用量：字段来自 /api/stats 的 ai_tokens_*（后端每次调用后累计）。
              强制单行：字段用细分隔线串起来，窄屏改为横向滚动而不是换行。 -->
         <div class="token-usage" id="aiTokenUsage">
