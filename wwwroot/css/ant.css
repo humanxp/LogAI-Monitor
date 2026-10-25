@@ -908,3 +908,13 @@ th.sortable[data-dir="desc"] .sort-ind { opacity: 1; }
   font-variant-numeric: tabular-nums;
 }
 @media (max-width: 768px) { .service-row { gap: 1.25rem; } }
+
+/* Token / Telegram 用量行：字号与上面的 Service Status 行（13px）对齐，
+   原来标题 0.94rem(15px)、数值 1rem 偏大，两行放在一起不协调。 */
+.token-usage-head { font-size: 13px; }
+.token-usage-title { font-size: 13px; }
+.token-usage-items { font-size: 13px; }
+.token-usage-items .tu { font-size: 13px; }
+.token-usage-items .tu i { font-size: 12px; }
+.token-usage-items .tu b { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.token-usage-head > .btn-sm { height: 24px; font-size: 12px; }
