@@ -290,14 +290,14 @@ function updateStatsDisplay() {
         if (total > 0) {
             const used = total - free;
             const pct = Math.round(used * 100 / total);
-            memEl.textContent = fmtBytes(used) + ' / ' + fmtBytes(total) + ' (' + pct + '%)';
+            memEl.textContent = fmtBytes(used).replace(/ GB$/,'G') + '/' + fmtBytes(total).replace(/ GB$/,'G') + ' (' + pct + '%)';
         } else memEl.textContent = '—';
     }
     const diskEl = document.getElementById('diskUsage');
     if (diskEl) {
         const total = state.stats.disk_total_bytes || 0;
         const free = state.stats.disk_free_bytes || 0;
-        diskEl.textContent = total > 0 ? fmtBytes(free) + ' 可用 / ' + fmtBytes(total) : '—';
+        diskEl.textContent = total > 0 ? fmtBytes(free).replace(/ GB$/,'G') + '/' + fmtBytes(total).replace(/ GB$/,'G') : '—';
     }
 
     // Update alert badge in sidebar
@@ -310,7 +310,7 @@ function updateStatsDisplay() {
     // Update service status
     const aiModel = state.stats.ai_model || 'AI';
     updateServiceStatus('redisStatus', 'Redis', state.stats.redis_connected);
-    updateServiceStatus('ollamaStatus', 'AI', state.stats.ollama_available, aiModel);
+    updateServiceStatus('ollamaStatus', 'AI', state.stats.ollama_available, aiModel, aiModel);
     updateServiceStatus('telegramStatus', 'Telegram', state.stats.telegram_enabled);
     updateTokenUsage();
     updateTelegramUsage();
@@ -414,12 +414,14 @@ async function resetTelegramUsage() {
     }
 }
 
-function updateServiceStatus(elementId, serviceName, status, title) {
+function updateServiceStatus(elementId, serviceName, status, title, model) {
     const el = document.getElementById(elementId);
     if (el) {
+        // 模型名用 <small> 弱化：仍是 [模型] AI，但不会把这一行撑爆
+        const label = model ? `<small class="svc-model">[${model}]</small> ${serviceName}` : serviceName;
         el.innerHTML = status
-            ? `<span class="status-dot"></span> ${serviceName}: Connected`
-            : `<span class="status-dot offline"></span> ${serviceName}: Offline`;
+            ? `<span class="status-dot"></span> ${label}: Connected`
+            : `<span class="status-dot offline"></span> ${label}: Offline`;
         // 模型名等补充信息放 tooltip：内联显示会把这一行顶宽、挤到换行
         el.title = title ? `${serviceName}: ${status ? 'Connected' : 'Offline'} — ${title}` : '';
     }

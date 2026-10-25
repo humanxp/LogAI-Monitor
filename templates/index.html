@@ -62,13 +62,13 @@
             <div class="status-indicator" id="telegramStatus">
                 <span class="status-dot offline"></span> Telegram: Checking...
             </div>
-            <div class="status-indicator" title="宿主机 CPU 使用率（/proc/stat 采样）">
+            <div class="status-indicator svc-res-group" title="宿主机 CPU 使用率（/proc/stat 采样）">
                 {{ icon("gauge")|safe }} CPU <b id="cpuUsage">—</b>
             </div>
-            <div class="status-indicator" title="宿主机内存占用（/proc/meminfo）">
+            <div class="status-indicator svc-res" title="宿主机内存占用（/proc/meminfo）">
                 {{ icon("box")|safe }} 内存 <b id="memUsage">—</b>
             </div>
-            <div class="status-indicator" title="归档所在磁盘的剩余空间">
+            <div class="status-indicator svc-res" title="归档所在磁盘的剩余空间">
                 {{ icon("database")|safe }} 磁盘 <b id="diskUsage">—</b>
             </div>
         </div>
