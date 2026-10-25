@@ -105,7 +105,10 @@ internal static class HealthApi
                 ["analysis_batch"] = batch,
                 ["analysis_interval_min"] = interval,
                 ["last_analysis_age_s"] = age,
-                ["ok"] = HealthCheck.IsOk(inputs),
+                // 采集器没起来时，即便 backlog/AI 都正常也必须报不健康：
+                // 曾出现过"Web 能访问、health 说 ok，实际一条日志都不入库"的哑状态。
+                ["receiver_running"] = ReceiverState.Running,
+                ["ok"] = HealthCheck.IsOk(inputs) && ReceiverState.Running,
                 ["total_logs"] = total,
                 ["ts"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffzzz",
                                                          CultureInfo.InvariantCulture),
