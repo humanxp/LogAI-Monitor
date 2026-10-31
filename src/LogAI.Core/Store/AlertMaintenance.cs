@@ -81,6 +81,9 @@ public static class AlertMaintenance
             if (states[i].InRedis) writes.Add(batch.KeyDeleteAsync(id));
             else archivedToDelete.Add(id);
             writes.Add(batch.SortedSetRemoveAsync(Keys.AlertsTimeline, id));
+            // 同时清级别索引，避免索引随删除无界增长
+            foreach (string bucket in new[] { "critical", "error", "warning", "notice", "info", "debug", "other" })
+                writes.Add(batch.SortedSetRemoveAsync(Keys.AlertSeverity(bucket), id));
             count++;
         }
         if (writes.Count > 0)

@@ -21,6 +21,25 @@ public static class Keys
     public const string SeveritiesIndex = "logs:index:severities";
     public const string Filters = "filters:all";
     public const string AlertsTimeline = "alerts:timeline";
+
+    /// <summary>告警按级别分桶的索引前缀（critical/error/warning/notice/info/debug/other）。
+    /// 归档只删哈希、保留时间线 id，所以这个索引同样覆盖热+冷，筛选才能查到历史告警。</summary>
+    public const string AlertSeverityPrefix = "alerts:severity:";
+
+    public static string AlertSeverity(string bucket) => AlertSeverityPrefix + bucket;
+
+    /// <summary>把任意 syslog 级别名归到 7 个桶之一（与 AlertsApi.SeverityBucket 同口径）。</summary>
+    public static string SeverityBucket(string severity) =>
+        LogAI.Core.Filters.FilterMatcher.SeverityCode(severity ?? "") switch
+        {
+            0 or 1 or 2 => "critical",
+            3 => "error",
+            4 => "warning",
+            5 => "notice",
+            6 => "info",
+            7 => "debug",
+            _ => "other",
+        };
     public const string AiHistoryTimeline = "ai_history:timeline";
     public const string Users = "users:all";
     public const string ClientsIndex = "syslog:clients:index";

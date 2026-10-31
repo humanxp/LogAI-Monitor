@@ -148,7 +148,38 @@ internal static class AlertsApi
                 return ReadApi.JsonBody(page);
             }
 
-            // 带 acknowledged / severity 过滤时必须读哈希才能判断（都不是索引），所以扫描
+            // 有级别筛选：走 alerts:severity:<bucket> 索引（覆盖热+冷），
+            // 按分数倒序分块回填，凑够一页就停。旧实现是"扫最新 600 条"，
+            // 归档在冷库里的稀有级别（例如 16 条 critical）永远扫不到，列表显示 No alerts。
+            if (severityFilter.Length > 0)
+            {
+                var indexKey = Keys.AlertSeverity(severityFilter);
+                long indexCount = await store.Db.SortedSetLengthAsync(indexKey);
+                var picked = new List<Dictionary<string, object?>>();
+                int skip = offset;
+                long cursor = 0;
+                const int Chunk = 200;
+                while (cursor < indexCount && picked.Count < limit)
+                {
+                    var idsChunk = await store.Db.SortedSetRangeByRankAsync(
+                        indexKey, cursor, Math.Min(indexCount, cursor + Chunk) - 1, Order.Descending);
+                    if (idsChunk.Length == 0) break;
+                    cursor += idsChunk.Length;
+                    var hydrated = await ReadApi.HydrateHashesAsync(store, archive, idsChunk);
+                    for (int i = 0; i < idsChunk.Length; i++)
+                    {
+                        var entry = BuildEntry(hydrated[i]);
+                        if (entry is null) continue;
+                        if (wanted.HasValue && entry["acknowledged"] is bool ack && ack != wanted.Value) continue;
+                        if (skip > 0) { skip--; continue; }
+                        picked.Add(entry);
+                        if (picked.Count >= limit) break;
+                    }
+                }
+                return ReadApi.JsonBody(picked);
+            }
+
+            // 带 acknowledged 过滤时必须读哈希才能判断（不是索引），所以扫描
             // 范围要设上限。代价：被请求的那一类在时间线上极稀疏时页可能不满；
             // 换掉的是"为一条查询把整条时间线读进内存"这种随规模无界的开销。
             const int Lookahead = 500;
