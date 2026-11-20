@@ -36,7 +36,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 |---|---|
 | **syslog 采集** | UDP + TCP；RFC3164 / RFC5424 解析（PRI、facility/severity、程序名、消息），发送方省略主机名时**不把程序名误当主机名**；编码三级回退（UTF-8 → GB18030 → Latin-1，替换非法序列） |
 | **Docker 容器日志** | 通过 Docker Engine API（只读 unix socket）读取运行中容器日志；**排除列表**避免采集自身；8 字节帧解复用；按"最后一行"标记**跨轮询去重** |
-| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志/分析/告警哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填 |
+| **存储** | 稳定的键布局：`logs:timeline`、`logs:unanalyzed`、三个注册表集合 `logs:index:{sources,hosts,severities}`、三个维度 ZSET `logs:{source,host,severity}:<值>`、日志哈希带保留期 TTL；**冷热分层**——超过 `archive_after_hours`（默认 168h）的日志/分析/告警哈希归档到 SQLite，Redis 只留 ZSET 索引，读取时按需回填；**归档同时摘除来源/级别索引**，历史筛选走 SQLite 索引 |
 | **AI 分析** | 三条路径：**批次**（定时，`type=auto`/`batch`）、**单条**（`type=single`）、**对话**；OpenAI 兼容端点（vLLM / SGLang / Ollama `/v1`）与原生 Ollama；**JSON 提取 + 截断修复 + 数组对修复 + 纠正性重试**；解析失败视为真失败（不伪造成功），**死信退役**避免毒批次永久重试。整体状态分 **critical / warning / healthy / other** 四档，**纯模型判定**（与 python-legacy 一致）——模型判什么就是什么，程序只做同义词归一；默认模型 **Qwen3.5-9B**（MoE，快且准），日志按级别排序、带 `[SEVERITY]` 前缀原样交给模型；「发现的问题/处理建议」由模型自己带 `[主机名/IP]` 前缀，返回结果原样保留（不去重、不封顶 critical_count）。提示词按模型匹配（设置页「建议使用模型匹配优化」下拉框，选模型自动匹配）：Llama3.2-3B 默认简单版、Qwen2.5-Coder-7B / Qwen3.5-9B 短提示词、Qwen3.6-35B-A3B 输出精简版、Gemma-3-12B-it 短提示词 + 爆破强化、Gemma-4-12B 短提示词 + 爆破强化 + 数据丢失判据、Gemma-4-e4b 短提示词 + 爆破强化 + 边界校准、Gemma-4-26B-A4B 短提示词 + 爆破强化（实测 27/27）；「发现的问题」每条强制带 `[主机名]` 前缀（同一问题跨主机拆条，禁止合并成 Multiple hosts）；给它判为 critical 的那条再加一个 `* ` 前缀（`critical_count` 与带星条数一致，整批判 critical 时至少有一条带星），详情页带 **\*** 的就是计入严重问题数的那条。**模型名与提示词模式每轮分析重读，改完下一轮生效、无需重启**。另有管理员专用的**「模型评测」**（设置页里的一个类目）：任选多模型 × 多评测集（内置 27 例可逐条勾选，或上传自定义 JSON）跑一轮并打分对比，**成绩按模型持久化（重评同一模型即覆盖）**；每轮分析都会记下**本次 token 用量与耗时** |
 | **过滤器与告警** | 四条件 AND（级别列表 / 来源子串 / 消息子串 / 消息正则），正则编译复用、非法正则不匹配不抛异常；告警落库 10 字段；**最低推送级别可配**（critical/error/warning/notice/info/debug，低于它的仍入库但不推），另有单规则"任意级别"旁路；每 (主机 × 规则) **冷却**用 `SET NX EX` 原子实现 |
 | **Telegram 推送** | 总开关（设置页不勾则完全不发）+ 两类通知独立控制：**告警**按最低推送级别，**AI 汇总**按 4 档状态勾选并可设冷却；固定模板（emoji 映射、级别大写、`hostname or source`、message 500 / analysis 300 截断、HTML 语义转义）；发送失败不影响采集 |
@@ -44,7 +44,7 @@ syslog 采集 + AI 批量分析 + 告警推送 + Web 界面的日志监控系统
 | **实时推送** | Engine.IO v4 长轮询（握手 / 命名空间连接 / 鉴权 / `\x1e` 多包 / 包序）；事件 `connected`、`new_log`、`new_alert`、`analysis_complete`、`stats`（2 秒节流） |
 | **调度** | 分析（设置间隔）、清理（保留期 + **死索引清理**）、健康巡检（含看门狗推送与恢复通知）、Docker 轮询；任务抛异常**可见**且不影响其它任务 |
 | **认证与权限** | 口令校验**与生成**（scrypt / pbkdf2 / legacy sha256，参数从哈希中读取）；HMAC 签名会话 cookie；三级权限；`X-Ingest-Token` 摄取令牌 |
-| **界面与主题** | 11 个主页面 + 登录页，视觉层为 `wwwroot/css/ant.css`（**Ant Design 5** 的令牌与组件规范，原生 CSS，加载在 style/refined 之后），图标统一用 **Lucide**（83 个 SVG symbol 离线内置，替代 Font Awesome）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内。**热/冷拆分**：仪表盘 Total Logs、分析历史 Total Analyses、告警 Total 都显示「热(Redis) / 冷(SQLite 归档)」条数。**分级卡片可点**：告警页与分析历史页点上面一排分级卡片即按该档筛选下面的列表（服务端筛选，翻页条总数同步）。分析历史详情显示本轮**耗时 / token 用量 / 模型**。**设置页按类目分页**（顶部切换按键，含管理员专用的「模型评测」），每个类目底部有独立的「保存本类目」，只提交本类目字段 |
+| **界面与主题** | 11 个主页面 + 登录页，视觉层为 `wwwroot/css/ant.css`（**Ant Design 5** 的令牌与组件规范，原生 CSS，加载在 style/refined 之后），图标统一用 **Lucide**（83 个 SVG symbol 离线内置，替代 Font Awesome）。两套主题：**默认（白天）** 与 **晚上（深色）**，通过语义令牌（`--lm-canvas/-surface/-line/-ink*`＋状态色）实现，按钮切换与整页加载走同一条路径；弹窗、抽屉、快捷键面板等"打开才出现"的界面也在覆盖范围内。**热/冷拆分**：仪表盘 Total Logs、分析历史 Total Analyses、告警 Total 都显示「热(Redis) / 冷(SQLite 归档)」条数。**宿主机资源**：Service Status 一行内并列 Redis/AI/Telegram 连通性与 **CPU 使用率 / 内存占用 / 磁盘剩余**（读 `/proc/stat`、`/proc/meminfo`、`DriveInfo`）。**告警级别索引**：按级别分桶建索引，点 critical/error 等卡片筛选时能取到**含冷库在内的全量**该级别告警（此前只扫最新 600 条，归档的稀有级别会出现"卡片 16 条、列表空"）。**分级卡片可点**：告警页与分析历史页点上面一排分级卡片即按该档筛选下面的列表（服务端筛选，翻页条总数同步）。分析历史详情显示本轮**耗时 / token 用量 / 模型**。**设置页按类目分页**（顶部切换按键，含管理员专用的「模型评测」），每个类目底部有独立的「保存本类目」，只提交本类目字段 |
 
 ---
 
@@ -140,6 +140,8 @@ Redis 里数据占内存的大头是**哈希本体**（日志 ~1.1 KB/条、分�
 - 读路径自动回填：`/api/logs`、`/api/logs/{id}`、`/api/ai-history`、`/api/alerts` 对 Redis 里缺失的哈希走 SQLite 主键查询（几 ms）
 - **分析状态另存一份小哈希** `ai_history:status`（id → 四档状态），它**不随归档搬走**，于是 `/api/ai-history/stats` 不必为已归档记录回读 SQLite 里 5 KB 的分析 JSON（冷调用 444 ms → 48 ms）
 - **清理同时覆盖两个库**：设置页的 Clear All Logs / 按来源删除 / 清空 AI 历史会一并清 Redis 与 SQLite（此前只清 Redis，冷库里会留下"界面看不见却占磁盘"的残留）。`--archive-counts` 可打印 SQLite 两表条数用于核对
+- **索引只为热数据付费**：归档时把已归档 id 从 `logs:source:*` / `logs:severity:*` 摘除（`logs:host:*` 与 `logs:timeline` 保留），历史数据改由 SQLite 的 `(source,score)` / `(severity,score)` / `(severity,hostname,score)` 索引检索。此前每个 id 在 Redis 里存 4 份、索引随保留期线性膨胀——738 万条实测 **3.36 GB → 2.13 GB**，按 90 天保留期到顶从 ~6.7 GB 降到 ~3.6 GB
+- **冷热合并查询**：`/api/logs` 在来源/级别筛选时热侧取 Redis 索引、冷侧查 SQLite，按时间戳归并去重后分页，`total` 覆盖全量；结果按「筛选组合 + 时间窗 + 取数上限」缓存 60 秒。实测首次 53~105 ms、缓存后 ~10 ms；**单一条件筛选直接命中索引，任意深度 2 ms**（含 738 万条下翻到第 1 万页）
 - 归档后 Redis 内存显著下降（日志实测 300 万条 7.2 GB → 4.3 GB；分析历史 1.9 万条又省 ~70 MB），SQLite 体积约 0.27 KB/条
 - 回退：把 `archive_after_hours` 设为 `0` 即关闭归档
 

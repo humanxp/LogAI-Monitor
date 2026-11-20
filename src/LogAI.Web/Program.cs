@@ -969,5 +969,5 @@ internal sealed class TimestampedWriter(TextWriter inner) : TextWriter
 
 partial class Program
 {
-    internal const string Version = "1.2.0";
+    internal const string Version = "1.3.0";
 }
