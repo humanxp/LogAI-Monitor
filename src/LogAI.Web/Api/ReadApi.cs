@@ -29,6 +29,10 @@ namespace LogAI.Web.Api;
 
 internal static class ReadApi
 {
+    /// <summary>/api/logs 冷库侧结果的 60 秒缓存：key = 筛选组合+时间窗+取数上限。</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        string, (List<(string Id, double Score)> Rows, long Total, DateTimeOffset At)> ColdCache = new();
+
     private const int HostLabelMax = 16;
 
     /// <summary>
@@ -146,6 +150,77 @@ internal static class ReadApi
                 else
                 {
                     total = await store.Db.SortedSetLengthAsync(Keys.Timeline);
+                }
+
+                // source / severity 的 Redis 索引在归档时会被摘掉（只留热数据），
+                // 所以这两个维度筛选必须把冷库补进来：两侧各取"前 offset+limit 条"，
+                // 按分数倒序合并去重再切片。热冷以归档水位为界，互不重叠，total 直接相加。
+                bool needsCold = !string.IsNullOrEmpty(source) || !string.IsNullOrEmpty(severity);
+                if (needsCold)
+                {
+                    double watermark = 0;
+                    var rawMark = await store.Db.StringGetAsync(Keys.ArchiveWatermark);
+                    if (rawMark.HasValue && double.TryParse(rawMark.ToString(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double wm))
+                        watermark = wm;
+
+                    var hotRows = await store.Db.SortedSetRangeByRankWithScoresAsync(
+                        scanKey, 0, offset + limit - 1, Order.Descending);
+                    long hotTotal = await store.Db.SortedSetLengthAsync(scanKey);
+
+                    double lowBound = hasWindow ? startTime : double.NegativeInfinity;
+                    double highBound = hasWindow ? Math.Min(endTime, watermark) : watermark;
+                    // 冷库 COUNT(*) 在百万级结果上要 1 秒左右，而同一个筛选组合会被
+                    // 连续翻页/刷新反复请求，这里按组合缓存 60 秒（与上面交集缓存的思路一致）。
+                    string coldCacheKey = (source ?? "-") + "|" + (host ?? "-") + "|" + (severity ?? "-")
+                        + "|" + lowBound.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)
+                        + "|" + highBound.ToString("F3", System.Globalization.CultureInfo.InvariantCulture)
+                        + "|" + (offset + limit);
+                    List<(string Id, double Score)> coldRows;
+                    long coldTotal;
+                    if (ColdCache.TryGetValue(coldCacheKey, out var cachedCold)
+                        && DateTimeOffset.UtcNow - cachedCold.At < TimeSpan.FromSeconds(60))
+                    {
+                        (coldRows, coldTotal) = (cachedCold.Rows, cachedCold.Total);
+                    }
+                    else
+                    {
+                        (coldRows, coldTotal) = highBound > lowBound
+                            ? archive.QueryLogIds(source, host, severity, lowBound, highBound, offset + limit)
+                            : (new List<(string Id, double Score)>(), 0L);
+                        ColdCache[coldCacheKey] = (coldRows, coldTotal, DateTimeOffset.UtcNow);
+                    }
+
+                    var merged = new List<(string Id, double Score)>(hotRows.Length + coldRows.Count);
+                    foreach (var r in hotRows) merged.Add((r.Element.ToString(), r.Score));
+                    merged.AddRange(coldRows);
+                    var pageIds = merged
+                        .OrderByDescending(x => x.Score)
+                        .Select(x => x.Id)
+                        .Distinct(StringComparer.Ordinal)
+                        .Skip(offset).Take(limit)
+                        .Select(x => (RedisValue)x).ToArray();
+
+                    var hashesCold = await HydrateAsync(store, archive, pageIds);
+                    var entriesCold = new List<Dictionary<string, object?>>(pageIds.Length);
+                    for (int i = 0; i < pageIds.Length; i++)
+                    {
+                        var entryC = new Dictionary<string, object?>(StringComparer.Ordinal);
+                        foreach (var field in hashesCold[i])
+                        {
+                            string name = field.Name.ToString();
+                            string value = field.Value.ToString();
+                            entryC[name] = name == "analyzed" ? value == "true" : value;
+                        }
+                        if (!string.IsNullOrEmpty(search))
+                        {
+                            string msg = entryC.TryGetValue("message", out var m2) ? m2?.ToString() ?? "" : "";
+                            if (msg.IndexOf(search, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                        }
+                        entriesCold.Add(entryC.OrderBy(p => p.Key, StringComparer.Ordinal)
+                                              .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal));
+                    }
+                    return JsonBody(new { count = entriesCold.Count, logs = entriesCold, total = hotTotal + coldTotal });
                 }
 
                 RedisValue[] ids = hasWindow && dimensions.Count == 0

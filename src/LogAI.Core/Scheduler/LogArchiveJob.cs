@@ -65,12 +65,40 @@ public static class LogArchiveJob
             if (toArchive.Count > 0)
                 await archive.ArchiveAsync(toArchive, cancellationToken);
 
-            // 删哈希 + 从未分析队列摘除（这么老的日志不会再回头分析）。ZSET 索引保留。
+            // 删哈希 + 从未分析队列摘除（这么老的日志不会再回头分析）。
             var batch = db.CreateBatch();
-            var pending = new List<Task>(page.Length + 1);
+            var pending = new List<Task>(page.Length + 4);
             for (int i = 0; i < page.Length; i++)
                 pending.Add(batch.KeyDeleteAsync(page[i].Element.ToString()));
             pending.Add(batch.SortedSetRemoveAsync(Keys.Unanalyzed, ids));
+
+            // 关键：归档后从 source / severity 索引里摘掉这些 id。
+            // 每个日志 id 原来在 Redis 里存了 4 份（timeline + host + source + severity），
+            // 归档只搬哈希、索引全留，导致内存随保留期线性膨胀（实测 738 万条 ×4 = 3.1GB）。
+            // host 与 timeline 保留（主机筛选最常用、总数要靠时间线），
+            // source/severity 改为查冷库（SQLite 上已建 (source,score)/(severity,score) 索引）。
+            var sourceGroups = new Dictionary<string, List<RedisValue>>(StringComparer.Ordinal);
+            var severityGroups = new Dictionary<string, List<RedisValue>>(StringComparer.Ordinal);
+            foreach (var log in toArchive)
+            {
+                string src = log.Source ?? "";
+                string sev = log.Severity ?? "";
+                if (src.Length > 0)
+                {
+                    if (!sourceGroups.TryGetValue(src, out var sl)) sourceGroups[src] = sl = new List<RedisValue>();
+                    sl.Add(log.Id);
+                }
+                if (sev.Length > 0)
+                {
+                    if (!severityGroups.TryGetValue(sev, out var vl)) severityGroups[sev] = vl = new List<RedisValue>();
+                    vl.Add(log.Id);
+                }
+            }
+            foreach (var kv in sourceGroups)
+                pending.Add(batch.SortedSetRemoveAsync(Keys.LogSource(kv.Key), kv.Value.ToArray()));
+            foreach (var kv in severityGroups)
+                pending.Add(batch.SortedSetRemoveAsync(Keys.LogSeverity(kv.Key), kv.Value.ToArray()));
+
             batch.Execute();
             await Task.WhenAll(pending);
 
