@@ -112,7 +112,15 @@ internal static class ReadApi
             long total;
             try
             {
-                if (dimensions.Count > 0)
+                if (dimensions.Count == 1 && !hasWindow)
+                {
+                    // 单一维度且无时间窗：直接用该维度索引，不建临时交集。
+                    // ZINTERSTORE 一个集合等于整份拷贝——实测 host=GL-AXT1800
+                    // 首次请求 3.1s、host=192.168.50.3 0.9s，而直接读索引是毫秒级。
+                    scanKey = dimensions[0];
+                    total = await store.Db.SortedSetLengthAsync(scanKey);
+                }
+                else if (dimensions.Count > 0)
                 {
                     // Reuse the intersection for 60 seconds, keyed by the filter
                     // combination. Building it is O(N) over the dimension sets (the
